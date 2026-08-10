@@ -23,9 +23,11 @@ function BookingForm({ services, initialNotes }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [confirmed, setConfirmed] = useState(null);
+  const [slotsError, setSlotsError] = useState(false);
 
   useEffect(() => {
     setTime(null);
+    setSlotsError(false);
     if (!date || !serviceId) {
       setSlots([]);
       return;
@@ -35,6 +37,10 @@ function BookingForm({ services, initialNotes }) {
       .then((data) => {
         setSlots(data.slots);
         setSlotsOpen(data.open);
+      })
+      .catch(() => {
+        setSlots([]);
+        setSlotsError(true);
       })
       .finally(() => setLoadingSlots(false));
   }, [date, serviceId]);
@@ -105,6 +111,8 @@ function BookingForm({ services, initialNotes }) {
             <p className="text-white/40 text-sm">בחרי שירות ותאריך כדי לראות שעות פנויות.</p>
           ) : loadingSlots ? (
             <p className="text-white/40 text-sm">טוען שעות...</p>
+          ) : slotsError ? (
+            <p className="text-white/40 text-sm">לא ניתן לטעון שעות פנויות כרגע, נסי שוב מאוחר יותר.</p>
           ) : !slotsOpen ? (
             <p className="text-white/40 text-sm">הסטודיו סגור בתאריך זה.</p>
           ) : slots.length === 0 ? (
@@ -182,14 +190,18 @@ function ManageAppointments() {
   const [newSlots, setNewSlots] = useState([]);
   const [newTime, setNewTime] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
 
   async function handleSearch(e) {
     e.preventDefault();
     if (!phone.trim()) return;
     setLoading(true);
+    setError(null);
     try {
       const data = await findAppointmentsByPhone(phone.trim());
-      setResults(data);
+      setResults(Array.isArray(data) ? data : []);
+    } catch {
+      setError("לא ניתן להתחבר לשרת כרגע, נסי שוב מאוחר יותר.");
     } finally {
       setLoading(false);
     }
@@ -206,16 +218,21 @@ function ManageAppointments() {
     if (!editingId || !newDate) return;
     const appt = results.find((a) => a.id === editingId);
     if (!appt) return;
-    getAvailability(format(newDate, "yyyy-MM-dd"), appt.service_id).then((d) => setNewSlots(d.slots));
-  }, [newDate, editingId]);
+    getAvailability(format(newDate, "yyyy-MM-dd"), appt.service_id)
+      .then((d) => setNewSlots(d.slots))
+      .catch(() => setNewSlots([]));
+  }, [newDate, editingId, results]);
 
   async function confirmReschedule(appt) {
     setBusy(true);
+    setError(null);
     try {
       await updateAppointment(appt.id, { date: format(newDate, "yyyy-MM-dd"), time: newTime });
       const data = await findAppointmentsByPhone(phone.trim());
-      setResults(data);
+      setResults(Array.isArray(data) ? data : []);
       setEditingId(null);
+    } catch {
+      setError("לא הצלחנו להזיז את התור, נסי שוב מאוחר יותר.");
     } finally {
       setBusy(false);
     }
@@ -223,10 +240,13 @@ function ManageAppointments() {
 
   async function cancelAppointment(appt) {
     setBusy(true);
+    setError(null);
     try {
       await updateAppointment(appt.id, { status: "cancelled" });
       const data = await findAppointmentsByPhone(phone.trim());
-      setResults(data);
+      setResults(Array.isArray(data) ? data : []);
+    } catch {
+      setError("לא הצלחנו לבטל את התור, נסי שוב מאוחר יותר.");
     } finally {
       setBusy(false);
     }
@@ -246,6 +266,8 @@ function ManageAppointments() {
           {loading ? "מחפשת..." : "חיפוש"}
         </button>
       </form>
+
+      {error && <p className="text-sm text-red-300 mb-4">{error}</p>}
 
       {results && results.length === 0 && (
         <p className="text-white/40 text-sm">לא נמצאו תורים פעילים למספר זה.</p>
@@ -325,7 +347,9 @@ export default function Booking() {
   const prefillNotes = location.state?.prefillNotes ?? "";
 
   useEffect(() => {
-    getServices().then(setServices);
+    getServices()
+      .then((data) => setServices(Array.isArray(data) ? data : []))
+      .catch(() => setServices([]));
   }, []);
 
   return (

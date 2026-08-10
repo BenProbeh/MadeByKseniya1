@@ -23,7 +23,9 @@ export default function Home() {
   const [services, setServices] = useState([]);
 
   useEffect(() => {
-    getServices().then((data) => setServices(data.slice(0, 4)));
+    getServices()
+      .then((data) => setServices(Array.isArray(data) ? data.slice(0, 4) : []))
+      .catch(() => setServices([]));
   }, []);
 
   return (
@@ -80,11 +82,15 @@ export default function Home() {
             <span className="btn-text-underline absolute -bottom-1 inset-x-0" />
           </Link>
         </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {services.map((s, i) => (
-            <ServiceCard key={s.id} service={s} index={i} />
-          ))}
-        </div>
+        {services.length === 0 ? (
+          <p className="text-white/40 text-sm">השירותים ייטענו בקרוב.</p>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {services.map((s, i) => (
+              <ServiceCard key={s.id} service={s} index={i} />
+            ))}
+          </div>
+        )}
         <Link to="/services" className="btn-text sm:hidden mt-8 justify-center w-full">
           <span>לכל השירותים</span>
           <span className="btn-text-arrow">←</span>

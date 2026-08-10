@@ -8,7 +8,8 @@ export default function Services() {
 
   useEffect(() => {
     getServices()
-      .then(setServices)
+      .then((data) => setServices(Array.isArray(data) ? data : []))
+      .catch(() => setServices([]))
       .finally(() => setLoading(false));
   }, []);
 
@@ -24,6 +25,8 @@ export default function Services() {
 
       {loading ? (
         <p className="text-center text-white/40">טוען שירותים...</p>
+      ) : services.length === 0 ? (
+        <p className="text-center text-white/40">השירותים ייטענו בקרוב.</p>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {services.map((s, i) => (
