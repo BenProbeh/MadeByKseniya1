@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "server",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "server"],
+      "port": 4000
+    },
+    {
+      "name": "client",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "client"],
+      "port": 5173
+    },
+    {
+      "name": "client-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "preview", "--prefix", "client", "--", "--port", "4173"],
+      "port": 4173
+    }
+  ]
+}

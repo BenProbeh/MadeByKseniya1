@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(npm view *)",
+      "Bash(npm install *)",
+      "Bash(grep -E \"^[0-9]+\\\\.css$\")",
+      "Bash(node -e ' *)",
+      "Bash(npm search *)",
+      "Bash(npm uninstall *)",
+      "Bash(grep -iE \"\\\\.\\(png|jpg|jpeg|webp|gif\\)$\")",
+      "Bash(grep -rn 'white\\\\\\\\\\\\\\\\' \"C:\\\\Users\\\\Probeh\\\\OneDrive\\\\Documents\\\\Practicing\\\\madebykseniya\\\\client\\\\src\")",
+      "Bash(python3 -c \"from PIL import Image; print\\('PIL available'\\)\")",
+      "Bash(python -c \"from PIL import Image; print\\('PIL available'\\)\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\Probeh\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Probeh-OneDrive-Documents-Practicing-madebykseniya\\\\a21ed2bf-b480-467e-8e9b-b9b076084f2a\\\\scratchpad\\\\imgproc\")",
+      "Bash(npm init *)",
+      "Bash(node removebg.js \"C:\\\\Users\\\\Probeh\\\\OneDrive\\\\Documents\\\\Practicing\\\\madebykseniya\\\\client\\\\logo.jpeg\" \"C:\\\\Users\\\\Probeh\\\\OneDrive\\\\Documents\\\\Practicing\\\\madebykseniya\\\\client\\\\logo-transparent.png\")",
+      "Bash(node verify.js \"C:\\\\Users\\\\Probeh\\\\OneDrive\\\\Documents\\\\Practicing\\\\madebykseniya\\\\client\\\\logo-transparent.png\" \"C:\\\\Users\\\\Probeh\\\\OneDrive\\\\Documents\\\\Practicing\\\\madebykseniya\\\\client\\\\verify-dark.png\")",
+      "Bash(node mockup.js \"C:\\\\Users\\\\Probeh\\\\OneDrive\\\\Documents\\\\Practicing\\\\madebykseniya\\\\client\\\\public\\\\logo.png\" \"C:\\\\Users\\\\Probeh\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Probeh-OneDrive-Documents-Practicing-madebykseniya\\\\a21ed2bf-b480-467e-8e9b-b9b076084f2a\\\\scratchpad\\\\nav-mockup.png\")",
+      "Bash(node bake-glow.js \"C:\\\\Users\\\\Probeh\\\\OneDrive\\\\Documents\\\\Practicing\\\\madebykseniya\\\\client\\\\public\\\\logo.png\" \"C:\\\\Users\\\\Probeh\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Probeh-OneDrive-Documents-Practicing-madebykseniya\\\\a21ed2bf-b480-467e-8e9b-b9b076084f2a\\\\scratchpad\\\\logo-final-glow.png\")",
+      "Bash(npm run *)"
+    ]
+  }
+}

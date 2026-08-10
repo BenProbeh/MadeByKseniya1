@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Bitcount Ink is Latin-only — Hebrew glyphs fall through to Heebo automatically */
+
+  body {
+    position: relative;
+    background-color: #000000;
+    background-image: radial-gradient(ellipse 65% 50% at 15% -8%, rgba(176, 38, 255, 0.2), transparent 62%),
+      radial-gradient(ellipse 55% 45% at 88% 108%, rgba(176, 38, 255, 0.15), transparent 62%),
+      radial-gradient(ellipse 40% 35% at 50% 40%, rgba(122, 0, 191, 0.07), transparent 70%);
+    min-height: 100vh;
+  }
+
+  /* fine film-grain texture so large dark fields never read as flat digital black */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0.045;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  ::selection {
+    background: rgba(176, 38, 255, 0.4);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #000000;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #d17dff, #7a00bf);
+    border-radius: 999px;
+  }
+
+  /* replace the default gray tap flash with one that matches the theme */
+  * {
+    -webkit-tap-highlight-color: rgba(176, 38, 255, 0.25);
+  }
+}
+
+@layer components {
+  /* nav menu labels: Sekuya for Latin, Suez One (loud/rugged — same "Feeling" tag
+     as Sekuya on Google Fonts) for Hebrew, instead of the default Heebo body font */
+  .font-nav {
+    font-family: "Sekuya", "Suez One", Heebo, system-ui, sans-serif;
+  }
+
+  .glass-panel {
+    @apply bg-oled-900/70 backdrop-blur-sm border border-white/[0.08] rounded-xl;
+  }
+
+  .violet-text {
+    @apply bg-violet-gradient bg-clip-text text-transparent;
+  }
+
+  .btn-violet {
+    @apply relative inline-flex items-center justify-center overflow-hidden rounded-full bg-violet-gradient text-oled-950 font-semibold tracking-wide px-7 py-3.5 shadow-glow transition-all duration-500 ease-editorial hover:shadow-glow-lg hover:-translate-y-0.5;
+  }
+
+  .btn-violet::after {
+    content: "";
+    @apply absolute inset-0 bg-violet-sheen bg-[length:200%_100%] bg-[position:-150%_0] opacity-0 transition-opacity duration-300;
+  }
+
+  .btn-violet:hover::after {
+    @apply opacity-100 animate-sheen-sweep;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded-full border border-white/20 text-white/80 font-medium tracking-wide px-7 py-3.5 transition-all duration-500 ease-editorial hover:border-violet-400/60 hover:text-violet-200;
+  }
+
+  .btn-text {
+    @apply relative inline-flex items-center gap-2 text-sm text-violet-300 font-medium tracking-wide;
+  }
+
+  .btn-text .btn-text-arrow {
+    @apply transition-transform duration-500 ease-editorial;
+  }
+
+  .btn-text:hover .btn-text-arrow {
+    @apply -translate-x-1;
+  }
+
+  .btn-text .btn-text-underline {
+    @apply block h-px w-full origin-right scale-x-0 bg-violet-400/70 transition-transform duration-500 ease-editorial;
+  }
+
+  .btn-text:hover .btn-text-underline {
+    @apply scale-x-100;
+  }
+
+  .pill-option {
+    @apply rounded-full border border-white/15 text-white/70 text-sm px-4 py-3 min-h-[44px] inline-flex items-center transition-all duration-200 hover:border-violet-400/50 hover:text-white;
+  }
+
+  .pill-option-active {
+    @apply bg-violet-gradient text-oled-950 font-semibold border-transparent shadow-glow;
+  }
+
+  .section-eyebrow {
+    @apply inline-flex items-center gap-3 text-xs tracking-[0.35em] uppercase text-violet-300/80 font-semibold;
+  }
+
+  .section-eyebrow::before {
+    content: "";
+    @apply block w-6 h-px bg-violet-400/60;
+  }
+
+  .hairline {
+    @apply border-white/[0.08];
+  }
+}
