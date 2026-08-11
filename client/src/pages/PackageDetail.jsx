@@ -25,7 +25,11 @@ function OptionBlock({ option, index }) {
             <Link
               key={s.label}
               to="/booking"
-              state={{ prefillNotes: `בקשה: ${option.name} - מידה ${s.label}` }}
+              state={{
+                prefillNotes: `בקשה: ${option.name} - מידה ${s.label}`,
+                skipServiceSelect: true,
+                packageLabel: `${option.name} · ${s.label}`,
+              }}
               className="group flex items-center justify-between gap-4 border-b border-white/[0.08] last:border-b-0 pb-4 last:pb-0 hover:text-violet-200 transition-colors"
             >
               <span className="font-serif text-2xl flex items-baseline gap-2 min-w-0">
@@ -48,7 +52,11 @@ function OptionBlock({ option, index }) {
         ) : (
           <Link
             to="/booking"
-            state={{ prefillNotes: `בקשה: ${option.name}` }}
+            state={{
+              prefillNotes: `בקשה: ${option.name}`,
+              skipServiceSelect: true,
+              packageLabel: option.name,
+            }}
             className="group flex items-center justify-center gap-2 py-2 hover:text-violet-200 transition-colors"
           >
             <span className="font-serif text-4xl md:text-5xl violet-text">
@@ -97,7 +105,15 @@ export default function PackageDetail() {
       </div>
 
       <div className="text-center mt-14">
-        <Link to="/booking" state={{ prefillNotes: `בקשה: ${pkg.title}` }} className="btn-violet">
+        <Link
+          to="/booking"
+          state={{
+            prefillNotes: `בקשה: ${pkg.title}`,
+            skipServiceSelect: true,
+            packageLabel: pkg.title,
+          }}
+          className="btn-violet"
+        >
           קביעת תור
         </Link>
       </div>

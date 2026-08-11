@@ -12,7 +12,7 @@ import {
 
 const isSaturday = (date) => date.getDay() === 6;
 
-function BookingForm({ services, initialNotes }) {
+function BookingForm({ services, initialNotes, skipServiceSelect = false, packageLabel = "" }) {
   const [serviceId, setServiceId] = useState("");
   const [date, setDate] = useState(null);
   const [slots, setSlots] = useState([]);
@@ -24,6 +24,11 @@ function BookingForm({ services, initialNotes }) {
   const [error, setError] = useState(null);
   const [confirmed, setConfirmed] = useState(null);
   const [slotsError, setSlotsError] = useState(false);
+
+  useEffect(() => {
+    if (!skipServiceSelect || !services.length || serviceId) return;
+    setServiceId(String(services[0].id));
+  }, [skipServiceSelect, services, serviceId]);
 
   useEffect(() => {
     setTime(null);
@@ -70,12 +75,13 @@ function BookingForm({ services, initialNotes }) {
 
   if (confirmed) {
     const service = services.find((s) => s.id === Number(serviceId));
+    const label = packageLabel || service?.name_he;
     return (
       <div className="glass-panel p-8 text-center shadow-glow">
         <p className="text-4xl mb-4">✓</p>
         <h3 className="text-xl font-bold mb-2">התור נקבע בהצלחה!</h3>
         <p className="text-white/60">
-          {service?.name_he} · {confirmed.date} בשעה {confirmed.time}
+          {label} · {confirmed.date} בשעה {confirmed.time}
         </p>
         <p className="text-white/40 text-sm mt-4">מספר אישור: #{confirmed.id}</p>
       </div>
@@ -85,21 +91,27 @@ function BookingForm({ services, initialNotes }) {
   return (
     <div className="grid lg:grid-cols-2 gap-8">
       <div className="space-y-6">
-        <div>
-          <label className="block text-sm font-medium text-white/70 mb-2">בחירת שירות</label>
-          <select
-            value={serviceId}
-            onChange={(e) => setServiceId(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
-          >
-            <option value="">בחרי שירות...</option>
-            {services.map((s) => (
-              <option key={s.id} value={s.id} className="bg-oled-900">
-                {s.name_he} — {s.price_ils}₪ ({s.duration_min} דק')
-              </option>
-            ))}
-          </select>
-        </div>
+        {!skipServiceSelect && (
+          <div>
+            <label className="block text-sm font-medium text-white/70 mb-2">בחירת שירות</label>
+            <select
+              value={serviceId}
+              onChange={(e) => setServiceId(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
+            >
+              <option value="">בחרי שירות...</option>
+              {services.map((s) => (
+                <option key={s.id} value={s.id} className="bg-oled-900">
+                  {s.name_he} — {s.price_ils}₪ ({s.duration_min} דק')
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {skipServiceSelect && packageLabel && (
+          <p className="text-sm text-violet-300 font-semibold">מסלול נבחר: {packageLabel}</p>
+        )}
 
         <Calendar selectedDate={date} onSelectDate={setDate} isDateDisabled={isSaturday} />
       </div>
@@ -108,7 +120,9 @@ function BookingForm({ services, initialNotes }) {
         <div>
           <p className="text-sm font-medium text-white/70 mb-3">שעות פנויות</p>
           {!serviceId || !date ? (
-            <p className="text-white/40 text-sm">בחרי שירות ותאריך כדי לראות שעות פנויות.</p>
+            <p className="text-white/40 text-sm">
+              {skipServiceSelect ? "בחרי תאריך כדי לראות שעות פנויות." : "בחרי שירות ותאריך כדי לראות שעות פנויות."}
+            </p>
           ) : loadingSlots ? (
             <p className="text-white/40 text-sm">טוען שעות...</p>
           ) : slotsError ? (
@@ -345,6 +359,8 @@ export default function Booking() {
   const [services, setServices] = useState([]);
   const location = useLocation();
   const prefillNotes = location.state?.prefillNotes ?? "";
+  const skipServiceSelect = Boolean(location.state?.skipServiceSelect);
+  const packageLabel = location.state?.packageLabel ?? "";
 
   useEffect(() => {
     getServices()
@@ -359,10 +375,19 @@ export default function Booking() {
         <h1 className="text-3xl md:text-5xl font-black mt-3 mb-4">
           קביעת <span className="violet-text">תור</span>
         </h1>
-        <p className="text-white/60">בחרי שירות, תאריך ושעה פנויה — התור נשמר אצלנו אונליין.</p>
+        <p className="text-white/60">
+          {skipServiceSelect
+            ? "בחרי תאריך ושעה פנויה — התור נשמר אצלנו אונליין."
+            : "בחרי שירות, תאריך ושעה פנויה — התור נשמר אצלנו אונליין."}
+        </p>
       </div>
 
-      <BookingForm services={services} initialNotes={prefillNotes} />
+      <BookingForm
+        services={services}
+        initialNotes={prefillNotes}
+        skipServiceSelect={skipServiceSelect}
+        packageLabel={packageLabel}
+      />
 
       <ManageAppointments />
     </div>
