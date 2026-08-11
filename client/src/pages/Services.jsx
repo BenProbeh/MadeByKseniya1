@@ -1,11 +1,10 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import Ils from "../components/Ils.jsx";
 
 const TRACKS = [
-  { title: "Basic Bitch", price: 111, detailSlug: "basic-bitch" },
-  { title: "Bad Bitch", price: 222, featured: true, detailSlug: "bad-bitch" },
-  { title: "Stay High", price: 282, detailSlug: "stay-high" },
+  { title: "Basic Bitch", detailSlug: "basic-bitch" },
+  { title: "Bad Bitch", featured: true, detailSlug: "bad-bitch" },
+  { title: "Stay High", detailSlug: "stay-high" },
 ];
 
 export default function Services() {
@@ -37,31 +36,10 @@ export default function Services() {
               </span>
             )}
 
-            {track.detailSlug ? (
-              <Link to={`/services/${track.detailSlug}`} className="contents">
-                <h2 className="font-serif text-3xl md:text-4xl text-white">{track.title}</h2>
-                <p className="font-sans text-2xl font-black violet-text">
-                  {track.price}
-                  <Ils />
-                </p>
-                <span className="btn-violet w-full mt-2">לפרטים ומחירים</span>
-              </Link>
-            ) : (
-              <>
-                <h2 className="font-serif text-3xl md:text-4xl text-white">{track.title}</h2>
-                <p className="font-sans text-2xl font-black violet-text">
-                  {track.price}
-                  <Ils />
-                </p>
-                <Link
-                  to="/booking"
-                  state={{ prefillNotes: `בקשה: מסלול ${track.title}` }}
-                  className="btn-violet w-full mt-2"
-                >
-                  קביעת תור
-                </Link>
-              </>
-            )}
+            <Link to={`/services/${track.detailSlug}`} className="contents">
+              <h2 className="font-serif text-3xl md:text-4xl text-white">{track.title}</h2>
+              <span className="btn-violet w-full mt-2">לפרטים ומחירים</span>
+            </Link>
           </motion.div>
         ))}
       </div>
