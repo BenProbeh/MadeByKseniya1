@@ -73,6 +73,7 @@ export const PACKAGE_DETAILS = {
         name: "Stay High",
         hideName: true,
         subtitle: "עיצובים עם ציורים הכי משוגעים ומיוחדים שרק תוכלי לחשוב!",
+        secondaryLabel: "פרסונים",
         price: 282,
       },
     ],
