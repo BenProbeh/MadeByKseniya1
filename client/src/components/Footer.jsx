@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
 const siteLinks = [
-  { to: "/services", label: "שירותים" },
+  { to: "/services", label: "מסלולים" },
   { to: "/gallery", label: "גלריה" },
   { to: "/build-a-set", label: "עצבי סט" },
   { to: "/about", label: "אודות" },
