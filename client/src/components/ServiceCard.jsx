@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
+import Ils from "./Ils.jsx";
 
 export default function ServiceCard({ service, index = 0 }) {
   return (
@@ -19,7 +20,10 @@ export default function ServiceCard({ service, index = 0 }) {
       <p className="text-sm text-white/60 leading-relaxed">{service.description_he}</p>
       <div className="mt-auto flex items-center justify-between pt-5 border-t border-white/[0.08]">
         <div className="text-xs tracking-wide text-white/40">{service.duration_min} דק'</div>
-        <div className="text-xl font-serif violet-text">{service.price_ils}₪</div>
+        <div className="text-xl font-serif violet-text">
+          {service.price_ils}
+          <Ils />
+        </div>
       </div>
       <Link to="/booking" className="btn-text mt-1">
         <span>קביעת תור</span>

@@ -1,6 +1,7 @@
 import { useParams, Link, Navigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { PACKAGE_DETAILS } from "../lib/packageData.js";
+import Ils from "../components/Ils.jsx";
 
 function OptionBlock({ option, index }) {
   return (
@@ -31,7 +32,10 @@ function OptionBlock({ option, index }) {
               )}
             </span>
             <span className="font-serif text-xl violet-text flex items-center gap-2 shrink-0">
-              {s.price}
+              <span>
+                {s.price}
+                <Ils />
+              </span>
               <span className="btn-text-arrow opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                 ←
               </span>

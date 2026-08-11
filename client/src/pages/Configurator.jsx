@@ -5,6 +5,7 @@ import NailPreview from "../components/NailPreview.jsx";
 import ShadePhoto from "../components/ShadePhoto.jsx";
 import OptionPicker from "../components/OptionPicker.jsx";
 import ScrollCue from "../components/ScrollCue.jsx";
+import Ils from "../components/Ils.jsx";
 import {
   SHAPES,
   FINISHES,
@@ -89,7 +90,10 @@ function FullConfigurator({ onBookSet }) {
           <div className="glass-panel p-6 flex items-center justify-between">
             <div>
               <p className="text-xs text-white/40 uppercase tracking-[0.2em] mb-1">מחיר משוער</p>
-              <p className="text-3xl font-black violet-text">{price}₪</p>
+              <p className="text-3xl font-black violet-text">
+                {price}
+                <Ils />
+              </p>
             </div>
             <button type="button" onClick={() => onBookSet(selection)} className="btn-violet">
               הזמיני את הסט הזה

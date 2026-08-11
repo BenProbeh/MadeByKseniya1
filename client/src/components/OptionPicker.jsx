@@ -1,3 +1,5 @@
+import Ils from "./Ils.jsx";
+
 export default function OptionPicker({ label, options, value, onChange }) {
   return (
     <div>
@@ -15,7 +17,11 @@ export default function OptionPicker({ label, options, value, onChange }) {
             >
               {option.label}
               {option.priceModifier > 0 && (
-                <span className={isActive ? "opacity-70" : "text-white/40"}> · +{option.priceModifier}₪</span>
+                <span className={isActive ? "opacity-70" : "text-white/40"}>
+                  {" "}
+                  · +{option.priceModifier}
+                  <Ils />
+                </span>
               )}
             </button>
           );
