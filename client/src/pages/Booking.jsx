@@ -12,6 +12,15 @@ import {
 
 const isSaturday = (date) => date.getDay() === 6;
 
+/** Israeli phone: digits only after stripping spaces/dashes; 9–10 local digits, or 972 + 8–9. */
+function isValidPhone(phone) {
+  const digits = String(phone).replace(/\D/g, "");
+  if (digits.startsWith("972")) {
+    return digits.length >= 11 && digits.length <= 12;
+  }
+  return /^0\d{8,9}$/.test(digits);
+}
+
 function BookingForm({ services, initialNotes, skipServiceSelect = false, packageLabel = "" }) {
   const [serviceId, setServiceId] = useState("");
   const [date, setDate] = useState(null);
@@ -53,6 +62,10 @@ function BookingForm({ services, initialNotes, skipServiceSelect = false, packag
   async function handleSubmit(e) {
     e.preventDefault();
     if (!serviceId || !date || !time) return;
+    if (!isValidPhone(form.phone)) {
+      setError("נא להזין מספר טלפון תקין (ספרות בלבד).");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -165,9 +178,18 @@ function BookingForm({ services, initialNotes, skipServiceSelect = false, packag
             />
             <input
               required
+              type="tel"
+              inputMode="numeric"
+              autoComplete="tel"
               placeholder="טלפון"
               value={form.phone}
-              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+              onChange={(e) => {
+                const next = e.target.value.replace(/[^\d\s\-+()]/g, "");
+                setForm((f) => ({ ...f, phone: next }));
+                if (error) setError(null);
+              }}
+              pattern="[\d\s\-+()]+"
+              title="נא להזין מספר טלפון תקין"
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
             />
             <input
