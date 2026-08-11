@@ -45,10 +45,12 @@ export default function Hero() {
           initial={{ opacity: 0, y: 22 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
-          className="text-white/60 text-base md:text-lg max-w-xl leading-relaxed"
+          className="text-white/60 text-base md:text-lg max-w-2xl leading-relaxed"
         >
-          MadeByKseniya הוא סטודיו בוטיק לציפורניים — מניקור ג'ל, בניה, פדיקור ספא ועיצובים
-          בהתאמה אישית. חוויה פרימיום מרגע שקבעת תור ועד הברק האחרון.
+          MadeByKseniya סטודיו לעיצוב ציפורניים, שיקום, ולראשונה בארץ ציפורניים בהזמנה אישית לפי
+          טעמך! הכל נמצא במקום אחד, ביחד עם חומרי הגלם והאיכות שאני מביאה, החלטתי ללמד אתכן בנות
+          את מה שאני יודעת. רוצות להתחיל קריירה בתחום? תקבעי לך תור לקורס שאני מעבירה, והדרך שלך
+          להצלחה בתחום זה רק עניין של כמה מפגשים💜
         </motion.p>
 
         <motion.div
