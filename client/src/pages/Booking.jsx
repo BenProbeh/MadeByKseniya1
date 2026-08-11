@@ -120,7 +120,7 @@ function BookingForm({ services, initialNotes, skipServiceSelect = false, packag
             className="inline-flex flex-col items-center gap-2 rounded-2xl px-4 py-3 transition-transform duration-300 hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50"
             aria-label="ניווט בוויז אל הסטודיו"
           >
-            <WazeIcon className="w-14 h-14 drop-shadow-[0_0_12px_rgba(51,204,255,0.45)]" />
+            <WazeIcon className="w-16 h-16 shadow-[0_0_18px_rgba(51,204,255,0.35)]" />
             <span className="text-xs tracking-wide text-white/50">ניווט בוויז</span>
           </a>
           <div className="text-sm text-white/60 leading-relaxed">
