@@ -19,6 +19,22 @@ function OptionBlock({ option, index }) {
         <p className="font-serif text-white/60 max-w-xl mx-auto">{option.subtitle}</p>
       </div>
 
+      {option.pinterestUrl && (
+        <div className="flex justify-center">
+          <a
+            href={option.pinterestUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs tracking-wide text-violet-300/80 border border-violet-400/25 rounded-full px-3.5 py-1.5 transition-colors duration-300 hover:text-violet-200 hover:border-violet-400/50"
+          >
+            לעיצובי Pinterest לחצי כאן
+            <span aria-hidden="true" className="opacity-70">
+              ↗
+            </span>
+          </a>
+        </div>
+      )}
+
       <div className="glass-panel p-6 md:p-8 space-y-4">
         {option.sizes ? (
           option.sizes.map((s) => (

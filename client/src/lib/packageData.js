@@ -32,6 +32,8 @@ export const PACKAGE_DETAILS = {
       {
         name: "מילוי Bad Bitch",
         subtitle: "כולל סידור צורה קוטיקולה ועיצובי Pinterest.",
+        pinterestUrl:
+          "https://uk.pinterest.com/shadoshielatto1234/biab-nails/?utm_source=chatgpt.com",
         sizes: [
           { label: "S", price: 220 },
           { label: "M", price: 240 },
