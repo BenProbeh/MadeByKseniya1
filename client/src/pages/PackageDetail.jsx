@@ -47,9 +47,9 @@ function OptionBlock({ option, index }) {
           <Link
             to="/booking"
             state={{ prefillNotes: `בקשה: ${option.name}` }}
-            className="group flex items-center justify-center gap-2 hover:text-violet-200 transition-colors"
+            className="group flex items-center justify-center gap-2 py-2 hover:text-violet-200 transition-colors"
           >
-            <span className="font-serif text-2xl violet-text">
+            <span className="font-serif text-4xl md:text-5xl violet-text">
               {option.price}
               <Ils />
             </span>

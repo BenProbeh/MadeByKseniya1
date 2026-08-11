@@ -57,7 +57,7 @@ export const PACKAGE_DETAILS = {
     options: [
       {
         name: "Stay High",
-        subtitle: "עיצובים עם ציורים, \"אומנות על הציפורן\".",
+        subtitle: "עיצובים עם ציורים הכי משוגעים ומיוחדים שרק תוכלי לחשוב!",
         price: 282,
       },
     ],
