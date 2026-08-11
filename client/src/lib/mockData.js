@@ -72,8 +72,6 @@ export const MOCK_SERVICES = [
 const MOCK_SLOT_TIMES = ["09:30", "10:00", "11:30", "13:00", "14:30", "16:00", "17:30"];
 
 export function mockAvailability(dateStr) {
-  const day = new Date(`${dateStr}T00:00:00`).getDay();
-  if (day === 6) return { open: false, slots: [] }; // Saturday closed
   return { open: true, slots: MOCK_SLOT_TIMES };
 }
 

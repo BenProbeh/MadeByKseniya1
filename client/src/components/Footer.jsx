@@ -37,9 +37,7 @@ export default function Footer() {
         <div className="space-y-4">
           <p className="section-eyebrow">Hours</p>
           <ul className="space-y-2.5 text-sm text-white/55">
-            <li>ראשון–חמישי · 09:00–19:00</li>
-            <li>שישי · 09:00–14:00</li>
-            <li>שבת · סגור</li>
+            <li>ראשון–שבת · 09:00–20:00</li>
           </ul>
         </div>
       </div>

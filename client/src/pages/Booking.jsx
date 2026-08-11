@@ -10,8 +10,6 @@ import {
   updateAppointment,
 } from "../lib/api.js";
 
-const isSaturday = (date) => date.getDay() === 6;
-
 /** Israeli phone: digits only after stripping spaces/dashes; 9–10 local digits, or 972 + 8–9. */
 function isValidPhone(phone) {
   const digits = String(phone).replace(/\D/g, "");
@@ -126,7 +124,7 @@ function BookingForm({ services, initialNotes, skipServiceSelect = false, packag
           <p className="text-sm text-violet-300 font-semibold">מסלול נבחר: {packageLabel}</p>
         )}
 
-        <Calendar selectedDate={date} onSelectDate={setDate} isDateDisabled={isSaturday} />
+        <Calendar selectedDate={date} onSelectDate={setDate} />
       </div>
 
       <div className="space-y-6">
@@ -340,7 +338,7 @@ function ManageAppointments() {
 
             {editingId === appt.id && (
               <div className="mt-4 grid md:grid-cols-2 gap-4">
-                <Calendar selectedDate={newDate} onSelectDate={setNewDate} isDateDisabled={isSaturday} />
+                <Calendar selectedDate={newDate} onSelectDate={setNewDate} />
                 <div>
                   <p className="text-sm text-white/60 mb-2">שעות פנויות</p>
                   <div className="flex flex-wrap gap-2 mb-4">

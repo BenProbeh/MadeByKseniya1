@@ -2,13 +2,13 @@ import db from "./db.js";
 
 // JS getDay(): 0=Sunday ... 6=Saturday
 const BUSINESS_HOURS = {
-  0: { open: "09:00", close: "19:00" }, // Sunday
-  1: { open: "09:00", close: "19:00" }, // Monday
-  2: { open: "09:00", close: "19:00" }, // Tuesday
-  3: { open: "09:00", close: "19:00" }, // Wednesday
-  4: { open: "09:00", close: "19:00" }, // Thursday
-  5: { open: "09:00", close: "14:00" }, // Friday
-  6: null, // Saturday - closed
+  0: { open: "09:00", close: "20:00" }, // Sunday
+  1: { open: "09:00", close: "20:00" }, // Monday
+  2: { open: "09:00", close: "20:00" }, // Tuesday
+  3: { open: "09:00", close: "20:00" }, // Wednesday
+  4: { open: "09:00", close: "20:00" }, // Thursday
+  5: { open: "09:00", close: "20:00" }, // Friday
+  6: { open: "09:00", close: "20:00" }, // Saturday
 };
 
 const SLOT_STEP_MIN = 30;
