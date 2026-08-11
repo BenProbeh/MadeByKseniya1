@@ -24,12 +24,12 @@ function OptionBlock({ option, index }) {
             {option.name}
           </h2>
         )}
-        <p className="font-serif text-white/60 max-w-xl mx-auto">{option.subtitle}</p>
         {option.secondaryLabel && (
-          <p className="text-sm tracking-[0.25em] uppercase text-violet-300/80 font-semibold pt-1">
+          <p className="text-sm tracking-[0.25em] uppercase text-violet-300/80 font-semibold">
             {option.secondaryLabel}
           </p>
         )}
+        <p className="font-serif text-white/60 max-w-xl mx-auto">{option.subtitle}</p>
       </div>
 
       {option.pinterestUrl && (
