@@ -14,6 +14,7 @@ import {
   STUDIO_ADDRESS_LINE_1,
   STUDIO_ADDRESS_LINE_2,
   STUDIO_WAZE_URL,
+  openStudioInWaze,
 } from "../lib/studioAddress.js";
 
 /** Israeli phone: digits only after stripping spaces/dashes; 9–10 local digits, or 972 + 8–9. */
@@ -107,6 +108,10 @@ function BookingForm({ services, initialNotes, skipServiceSelect = false, packag
             href={STUDIO_WAZE_URL}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={(e) => {
+              e.preventDefault();
+              openStudioInWaze();
+            }}
             className="inline-flex flex-col items-center gap-2 rounded-2xl px-4 py-3 transition-transform duration-300 hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50"
             aria-label="ניווט בוויז אל הסטודיו"
           >
