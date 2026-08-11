@@ -6,6 +6,7 @@ import ChatWidget from "./components/ChatWidget.jsx";
 import EntranceIntro from "./components/EntranceIntro.jsx";
 import Home from "./pages/Home.jsx";
 import Services from "./pages/Services.jsx";
+import PackageDetail from "./pages/PackageDetail.jsx";
 import Gallery from "./pages/Gallery.jsx";
 import About from "./pages/About.jsx";
 import Booking from "./pages/Booking.jsx";
@@ -39,6 +40,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/services" element={<Services />} />
+          <Route path="/services/:slug" element={<PackageDetail />} />
           <Route path="/gallery" element={<Gallery />} />
           <Route path="/about" element={<About />} />
           <Route path="/build-a-set" element={<Configurator />} />
