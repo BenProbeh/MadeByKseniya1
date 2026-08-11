@@ -1,39 +1,54 @@
-import { useEffect, useState } from "react";
-import ServiceCard from "../components/ServiceCard.jsx";
-import { getServices } from "../lib/api.js";
+import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
+
+const TRACKS = [
+  { title: "Basic Bitch", price: "111 ש\"ח" },
+  { title: "Bad Bitch", price: "222 ש\"ח", featured: true },
+  { title: "Stay High", price: "282 ש\"ח" },
+];
 
 export default function Services() {
-  const [services, setServices] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    getServices()
-      .then((data) => setServices(Array.isArray(data) ? data : []))
-      .catch(() => setServices([]))
-      .finally(() => setLoading(false));
-  }, []);
-
   return (
     <div className="max-w-6xl mx-auto px-6 py-16">
       <div className="text-center max-w-2xl mx-auto mb-12">
-        <span className="section-eyebrow">Services</span>
-        <h1 className="text-3xl md:text-5xl font-black mt-3 mb-4">
-          התפריט <span className="violet-text">המלא</span>
+        <span className="section-eyebrow">Packages</span>
+        <h1 className="font-serif font-medium text-3xl md:text-5xl mt-3 mb-4">
+          בחרי <span className="violet-text">מסלול</span>
         </h1>
-        <p className="text-white/60">כל שירותי הציפורניים שלנו, עם מחיר ומשך זמן מדויקים.</p>
+        <p className="text-white/60">שלושה מסלולים — תבחרי מה שמתאים לך, ונקבע תור.</p>
       </div>
 
-      {loading ? (
-        <p className="text-center text-white/40">טוען שירותים...</p>
-      ) : services.length === 0 ? (
-        <p className="text-center text-white/40">השירותים ייטענו בקרוב.</p>
-      ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {services.map((s, i) => (
-            <ServiceCard key={s.id} service={s} index={i} />
-          ))}
-        </div>
-      )}
+      <div className="grid sm:grid-cols-3 gap-6">
+        {TRACKS.map((track, i) => (
+          <motion.div
+            key={track.title}
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-60px" }}
+            transition={{ duration: 0.6, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] }}
+            className={`relative glass-panel p-8 flex flex-col items-center text-center gap-6 transition-colors duration-300 ${
+              track.featured ? "border-violet-400/50 shadow-glow" : "hover:border-white/25"
+            }`}
+          >
+            {track.featured && (
+              <span className="absolute -top-3 text-[11px] tracking-[0.2em] uppercase bg-violet-gradient text-oled-950 font-semibold rounded-full px-4 py-1">
+                הכי פופולרי
+              </span>
+            )}
+
+            <h2 className="font-serif text-3xl md:text-4xl text-white">{track.title}</h2>
+            <p className="font-sans text-2xl font-black violet-text">{track.price}</p>
+
+            <Link
+              to="/booking"
+              state={{ prefillNotes: `בקשה: מסלול ${track.title}` }}
+              className="btn-violet w-full mt-2"
+            >
+              קביעת תור
+            </Link>
+          </motion.div>
+        ))}
+      </div>
     </div>
   );
 }
