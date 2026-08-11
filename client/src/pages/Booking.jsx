@@ -9,6 +9,12 @@ import {
   findAppointmentsByPhone,
   updateAppointment,
 } from "../lib/api.js";
+import WazeIcon from "../components/WazeIcon.jsx";
+import {
+  STUDIO_ADDRESS_LINE_1,
+  STUDIO_ADDRESS_LINE_2,
+  STUDIO_WAZE_URL,
+} from "../lib/studioAddress.js";
 
 /** Israeli phone: digits only after stripping spaces/dashes; 9–10 local digits, or 972 + 8–9. */
 function isValidPhone(phone) {
@@ -95,6 +101,23 @@ function BookingForm({ services, initialNotes, skipServiceSelect = false, packag
           {label} · {confirmed.date} בשעה {confirmed.time}
         </p>
         <p className="text-white/40 text-sm mt-4">מספר אישור: #{confirmed.id}</p>
+
+        <div className="mt-8 pt-6 border-t border-white/[0.08] flex flex-col items-center gap-3">
+          <a
+            href={STUDIO_WAZE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex flex-col items-center gap-2 rounded-2xl px-4 py-3 transition-transform duration-300 hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50"
+            aria-label="ניווט בוויז אל הסטודיו"
+          >
+            <WazeIcon className="w-14 h-14 drop-shadow-[0_0_12px_rgba(51,204,255,0.45)]" />
+            <span className="text-xs tracking-wide text-white/50">ניווט בוויז</span>
+          </a>
+          <div className="text-sm text-white/60 leading-relaxed">
+            <p>{STUDIO_ADDRESS_LINE_1}</p>
+            <p>{STUDIO_ADDRESS_LINE_2}</p>
+          </div>
+        </div>
       </div>
     );
   }
