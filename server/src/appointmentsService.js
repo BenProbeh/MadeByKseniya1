@@ -67,7 +67,8 @@ export function getAvailability(dateStr, serviceId) {
   const nowMin = now.getHours() * 60 + now.getMinutes();
 
   const slots = [];
-  for (let start = openMin; start + duration <= closeMin; start += SLOT_STEP_MIN) {
+  // close time is the latest bookable start (e.g. 20:00), not appointment end
+  for (let start = openMin; start <= closeMin; start += SLOT_STEP_MIN) {
     if (isToday && start <= nowMin) continue;
     const end = start + duration;
     const overlaps = busyRanges.some(([bStart, bEnd]) => start < bEnd && end > bStart);

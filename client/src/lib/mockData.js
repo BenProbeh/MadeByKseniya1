@@ -69,7 +69,25 @@ export const MOCK_SERVICES = [
   },
 ];
 
-const MOCK_SLOT_TIMES = ["09:30", "10:00", "11:30", "13:00", "14:30", "16:00", "17:30"];
+function buildMockSlots(open = "09:00", close = "20:00", stepMin = 30) {
+  const toMin = (hhmm) => {
+    const [h, m] = hhmm.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const toHHMM = (minutes) => {
+    const h = Math.floor(minutes / 60).toString().padStart(2, "0");
+    const m = (minutes % 60).toString().padStart(2, "0");
+    return `${h}:${m}`;
+  };
+
+  const slots = [];
+  for (let start = toMin(open); start <= toMin(close); start += stepMin) {
+    slots.push(toHHMM(start));
+  }
+  return slots;
+}
+
+const MOCK_SLOT_TIMES = buildMockSlots();
 
 export function mockAvailability(dateStr) {
   return { open: true, slots: MOCK_SLOT_TIMES };
