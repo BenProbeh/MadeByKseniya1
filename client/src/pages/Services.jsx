@@ -15,7 +15,7 @@ export default function Services() {
         <h1 className="font-serif font-medium text-3xl md:text-5xl mt-3 mb-4">
           בחרי <span className="violet-text">מסלול</span>
         </h1>
-        <p className="text-white/60">שלושה מסלולים — תבחרי מה שמתאים לך, ונקבע תור.</p>
+        <p className="text-white/60">תבחרי את המסלול אני אדאג לשאר 🔥</p>
       </div>
 
       <div className="grid sm:grid-cols-3 gap-6">
@@ -32,7 +32,7 @@ export default function Services() {
           >
             {track.featured && (
               <span className="absolute -top-3 text-[11px] tracking-[0.2em] uppercase bg-violet-gradient text-oled-950 font-semibold rounded-full px-4 py-1">
-                הכי פופולרי
+                הכי פופולרי 🤩
               </span>
             )}
 
