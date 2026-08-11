@@ -22,10 +22,15 @@ function OptionBlock({ option, index }) {
             key={s.label}
             to="/booking"
             state={{ prefillNotes: `בקשה: ${option.name} - מידה ${s.label}` }}
-            className="group flex items-center justify-between border-b border-white/[0.08] last:border-b-0 pb-4 last:pb-0 hover:text-violet-200 transition-colors"
+            className="group flex items-center justify-between gap-4 border-b border-white/[0.08] last:border-b-0 pb-4 last:pb-0 hover:text-violet-200 transition-colors"
           >
-            <span className="font-serif text-2xl">{s.label}</span>
-            <span className="font-serif text-xl violet-text flex items-center gap-2">
+            <span className="font-serif text-2xl flex items-baseline gap-2 min-w-0">
+              <span className="shrink-0">{s.label}</span>
+              {s.detail && (
+                <span className="text-sm text-white/50 font-normal">{s.detail}</span>
+              )}
+            </span>
+            <span className="font-serif text-xl violet-text flex items-center gap-2 shrink-0">
               {s.price}
               <span className="btn-text-arrow opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                 ←

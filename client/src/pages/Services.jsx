@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 
 const TRACKS = [
   { title: "Basic Bitch", price: "111 ש\"ח", detailSlug: "basic-bitch" },
-  { title: "Bad Bitch", price: "222 ש\"ח", featured: true },
+  { title: "Bad Bitch", price: "222 ש\"ח", featured: true, detailSlug: "bad-bitch" },
   { title: "Stay High", price: "282 ש\"ח" },
 ];
 
