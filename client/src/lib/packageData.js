@@ -51,4 +51,15 @@ export const PACKAGE_DETAILS = {
       },
     ],
   },
+  "stay-high": {
+    eyebrow: "Stay High",
+    title: "Stay High",
+    options: [
+      {
+        name: "Stay High",
+        subtitle: "עיצובים עם ציורים, \"אומנות על הציפורן\".",
+        price: 282,
+      },
+    ],
+  },
 };

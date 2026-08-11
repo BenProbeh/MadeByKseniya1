@@ -18,33 +18,49 @@ function OptionBlock({ option, index }) {
       </div>
 
       <div className="glass-panel p-6 md:p-8 space-y-4">
-        {option.sizes.map((s) => (
+        {option.sizes ? (
+          option.sizes.map((s) => (
+            <Link
+              key={s.label}
+              to="/booking"
+              state={{ prefillNotes: `בקשה: ${option.name} - מידה ${s.label}` }}
+              className="group flex items-center justify-between gap-4 border-b border-white/[0.08] last:border-b-0 pb-4 last:pb-0 hover:text-violet-200 transition-colors"
+            >
+              <span className="font-serif text-2xl flex items-baseline gap-2 min-w-0">
+                <span className="shrink-0">{s.label}</span>
+                {s.detail && (
+                  <span className="text-sm text-white/50 font-normal">{s.detail}</span>
+                )}
+              </span>
+              <span className="font-serif text-xl violet-text flex items-center gap-2 shrink-0">
+                <span>
+                  {s.price}
+                  <Ils />
+                </span>
+                <span className="btn-text-arrow opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  ←
+                </span>
+              </span>
+            </Link>
+          ))
+        ) : (
           <Link
-            key={s.label}
             to="/booking"
-            state={{ prefillNotes: `בקשה: ${option.name} - מידה ${s.label}` }}
-            className="group flex items-center justify-between gap-4 border-b border-white/[0.08] last:border-b-0 pb-4 last:pb-0 hover:text-violet-200 transition-colors"
+            state={{ prefillNotes: `בקשה: ${option.name}` }}
+            className="group flex items-center justify-center gap-2 hover:text-violet-200 transition-colors"
           >
-            <span className="font-serif text-2xl flex items-baseline gap-2 min-w-0">
-              <span className="shrink-0">{s.label}</span>
-              {s.detail && (
-                <span className="text-sm text-white/50 font-normal">{s.detail}</span>
-              )}
+            <span className="font-serif text-2xl violet-text">
+              {option.price}
+              <Ils />
             </span>
-            <span className="font-serif text-xl violet-text flex items-center gap-2 shrink-0">
-              <span>
-                {s.price}
-                <Ils />
-              </span>
-              <span className="btn-text-arrow opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                ←
-              </span>
+            <span className="btn-text-arrow opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-violet-300">
+              ←
             </span>
           </Link>
-        ))}
+        )}
       </div>
 
-      <p className="font-serif text-center text-white/70">{option.note}</p>
+      {option.note && <p className="font-serif text-center text-white/70">{option.note}</p>}
     </motion.div>
   );
 }

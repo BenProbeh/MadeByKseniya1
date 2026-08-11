@@ -5,7 +5,7 @@ import Ils from "../components/Ils.jsx";
 const TRACKS = [
   { title: "Basic Bitch", price: 111, detailSlug: "basic-bitch" },
   { title: "Bad Bitch", price: 222, featured: true, detailSlug: "bad-bitch" },
-  { title: "Stay High", price: 282 },
+  { title: "Stay High", price: 282, detailSlug: "stay-high" },
 ];
 
 export default function Services() {
