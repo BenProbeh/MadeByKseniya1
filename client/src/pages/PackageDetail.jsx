@@ -14,7 +14,15 @@ function OptionBlock({ option, index }) {
     >
       <div className="text-center space-y-2">
         {option.name && !option.hideName && (
-          <h2 className="font-serif text-2xl md:text-3xl text-white">{option.name}</h2>
+          <h2
+            className={
+              option.smallName
+                ? "text-sm tracking-[0.25em] uppercase text-violet-300/80 font-semibold"
+                : "font-serif text-2xl md:text-3xl text-white"
+            }
+          >
+            {option.name}
+          </h2>
         )}
         <p className="font-serif text-white/60 max-w-xl mx-auto">{option.subtitle}</p>
       </div>

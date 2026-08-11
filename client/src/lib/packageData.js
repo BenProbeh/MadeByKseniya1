@@ -23,6 +23,12 @@ export const PACKAGE_DETAILS = {
         ],
         note: "מסלול זה עד 90 דק' עבודה ואת מתוקתקת!",
       },
+      {
+        name: "פרסונים",
+        smallName: true,
+        subtitle: "פרנץ' , צבע בסיס, קישוט אחד.",
+        price: 111,
+      },
     ],
   },
   "bad-bitch": {
@@ -50,6 +56,12 @@ export const PACKAGE_DETAILS = {
           { label: "L", price: 340 },
         ],
         note: "עד 90 דק' לא כולל עיצובים.",
+      },
+      {
+        name: "פרסונים",
+        smallName: true,
+        subtitle: "בעל הבית השתגעה",
+        price: 222,
       },
     ],
   },
