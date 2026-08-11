@@ -6,7 +6,7 @@ const details = ["בוטיק פרטי בהזמנה מראש", "חומרים פר
 
 export default function Hero() {
   return (
-    <section className="relative overflow-hidden px-6 pt-32 pb-24 md:pt-40 md:pb-32">
+    <section className="relative overflow-hidden min-h-screen flex items-center px-6 pt-28 pb-16 md:pt-24 md:pb-16">
       <div className="absolute inset-0 -z-10">
         <div className="absolute inset-x-0 top-0 h-[70%] bg-[radial-gradient(ellipse_70%_60%_at_50%_0%,rgba(176,38,255,0.20),transparent_70%)]" />
         <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-oled-950 to-transparent" />
@@ -58,10 +58,10 @@ export default function Hero() {
           className="flex flex-wrap items-center justify-center gap-x-6 gap-y-4 mt-2"
         >
           <Link to="/build-a-set" className="btn-violet">
-            עצבי את הציפורניים שלך
+            עצבי לעצמך
           </Link>
           <Link to="/booking" state={{ prefillNotes: "בקשה: קורס" }} className="btn-ghost">
-            קביעת קורס
+            לקביעת קורס לחצי!
           </Link>
           <Link to="/services" className="btn-text">
             <span>לצפייה במסלולים</span>
