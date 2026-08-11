@@ -63,7 +63,7 @@ export default function Hero() {
             עצבי לעצמך
           </Link>
           <Link to="/booking" state={{ prefillNotes: "בקשה: קורס" }} className="btn-ghost">
-            לקביעת קורס לחצי!
+            להרשמה לקורס
           </Link>
           <Link to="/services" className="btn-text">
             <span>לצפייה במסלולים</span>
