@@ -2,6 +2,7 @@ import { Route, Routes, useLocation } from "react-router-dom";
 import Navbar from "./components/Navbar.jsx";
 import Footer from "./components/Footer.jsx";
 import ChatWidget from "./components/ChatWidget.jsx";
+import ScrollToTop from "./components/ScrollToTop.jsx";
 import Home from "./pages/Home.jsx";
 import Services from "./pages/Services.jsx";
 import PackageDetail from "./pages/PackageDetail.jsx";
@@ -16,6 +17,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <ScrollToTop />
       <Navbar />
       <main className={`flex-1 ${isHome ? "" : "pt-24"}`}>
         <Routes>

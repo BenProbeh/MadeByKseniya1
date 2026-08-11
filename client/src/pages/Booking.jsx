@@ -45,6 +45,11 @@ function BookingForm({ services, initialNotes, skipServiceSelect = false, packag
   }, [skipServiceSelect, services, serviceId]);
 
   useEffect(() => {
+    if (!confirmed) return;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" in window ? "instant" : "auto" });
+  }, [confirmed]);
+
+  useEffect(() => {
     setTime(null);
     setSlotsError(false);
     if (!date || !serviceId) {
