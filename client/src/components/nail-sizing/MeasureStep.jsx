@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { calculatePhotoQuality, getGuideRegions, getQualityLevel } from "../../lib/nailSizing/photoQuality.js";
+import { NAIL_SIZING_COPY as C } from "../../lib/nailSizing/copy.js";
 import {
   scrollCameraIntoView as scrollCameraElementIntoView,
   scheduleAfterPaint,
@@ -79,13 +80,12 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
     };
   }, [finger.key, scheduleCenter]);
 
+  // Re-attach only when already ready — never auto-start on mount
   useEffect(() => {
     if (status === "ready") {
       void attachToVideo?.(videoRef.current);
-    } else if (status !== "ready" && status !== "requesting") {
-      void start();
     }
-  }, [status, start, attachToVideo, videoRef]);
+  }, [status, attachToVideo, videoRef]);
 
   const onVideoMeta = useCallback(() => {
     const v = videoRef.current;
@@ -110,7 +110,6 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
   }, [videoRef, status, onVideoMeta, finger.key]);
 
   // After camera becomes ready the first time per finger, re-center once
-  // (layout may change when video gets dimensions)
   useEffect(() => {
     if (status !== "ready" || !videoReady || cameraCenteredRef.current) return undefined;
     if (phase !== "camera") return undefined;
@@ -121,6 +120,13 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
 
   const cameraReady = status === "ready";
   const canCapture = cameraReady && videoReady && phase === "camera";
+  const needsEnable =
+    status === "idle" ||
+    status === "denied" ||
+    status === "error" ||
+    status === "unavailable" ||
+    status === "insecure" ||
+    status === "unsupported";
 
   function captureCurrentFrame() {
     if (captureLockRef.current || phase !== "camera") return;
@@ -135,7 +141,7 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
       video.videoWidth <= 0 ||
       video.videoHeight <= 0
     ) {
-      setError("המצלמה עדיין אינה מוכנה. נסי שוב בעוד רגע.");
+      setError(C.measure.notReady);
       return;
     }
 
@@ -198,14 +204,23 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
   }
 
   const level = photoQuality ? getQualityLevel(photoQuality.score) : null;
+  const enableLabel = status === "idle" ? C.camera.resumeAction : C.measure.enableCamera;
+  const waitingCopy =
+    status === "requesting"
+      ? C.measure.requestingCamera
+      : needsEnable
+        ? C.camera.resumeSubtitle
+        : C.measure.waitingCamera;
 
   return (
     <div className="space-y-5">
       <div className="glass-panel p-4 text-center space-y-1">
         <p className="section-eyebrow justify-center">{finger.handLabelHe}</p>
-        <h2 className="font-serif text-2xl text-white">{finger.fingerLabelHe}</h2>
+        <h2 className="font-serif text-2xl md:text-3xl text-white">
+          {C.measure.title(finger.fingerLabelHe, finger.handLabelHe)}
+        </h2>
         {existing?.status === "confirmed" && (
-          <p className="text-xs text-violet-200">כבר נמדד — אפשר לצלם שוב או לאשר מחדש</p>
+          <p className="font-serif text-xs text-violet-200">{C.measure.alreadyDone}</p>
         )}
       </div>
 
@@ -247,7 +262,7 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
                 </div>
               </div>
               <p className="measurement-guide__hint" data-ok="false">
-                מקמי את המטבע למעלה ואת האצבע ישירות מתחתיו
+                {C.measure.hintPrimary}
               </p>
             </div>
           )}
@@ -257,19 +272,26 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
               <div className="measurement-success-badge" aria-hidden="true">
                 ✓
               </div>
-              <p className="measurement-success-text">התמונה צולמה ונשמרה</p>
+              <p className="measurement-success-text">{C.measure.capturedTitle}</p>
             </div>
           )}
 
-          {status !== "ready" && (
+          {status !== "ready" && phase === "camera" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-oled-950/70 px-4 text-center z-[3]">
-              <p className="text-sm text-white/70">
-                {status === "requesting" ? "פותחים את המצלמה…" : "ממתינים למצלמה…"}
-              </p>
+              <h3 className="font-serif text-xl text-white">
+                {needsEnable ? C.camera.resumeTitle : C.measure.waitingCamera}
+              </h3>
+              <p className="font-serif text-sm text-white/70">{waitingCopy}</p>
+              <p className="text-xs text-white/40">{C.camera.privacyNote}</p>
               {errorHe && <p className="text-sm text-red-300">{errorHe}</p>}
-              {(status === "denied" || status === "error" || status === "idle") && (
-                <button type="button" className="btn-violet" onClick={start}>
-                  הפעילי מצלמה
+              {(needsEnable || status === "requesting") && (
+                <button
+                  type="button"
+                  className="btn-violet"
+                  onClick={start}
+                  disabled={status === "requesting"}
+                >
+                  {status === "requesting" ? C.measure.requestingCamera : enableLabel}
                 </button>
               )}
             </div>
@@ -279,16 +301,14 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
         {phase === "camera" && (
           <>
             <div className="glass-panel p-4 space-y-2 text-center" aria-live="polite">
-              <p className="text-sm text-white/80">מקמי את המטבע למעלה ואת האצבע ישירות מתחתיו</p>
-              <p className="text-xs text-white/50">
-                ודאי שהציפורן גלויה ושהטלפון נמצא במקביל למשטח
-              </p>
+              <p className="font-serif text-sm text-white/80">{C.measure.hintPrimary}</p>
+              <p className="font-serif text-xs text-white/50">{C.measure.hintSecondary}</p>
               {error && <p className="text-sm text-amber-200">{error}</p>}
             </div>
 
             <div className="flex flex-wrap gap-3 justify-between items-center">
               <button type="button" className="btn-ghost" onClick={onBack}>
-                חזרה
+                {C.measure.back}
               </button>
               <button
                 type="button"
@@ -296,7 +316,7 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
                 disabled={!canCapture}
                 onClick={captureCurrentFrame}
               >
-                צלמי עכשיו
+                {C.measure.capture}
               </button>
             </div>
           </>
@@ -306,12 +326,13 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
       {phase === "review" && photoQuality && (
         <div className="glass-panel p-5 space-y-4">
           <div className="text-center space-y-2">
-            <p className="text-xs text-white/45 tracking-wide">איכות הצילום</p>
+            <p className="section-eyebrow justify-center">{C.measure.qualityLabel}</p>
+            <h2 className="font-serif text-2xl md:text-3xl text-white">{C.measure.reviewTitle}</h2>
             <p className={`font-serif text-5xl ${scoreColorClass(photoQuality.score)}`}>
               {photoQuality.score}
               <span className="text-2xl text-white/40">/100</span>
             </p>
-            <p className="text-sm text-white/75">{level?.label}</p>
+            <p className="font-serif text-sm text-white/75">{level?.label}</p>
           </div>
 
           <ul className="space-y-2 text-sm text-white/70">
@@ -327,16 +348,16 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
 
           {showLowConfirm && (
             <p className="text-sm text-amber-200 bg-amber-400/10 rounded-xl px-3 py-2 text-center" role="status">
-              איכות הצילום נמוכה ועלולה להשפיע על הדיוק. להמשיך בכל זאת?
+              {C.measure.lowWarn}
             </p>
           )}
 
           <div className="flex flex-wrap gap-3 justify-between">
             <button type="button" className="btn-ghost" onClick={retake}>
-              צלמי שוב
+              {C.measure.retake}
             </button>
             <button type="button" className="btn-violet" onClick={confirmCapture}>
-              {showLowConfirm ? "השתמשי בתמונה הזו" : "אישור והמשך"}
+              {showLowConfirm ? C.measure.confirmAnyway : C.measure.confirm}
             </button>
           </div>
         </div>

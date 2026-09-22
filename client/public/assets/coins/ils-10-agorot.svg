@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="10 agorot">
+  <defs>
+    <radialGradient id="g" cx="38%" cy="32%" r="68%">
+      <stop offset="0%" stop-color="#e8e4dc"/>
+      <stop offset="55%" stop-color="#b8b0a4"/>
+      <stop offset="100%" stop-color="#7a7368"/>
+    </radialGradient>
+  </defs>
+  <circle cx="64" cy="64" r="58" fill="url(#g)" stroke="#5c564c" stroke-width="2"/>
+  <circle cx="64" cy="64" r="48" fill="none" stroke="#9a9286" stroke-width="1.5" opacity=".7"/>
+  <text x="64" y="58" text-anchor="middle" font-family="Georgia, serif" font-size="22" fill="#3d3932" font-weight="700">10</text>
+  <text x="64" y="78" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#4a453e">авешеъ</text>
+</svg>

@@ -1,5 +1,6 @@
 import { ALL_FINGERS } from "../../lib/nailSizing/constants.js";
 import { getQualityLevel } from "../../lib/nailSizing/photoQuality.js";
+import { NAIL_SIZING_COPY as C } from "../../lib/nailSizing/copy.js";
 
 export default function SummaryStep({
   measurements,
@@ -19,11 +20,9 @@ export default function SummaryStep({
   return (
     <div className="space-y-6">
       <div className="glass-panel p-6 text-center space-y-2">
-        <span className="section-eyebrow justify-center">Summary</span>
-        <h2 className="font-serif text-2xl md:text-3xl text-white">סיכום המידות</h2>
-        <p className="text-sm text-white/55">
-          מוצגות האצבעות שנבחרו למדידה. אפשר לצלם שוב אצבע בודדת בלי להתחיל מחדש.
-        </p>
+        <span className="section-eyebrow justify-center">{C.summary.eyebrow}</span>
+        <h2 className="font-serif text-2xl md:text-3xl text-white">{C.summary.title}</h2>
+        <p className="font-serif text-white/60 text-sm md:text-base max-w-xl mx-auto">{C.summary.subtitle}</p>
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
@@ -50,13 +49,13 @@ export default function SummaryStep({
                         <p className="text-xs text-white/45">
                           {m?.status === "confirmed"
                             ? m?.photoQualityScore != null
-                              ? `צולם · איכות ${m.photoQualityScore}/100 · ${q?.label || ""}`
-                              : "צולם"
-                            : "טרם נמדד"}
+                              ? `${C.summary.captured} · ${m.photoQualityScore}/100 · ${q?.label || ""}`
+                              : C.summary.captured
+                            : C.summary.pending}
                         </p>
                       </div>
                       <button type="button" className="btn-text text-xs shrink-0" onClick={() => onRetake(f.key)}>
-                        {needs ? "מדדי" : "צלמי שוב"}
+                        {needs ? C.summary.measure : C.summary.retake}
                         <span className="btn-text-arrow">←</span>
                       </button>
                     </li>
@@ -69,14 +68,14 @@ export default function SummaryStep({
       </div>
 
       {missing.length > 0 && (
-        <p className="text-sm text-red-300 text-center" role="status">
-          נותרו {missing.length} אצבעות להשלמה לפני שמירה.
+        <p className="text-sm text-amber-200 text-center" role="status">
+          {C.summary.missing(missing.length)}
         </p>
       )}
 
       <div className="glass-panel p-5 space-y-4">
         <label className="block text-sm text-white/60">
-          טלפון לשמירת פרופיל המידות
+          {C.summary.phoneLabel}
           <input
             type="tel"
             inputMode="numeric"
@@ -86,20 +85,18 @@ export default function SummaryStep({
             className="mt-2 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
           />
         </label>
-        <p className="text-xs text-white/40">
-          הפרופיל נשמר לפי מספר הטלפון (כמו באיתור תורים). אפשר להשתמש בו בהזמנות הבאות.
-        </p>
+        <p className="font-serif text-xs text-white/40">{C.summary.phoneHint}</p>
       </div>
 
       {saved && (
         <p className="text-center text-violet-200 font-medium" role="status">
-          המידות שנבחרו נשמרו בהצלחה ✓
+          {C.summary.saved}
         </p>
       )}
 
       <div className="flex flex-wrap gap-3 justify-between">
         <button type="button" className="btn-ghost" onClick={onBack}>
-          חזרה
+          {C.summary.back}
         </button>
         <button
           type="button"
@@ -107,7 +104,7 @@ export default function SummaryStep({
           disabled={missing.length > 0 || !phone.trim() || saving}
           onClick={onSave}
         >
-          {saving ? "שומרת..." : "אישור ושמירת המידות"}
+          {saving ? C.summary.saving : C.summary.save}
         </button>
       </div>
     </div>

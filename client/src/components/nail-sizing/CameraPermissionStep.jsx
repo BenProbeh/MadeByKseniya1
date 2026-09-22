@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
+import { NAIL_SIZING_COPY as C } from "../../lib/nailSizing/copy.js";
 
-export default function CameraPermissionStep({ camera, onGrantedContinue, onBack }) {
+export default function CameraPermissionStep({ camera, onGrantedContinue, onBack, isResume = false }) {
   const { status, errorHe, start, setVideoRef } = camera;
   const continueRef = useRef(onGrantedContinue);
   continueRef.current = onGrantedContinue;
@@ -15,11 +16,22 @@ export default function CameraPermissionStep({ camera, onGrantedContinue, onBack
     return () => window.clearTimeout(t);
   }, [status]);
 
+  const showResumeCopy = isResume && status !== "ready";
+
   return (
     <div className="glass-panel p-6 md:p-8 space-y-6">
-      <div className="space-y-3 text-sm text-white/70 leading-relaxed">
-        <p>כדי למדוד את הציפורניים נדרשת גישה למצלמה האחורית של הטלפון.</p>
-        <p>אחרי האישור המצלמה תיפתח אוטומטית במסך המדידה.</p>
+      <div className="space-y-3 text-center">
+        <h2 className="font-serif text-2xl md:text-3xl text-white">
+          {showResumeCopy ? C.camera.resumeTitle : C.camera.title}
+        </h2>
+        <p className="font-serif text-white/60 text-sm md:text-base max-w-xl mx-auto">
+          {status === "ready"
+            ? C.camera.readyHint
+            : showResumeCopy
+              ? C.camera.resumeSubtitle
+              : C.camera.subtitle}
+        </p>
+        <p className="text-xs text-white/40">{C.camera.privacyNote}</p>
       </div>
 
       {status === "ready" && (
@@ -31,27 +43,23 @@ export default function CameraPermissionStep({ camera, onGrantedContinue, onBack
             muted
             autoPlay
           />
-          <p className="absolute bottom-2 inset-x-0 text-center text-xs text-violet-200">
-            המצלמה מוכנה — ממשיכים…
-          </p>
+          <p className="absolute bottom-2 inset-x-0 text-center text-xs text-violet-200">{C.camera.readyHint}</p>
         </div>
       )}
 
       {errorHe && (
-        <p className="text-sm text-red-300" role="alert">
+        <p className="text-sm text-red-300 text-center" role="alert">
           {errorHe}
         </p>
       )}
 
       {status === "denied" && (
-        <p className="text-sm text-white/55">
-          באייפון: הגדרות ← Safari ← מצלמה. באנדרואיד: הגדרות האתר ← הרשאות ← מצלמה.
-        </p>
+        <p className="text-sm text-white/55 text-center">{C.camera.deniedHint}</p>
       )}
 
       <div className="flex flex-wrap gap-3 justify-between">
         <button type="button" className="btn-ghost" onClick={onBack}>
-          חזרה
+          {C.camera.back}
         </button>
         {status === "ready" ? (
           <button
@@ -62,11 +70,15 @@ export default function CameraPermissionStep({ camera, onGrantedContinue, onBack
               onGrantedContinue();
             }}
           >
-            המשך למדידה
+            {C.camera.continue}
           </button>
         ) : (
           <button type="button" className="btn-violet" onClick={start} disabled={status === "requesting"}>
-            {status === "requesting" ? "מבקשת הרשאה..." : "אפשרי גישה למצלמה"}
+            {status === "requesting"
+              ? C.camera.requesting
+              : showResumeCopy
+                ? C.camera.resumeAction
+                : C.camera.action}
           </button>
         )}
       </div>

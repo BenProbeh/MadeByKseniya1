@@ -1,14 +1,16 @@
+import { NAIL_SIZING_COPY as C } from "../../lib/nailSizing/copy.js";
+
 const STEP_ORDER = ["prep", "coin", "camera", "guide", "fingers", "measure", "summary"];
 
 export default function SizingProgress({ step, fingerIndex = 0, totalFingers = 0 }) {
   const idx = STEP_ORDER.indexOf(step);
   const labels = [
-    { id: "prep", label: "הכנה" },
-    { id: "coin", label: "מטבע" },
-    { id: "camera", label: "מצלמה" },
-    { id: "fingers", label: "אצבעות" },
-    { id: "measure", label: "מדידה" },
-    { id: "summary", label: "סיום" },
+    { id: "prep", label: C.progress.prep },
+    { id: "coin", label: C.progress.coin },
+    { id: "camera", label: C.progress.camera },
+    { id: "fingers", label: C.progress.fingers },
+    { id: "measure", label: C.progress.measure },
+    { id: "summary", label: C.progress.summary },
   ];
 
   const visualIdx =
@@ -46,7 +48,7 @@ export default function SizingProgress({ step, fingerIndex = 0, totalFingers = 0
       </div>
       {step === "measure" && totalFingers > 0 && (
         <p className="text-center text-xs text-white/45" aria-live="polite">
-          אצבע {fingerIndex + 1} מתוך {totalFingers}
+          {C.progress.fingerOf(fingerIndex + 1, totalFingers)}
         </p>
       )}
       <p className="sr-only">

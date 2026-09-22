@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-
 /**
- * Camera stream can be opened before the <video> mounts (permission step).
- * Always re-bind streamRef → video when the element appears, otherwise the
- * browser shows "camera in use" while the UI stays black.
+ * Camera stream lifecycle — open only on user gesture; stop on leave / hide / unmount.
  */
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { NAIL_SIZING_COPY as C } from "./copy.js";
+import { releaseCamera } from "./cameraLifecycle.js";
+
 export function useCamera() {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -20,7 +21,7 @@ export function useCamera() {
     try {
       await el.play();
     } catch {
-      // Autoplay can fail until a user gesture; muted + playsInline usually ok.
+      /* muted + playsInline usually ok after gesture */
     }
   }, []);
 
@@ -35,10 +36,12 @@ export function useCamera() {
   );
 
   const stop = useCallback(() => {
-    streamRef.current?.getTracks?.().forEach((t) => t.stop());
-    streamRef.current = null;
-    if (videoRef.current) videoRef.current.srcObject = null;
-    setStatus((s) => (s === "ready" || s === "requesting" ? "idle" : s));
+    streamRef.current = releaseCamera({
+      stream: streamRef.current,
+      video: videoRef.current,
+    });
+    setErrorHe("");
+    setStatus("idle");
   }, []);
 
   const start = useCallback(async () => {
@@ -46,16 +49,15 @@ export function useCamera() {
     if (typeof window === "undefined") return;
     if (!window.isSecureContext && location.hostname !== "localhost") {
       setStatus("insecure");
-      setErrorHe("המצלמה זמינה רק באתר מאובטח (HTTPS) או ב־localhost.");
+      setErrorHe(C.errors.insecure);
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
       setStatus("unsupported");
-      setErrorHe("הדפדפן אינו תומך בגישה למצלמה.");
+      setErrorHe(C.errors.unsupported);
       return;
     }
 
-    // Already have a live stream — just re-bind to the current video element.
     const live = streamRef.current?.getVideoTracks?.().some((t) => t.readyState === "live");
     if (live) {
       await attachToVideo(videoRef.current);
@@ -80,38 +82,42 @@ export function useCamera() {
       const name = err?.name || "";
       if (name === "NotAllowedError" || name === "PermissionDeniedError") {
         setStatus("denied");
-        setErrorHe(
-          "הגישה למצלמה נדחתה. אפשר לפתוח את ההרשאה בהגדרות הדפדפן/המכשיר ולנסות שוב."
-        );
+        setErrorHe(C.errors.denied);
       } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
         setStatus("unavailable");
-        setErrorHe("לא נמצאה מצלמה זמינה במכשיר.");
+        setErrorHe(C.errors.unavailable);
       } else if (name === "NotReadableError" || name === "TrackStartError") {
         setStatus("error");
-        setErrorHe("המצלמה בשימוש באפליקציה אחרת. סגרי אותה ונסי שוב.");
+        setErrorHe(C.errors.busy);
       } else {
         setStatus("error");
-        setErrorHe("לא הצלחנו לפתוח את המצלמה. נסי שוב.");
+        setErrorHe(C.errors.generic);
       }
     }
   }, [attachToVideo]);
 
+  // Unmount → full stop
   useEffect(() => () => stop(), [stop]);
 
+  // Tab hide / page exit → stop (no auto-restart)
   useEffect(() => {
-    const onVis = () => {
-      if (document.hidden) return;
-      const live = streamRef.current?.getVideoTracks?.().some((t) => t.readyState === "live");
-      if (status === "ready" && !live) {
-        setStatus("error");
-        setErrorHe("חיבור המצלמה נקטע. לחצי שוב על הפעלת מצלמה.");
-      } else if (status === "ready" && live) {
-        void attachToVideo(videoRef.current);
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        stop();
       }
     };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, [status, attachToVideo]);
+    const onPageExit = () => {
+      stop();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onPageExit);
+    window.addEventListener("beforeunload", onPageExit);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onPageExit);
+      window.removeEventListener("beforeunload", onPageExit);
+    };
+  }, [stop]);
 
   return { videoRef, setVideoRef, status, errorHe, start, stop, attachToVideo };
 }

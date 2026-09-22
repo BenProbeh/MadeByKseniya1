@@ -1,7 +1,9 @@
 /**
  * Photo quality score (0–100) after a manual capture.
- * Not AI confidence — helps the customer see if the shot looks usable.
+ * Helps the customer see if the shot looks usable.
  */
+
+import { NAIL_SIZING_COPY as C } from "./copy.js";
 
 /** Fixed guide layout fractions (video / image native pixels). */
 export const GUIDE_LAYOUT = {
@@ -14,10 +16,10 @@ export const GUIDE_LAYOUT = {
 };
 
 export function getQualityLevel(score) {
-  if (score >= 85) return { id: "excellent", label: "צילום מצוין" };
-  if (score >= 70) return { id: "good", label: "צילום טוב" };
-  if (score >= 50) return { id: "fair", label: "כדאי לשפר את הצילום" };
-  return { id: "poor", label: "מומלץ לצלם שוב" };
+  if (score >= 85) return { id: "excellent", label: C.qualityLevels.excellent };
+  if (score >= 70) return { id: "good", label: C.qualityLevels.good };
+  if (score >= 50) return { id: "fair", label: C.qualityLevels.fair };
+  return { id: "poor", label: C.qualityLevels.poor };
 }
 
 export function getGuideRegions(width, height) {
@@ -216,9 +218,9 @@ export function calculatePhotoQuality(imageData, guides) {
     return {
       score: 0,
       level: "poor",
-      levelLabel: "מומלץ לצלם שוב",
+      levelLabel: C.qualityLevels.poor,
       checks: { brightness: 0, sharpness: 0, contrast: 0, framing: 0 },
-      tips: ["לא הצלחנו לנתח את התמונה — צלמי שוב"],
+      tips: [C.errors.captureFailed],
     };
   }
 

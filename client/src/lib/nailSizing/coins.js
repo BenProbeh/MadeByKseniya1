@@ -2,6 +2,9 @@
  * Israeli New Sheqel series coin diameters.
  * Source: Bank of Israel — Agora and New Sheqel Series
  * https://boi.org.il/en/economic-roles/coins/
+ *
+ * Coin images: original local SVG illustrations in /assets/coins/
+ * (not photographs; distinctive per denomination for UI selection).
  */
 export const CALIBRATION_COINS = [
   {
@@ -9,6 +12,8 @@ export const CALIBRATION_COINS = [
     labelHe: "10 אגורות",
     labelEn: "10 agorot",
     diameterMm: 22,
+    imageSrc: "/assets/coins/ils-10-agorot.svg",
+    imageAlt: "מטבע ישראלי של 10 אגורות",
     source: "Bank of Israel",
   },
   {
@@ -16,6 +21,8 @@ export const CALIBRATION_COINS = [
     labelHe: "½ שקל",
     labelEn: "½ New Sheqel",
     diameterMm: 26,
+    imageSrc: "/assets/coins/ils-half-shekel.svg",
+    imageAlt: "מטבע ישראלי של חצי שקל",
     source: "Bank of Israel",
   },
   {
@@ -23,6 +30,8 @@ export const CALIBRATION_COINS = [
     labelHe: "1 שקל",
     labelEn: "1 New Sheqel",
     diameterMm: 18,
+    imageSrc: "/assets/coins/ils-1-shekel.svg",
+    imageAlt: "מטבע ישראלי של שקל אחד",
     source: "Bank of Israel",
   },
   {
@@ -30,6 +39,8 @@ export const CALIBRATION_COINS = [
     labelHe: "2 שקל",
     labelEn: "2 New Sheqel",
     diameterMm: 21.6,
+    imageSrc: "/assets/coins/ils-2-shekel.svg",
+    imageAlt: "מטבע ישראלי של שני שקלים",
     source: "Bank of Israel",
   },
   {
@@ -37,6 +48,8 @@ export const CALIBRATION_COINS = [
     labelHe: "5 שקל",
     labelEn: "5 New Sheqel",
     diameterMm: 24,
+    imageSrc: "/assets/coins/ils-5-shekel.svg",
+    imageAlt: "מטבע ישראלי של חמישה שקלים",
     source: "Bank of Israel",
   },
   {
@@ -49,6 +62,8 @@ export const CALIBRATION_COINS = [
     innerDiameterMm: 16,
     type: "bimetallic",
     noteHe: "מטבע דו־מתכתי — משתמשים בקוטר החיצוני (הטבעת, 23 מ״מ)",
+    imageSrc: "/assets/coins/ils-10-shekel.svg",
+    imageAlt: "מטבע ישראלי של עשרה שקלים",
     source: "Bank of Israel",
   },
 ];

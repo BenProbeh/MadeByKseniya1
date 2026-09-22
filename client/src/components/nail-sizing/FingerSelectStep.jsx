@@ -1,4 +1,5 @@
 import { ALL_FINGERS, HANDS } from "../../lib/nailSizing/constants.js";
+import { NAIL_SIZING_COPY as C } from "../../lib/nailSizing/copy.js";
 
 export default function FingerSelectStep({ selectedKeys, onChange, onNext, onBack }) {
   const selected = new Set(selectedKeys || []);
@@ -33,17 +34,15 @@ export default function FingerSelectStep({ selectedKeys, onChange, onNext, onBac
 
   return (
     <div className="space-y-6">
-      <div className="glass-panel p-5 space-y-3">
-        <p className="font-serif text-lg text-white">איזה אצבעות למדוד?</p>
-        <p className="text-sm text-white/60 leading-relaxed">
-          בחרי רק את האצבעות שצריך — אפשר ציפורן אחת, שתיים, יד שלמה או את כולן.
-        </p>
-        <div className="flex flex-wrap gap-3">
+      <div className="glass-panel p-5 space-y-3 text-center">
+        <h2 className="font-serif text-2xl md:text-3xl text-white">{C.fingers.title}</h2>
+        <p className="font-serif text-white/60 text-sm md:text-base max-w-xl mx-auto">{C.fingers.subtitle}</p>
+        <div className="flex flex-wrap gap-3 justify-center">
           <button type="button" className="btn-text text-xs" onClick={selectAll}>
-            בחרי הכול
+            {C.fingers.selectAll}
           </button>
           <button type="button" className="btn-text text-xs" onClick={clearAll}>
-            נקה בחירה
+            {C.fingers.clear}
           </button>
         </div>
       </div>
@@ -57,7 +56,7 @@ export default function FingerSelectStep({ selectedKeys, onChange, onNext, onBac
               <div className="flex items-center justify-between gap-3">
                 <h3 className="font-serif text-xl text-white">{hand.labelHe}</h3>
                 <button type="button" className="btn-text text-xs shrink-0" onClick={() => selectHand(hand.id)}>
-                  {handCount === hand.fingers.length ? "הסירי יד" : "בחרי יד"}
+                  {handCount === hand.fingers.length ? C.fingers.clearHand : C.fingers.selectHand}
                   <span className="btn-text-arrow">←</span>
                 </button>
               </div>
@@ -88,15 +87,15 @@ export default function FingerSelectStep({ selectedKeys, onChange, onNext, onBac
       </div>
 
       <p className="text-center text-xs text-white/45" aria-live="polite">
-        {count === 0 ? "בחרי לפחות אצבע אחת" : `נבחרו ${count} אצבעות`}
+        {count === 0 ? C.fingers.noneSelected : C.fingers.selectedCount(count)}
       </p>
 
       <div className="flex flex-wrap gap-3 justify-between">
         <button type="button" className="btn-ghost" onClick={onBack}>
-          חזרה
+          {C.fingers.back}
         </button>
         <button type="button" className="btn-violet" disabled={count === 0} onClick={onNext}>
-          התחילי מדידה
+          {C.fingers.next}
         </button>
       </div>
     </div>

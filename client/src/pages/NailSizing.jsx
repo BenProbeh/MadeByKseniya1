@@ -18,6 +18,7 @@ import {
   saveProfile,
 } from "../lib/nailSizing/sessionStore.js";
 import { saveMeasurementProfile } from "../lib/api.js";
+import { NAIL_SIZING_COPY as C } from "../lib/nailSizing/copy.js";
 
 function fingersFromKeys(keys) {
   const set = new Set(keys || []);
@@ -146,13 +147,11 @@ export default function NailSizing() {
   return (
     <div className="max-w-3xl mx-auto px-6 py-16 space-y-8">
       <div className="text-center space-y-3">
-        <span className="section-eyebrow justify-center">Nail sizing</span>
+        <span className="section-eyebrow justify-center">{C.page.eyebrow}</span>
         <h1 className="font-serif font-medium text-3xl md:text-5xl text-white">
-          מדידת <span className="violet-text">מידת הציפורניים</span>
+          {C.page.titleBefore} <span className="violet-text">{C.page.titleAccent}</span>
         </h1>
-        <p className="text-white/60 text-sm md:text-base max-w-xl mx-auto">
-          כיול עם מטבע אמיתי, צילום מונחה לאצבעות שבחרת, ושמירת פרופיל מידות להזמנות הבאות.
-        </p>
+        <p className="font-serif text-white/60 text-sm md:text-base max-w-xl mx-auto">{C.page.subtitle}</p>
       </div>
 
       <SizingProgress
@@ -175,6 +174,7 @@ export default function NailSizing() {
       {session.step === "camera" && (
         <CameraPermissionStep
           camera={camera}
+          isResume={Boolean(session.consentCamera)}
           onBack={() => goStep("coin")}
           onGrantedContinue={afterCamera}
         />
@@ -217,9 +217,9 @@ export default function NailSizing() {
 
       {session.step === "measure" && !session.coinId && (
         <div className="glass-panel p-6 text-center space-y-4">
-          <p className="text-white/60 text-sm">יש לבחור מטבע לפני המדידה.</p>
+          <p className="font-serif text-white/60 text-sm">{C.measure.needCoin}</p>
           <button type="button" className="btn-violet" onClick={() => goStep("coin")}>
-            בחירת מטבע
+            {C.measure.pickCoin}
           </button>
         </div>
       )}
@@ -245,7 +245,7 @@ export default function NailSizing() {
 
       <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
         <Link to="/booking" className="btn-text">
-          <span>לקביעת תור</span>
+          <span>{C.footer.booking}</span>
           <span className="btn-text-arrow">←</span>
         </Link>
         <button
@@ -258,7 +258,7 @@ export default function NailSizing() {
             setSaved(false);
           }}
         >
-          איפוס תהליך
+          {C.footer.reset}
         </button>
       </div>
     </div>

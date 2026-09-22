@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="2 shekel">
+  <defs>
+    <radialGradient id="g" cx="38%" cy="32%" r="68%">
+      <stop offset="0%" stop-color="#f2eee6"/>
+      <stop offset="55%" stop-color="#c0b9ad"/>
+      <stop offset="100%" stop-color="#756e64"/>
+    </radialGradient>
+  </defs>
+  <circle cx="64" cy="64" r="58" fill="url(#g)" stroke="#5c564c" stroke-width="2"/>
+  <circle cx="64" cy="64" r="46" fill="none" stroke="#9a9286" stroke-width="1.2" stroke-dasharray="3 4" opacity=".8"/>
+  <text x="64" y="58" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#3d3932" font-weight="700">2</text>
+  <text x="64" y="80" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#4a453e">éçÜ</text>
+</svg>
