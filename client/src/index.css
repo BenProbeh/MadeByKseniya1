@@ -123,4 +123,150 @@
   .hairline {
     @apply border-white/[0.08];
   }
+
+  /* Nail-sizing camera guide — vertical coin-above-finger axis only */
+  .measurement-guide {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    display: grid;
+    place-items: center;
+    z-index: 2;
+  }
+
+  .measurement-progress-ring {
+    position: absolute;
+    width: min(78%, 320px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    border: 2px dashed rgba(255, 255, 255, 0.22);
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
+  }
+
+  .measurement-progress-ring[data-state="warn"] {
+    border-color: rgba(251, 191, 36, 0.55);
+    border-style: dashed;
+  }
+
+  .measurement-progress-ring[data-state="ok"] {
+    border-color: rgba(74, 222, 128, 0.7);
+    border-style: solid;
+    box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.25);
+  }
+
+  .measurement-progress-ring__arc {
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    background: conic-gradient(#d17dff var(--progress, 0%), transparent 0);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+    opacity: 0.9;
+    transition: background 0.15s linear;
+  }
+
+  .measurement-axis {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(6px, 1.8vw, 14px);
+  }
+
+  .measurement-axis__spine {
+    position: absolute;
+    top: 8%;
+    bottom: 8%;
+    left: 50%;
+    width: 1px;
+    transform: translateX(-50%);
+    background: linear-gradient(
+      180deg,
+      transparent,
+      rgba(255, 255, 255, 0.28) 20%,
+      rgba(255, 255, 255, 0.28) 80%,
+      transparent
+    );
+    opacity: 0.7;
+  }
+
+  .coin-guide {
+    width: clamp(88px, 24vw, 116px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    border: 2px dashed rgba(255, 255, 255, 0.45);
+    box-sizing: border-box;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+  }
+
+  .coin-guide[data-state="warn"] {
+    border-color: rgba(251, 191, 36, 0.75);
+  }
+
+  .coin-guide[data-state="ok"] {
+    border-color: rgba(74, 222, 128, 0.9);
+    border-style: solid;
+    background: rgba(74, 222, 128, 0.06);
+  }
+
+  .finger-guide {
+    position: relative;
+    width: clamp(68px, 19vw, 96px);
+    height: clamp(96px, 28vw, 140px);
+    border: 2px dashed rgba(255, 255, 255, 0.4);
+    border-radius: 48% 48% 42% 42% / 38% 38% 48% 48%;
+    box-sizing: border-box;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+  }
+
+  .finger-guide[data-state="warn"] {
+    border-color: rgba(251, 191, 36, 0.75);
+  }
+
+  .finger-guide[data-state="ok"] {
+    border-color: rgba(74, 222, 128, 0.9);
+    border-style: solid;
+    background: rgba(74, 222, 128, 0.06);
+  }
+
+  .nail-guide {
+    position: absolute;
+    top: 14%;
+    left: 18%;
+    right: 18%;
+    height: 28%;
+    border: 1.5px dashed rgba(209, 125, 255, 0.55);
+    border-radius: 50% 50% 40% 40% / 55% 55% 45% 45%;
+    transition: border-color 0.2s ease;
+  }
+
+  .finger-guide[data-state="ok"] .nail-guide {
+    border-color: rgba(74, 222, 128, 0.85);
+    border-style: solid;
+  }
+
+  .measurement-guide__hint {
+    position: absolute;
+    bottom: 12%;
+    left: 8%;
+    right: 8%;
+    text-align: center;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    color: rgba(255, 255, 255, 0.78);
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
+  }
+
+  .measurement-guide__hint[data-ok="true"] {
+    color: rgb(187, 247, 208);
+  }
+
+  body.mbk-nail-measuring .mbk-chat-fab,
+  body.mbk-nail-measuring .mbk-chat-panel {
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+  }
 }

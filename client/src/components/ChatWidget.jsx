@@ -49,7 +49,7 @@ export default function ChatWidget() {
     <>
       <motion.button
         onClick={() => setIsOpen((v) => !v)}
-        className="fixed z-50 w-14 h-14 rounded-full bg-violet-gradient shadow-glow flex items-center justify-center text-oled-950 text-2xl"
+        className="mbk-chat-fab fixed z-50 w-14 h-14 rounded-full bg-violet-gradient shadow-glow flex items-center justify-center text-oled-950 text-2xl"
         style={{
           bottom: "calc(env(safe-area-inset-bottom) + 1.5rem)",
           left: "calc(env(safe-area-inset-left) + 1.5rem)",
@@ -68,7 +68,7 @@ export default function ChatWidget() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="fixed z-50 w-[92vw] max-w-sm h-[min(32rem,75vh)] glass-panel flex flex-col overflow-hidden shadow-glow-lg"
+            className="mbk-chat-panel fixed z-50 w-[92vw] max-w-sm h-[min(32rem,75vh)] glass-panel flex flex-col overflow-hidden shadow-glow-lg"
             style={{
               bottom: "calc(env(safe-area-inset-bottom) + 6rem)",
               left: "calc(env(safe-area-inset-left) + 1.5rem)",

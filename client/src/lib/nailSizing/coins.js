@@ -43,8 +43,12 @@ export const CALIBRATION_COINS = [
     id: "ils-10-shekel",
     labelHe: "10 שקל",
     labelEn: "10 New Sheqel",
+    /** Full outer ring — primary calibration diameter (never use gold core alone). */
     diameterMm: 23,
-    noteHe: "מטבע דו־מתכתי — משתמשים בקוטר החיצוני (הטבעת)",
+    outerDiameterMm: 23,
+    innerDiameterMm: 16,
+    type: "bimetallic",
+    noteHe: "מטבע דו־מתכתי — משתמשים בקוטר החיצוני (הטבעת, 23 מ״מ)",
     source: "Bank of Israel",
   },
 ];
