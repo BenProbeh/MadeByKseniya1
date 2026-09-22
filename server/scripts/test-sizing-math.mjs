@@ -13,6 +13,13 @@ import {
   GUIDE_LAYOUT,
 } from "../../client/src/lib/nailSizing/measurementEngine.js";
 import { getCoverTransform, videoPointToDisplay } from "../../client/src/lib/nailSizing/videoGeometry.js";
+import { CAPTURE_CONFIG, CaptureState, TEN_SHEKEL_COIN } from "../../client/src/lib/nailSizing/captureConfig.js";
+import {
+  createStabilityTracker,
+  deriveLiveState,
+  readyForAutoCapture,
+  toStabilitySample,
+} from "../../client/src/lib/nailSizing/captureMachine.js";
 
 test("pixelsPerMillimeter uses official coin diameter", () => {
   assert.equal(pixelsPerMillimeter(180, 18), 10);
@@ -22,12 +29,11 @@ test("pixelsPerMillimeter uses official coin diameter", () => {
 test("10₪ uses outer 23mm not gold core 16mm", () => {
   const coin = findCoinById("ils-10-shekel");
   assert.equal(coin.diameterMm, 23);
-  assert.equal(coin.outerDiameterMm, 23);
-  assert.equal(coin.innerDiameterMm, 16);
+  assert.equal(coin.outerDiameterMm, TEN_SHEKEL_COIN.outerDiameterMm);
+  assert.equal(coin.innerDiameterMm, TEN_SHEKEL_COIN.innerDiameterMm);
   assert.equal(assertUsesOuterDiameterMm(coin), true);
-  // Calibration must divide by 23
-  assert.equal(pixelsPerMillimeter(230, coin.outerDiameterMm), 10);
-  assert.notEqual(pixelsPerMillimeter(230, coin.innerDiameterMm), 10);
+  assert.equal(pixelsPerMillimeter(230, TEN_SHEKEL_COIN.calibrationDiameterMm), 10);
+  assert.notEqual(pixelsPerMillimeter(230, TEN_SHEKEL_COIN.innerDiameterMm), 10);
 });
 
 test("widthPxToMm converts with outer-diameter calibration", () => {
@@ -57,9 +63,145 @@ test("guide layout is vertical column not side-by-side", () => {
 });
 
 test("object-fit cover mapping keeps center aligned", () => {
-  // Video 1280x720 into portrait 390x520 container → crop sides
   const t = getCoverTransform(1280, 720, 390, 520);
   const center = videoPointToDisplay(640, 360, t);
   assert.ok(Math.abs(center.x - 195) < 1);
   assert.ok(Math.abs(center.y - 260) < 1);
+});
+
+test("stability tracker does not mark stable from a single ready frame", () => {
+  const tracker = createStabilityTracker({
+    ...CAPTURE_CONFIG,
+    REQUIRED_STABLE_MS: 800,
+    MIN_STABLE_FRAMES: 12,
+  });
+  const base = {
+    ready: true,
+    confidence: 0.8,
+    sharpness: 40,
+    coinCx: 100,
+    coinCy: 80,
+    coinD: 120,
+    nailCx: 100,
+    nailCy: 200,
+    nailW: 40,
+  };
+  const t0 = 1_000_000;
+  const once = tracker.push({ ...base, t: t0 });
+  assert.equal(once.stable, false);
+  assert.ok(once.progress < 1);
+});
+
+test("stability tracker requires motion-consistent ready frames over the window", () => {
+  const tracker = createStabilityTracker({
+    ...CAPTURE_CONFIG,
+    REQUIRED_STABLE_MS: 800,
+    MIN_STABLE_FRAMES: 12,
+    FRAME_INTERVAL_MS: 60,
+  });
+  const base = {
+    ready: true,
+    confidence: 0.8,
+    sharpness: 40,
+    coinCx: 100,
+    coinCy: 80,
+    coinD: 120,
+    nailCx: 100,
+    nailCy: 200,
+    nailW: 40,
+  };
+  const t0 = 2_000_000;
+  let last;
+  for (let i = 0; i < 15; i += 1) {
+    last = tracker.push({ ...base, t: t0 + i * 60 });
+  }
+  assert.equal(last.stable, true);
+  assert.ok(last.progress >= 0.99);
+
+  // Large jump breaks stability immediately
+  const broken = tracker.push({
+    ...base,
+    coinCx: 100 + 40,
+    t: t0 + 15 * 60,
+  });
+  assert.equal(broken.stable, false);
+});
+
+test("readyForAutoCapture blocks when captureLocked or not stable", () => {
+  const analysis = {
+    ready: true,
+    confidence: 0.8,
+    coin: { clipped: false },
+    validation: {
+      coinValid: true,
+      sizeOk: true,
+      perspectiveValid: true,
+      fingerValid: true,
+      nailValid: true,
+      verticalAlignmentValid: true,
+      distanceValid: true,
+      lightingValid: true,
+      sharpnessValid: true,
+    },
+  };
+  assert.equal(
+    readyForAutoCapture({
+      cameraReady: true,
+      analysis,
+      stability: { stable: true, motionValid: true },
+      captureLocked: true,
+    }),
+    false
+  );
+  assert.equal(
+    readyForAutoCapture({
+      cameraReady: true,
+      analysis,
+      stability: { stable: false, motionValid: true },
+      captureLocked: false,
+    }),
+    false
+  );
+  assert.equal(
+    readyForAutoCapture({
+      cameraReady: true,
+      analysis,
+      stability: { stable: true, motionValid: true },
+      captureLocked: false,
+    }),
+    true
+  );
+});
+
+test("deriveLiveState maps analysis into capture machine states", () => {
+  assert.equal(deriveLiveState(null, null), CaptureState.SEARCHING);
+  assert.equal(
+    deriveLiveState({ coin: { found: false }, nail: { found: false }, ready: false }, null),
+    CaptureState.SEARCHING
+  );
+  assert.equal(
+    deriveLiveState({ coin: { found: true }, nail: { found: true }, ready: false }, { progress: 0 }),
+    CaptureState.ALIGNING
+  );
+  assert.equal(
+    deriveLiveState({ coin: { found: true }, nail: { found: true }, ready: true }, { progress: 0, stable: false }),
+    CaptureState.HOLD_STILL
+  );
+  assert.equal(
+    deriveLiveState({ coin: { found: true }, nail: { found: true }, ready: true }, { progress: 0.5, stable: false }),
+    CaptureState.COUNTING_DOWN
+  );
+});
+
+test("toStabilitySample copies detection geometry", () => {
+  const sample = toStabilitySample({
+    ready: true,
+    confidence: 0.7,
+    sharpness: 22,
+    coin: { center: { x: 1, y: 2 }, outerDiameterPx: 50 },
+    nail: { center: { x: 3, y: 4 }, widthPx: 20 },
+  }, 123);
+  assert.equal(sample.t, 123);
+  assert.equal(sample.coinD, 50);
+  assert.equal(sample.nailW, 20);
 });

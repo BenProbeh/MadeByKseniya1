@@ -6,6 +6,8 @@
  * Never use the bimetallic gold core (16mm) as the full diameter.
  */
 
+import { CAPTURE_CONFIG, TEN_SHEKEL_COIN } from "./captureConfig.js";
+
 /** Normalized target layout inside the video frame (vertical axis, centered). */
 export const GUIDE_LAYOUT = {
   coinCx: 0.5,
@@ -20,7 +22,7 @@ export const GUIDE_LAYOUT = {
   fingerHeightRatio: 1.45,
 };
 
-const INNER_OUTER_RATIO_10 = 16 / 23; // ~0.696 for ₪10 bimetallic
+const INNER_OUTER_RATIO_10 = TEN_SHEKEL_COIN.innerDiameterMm / TEN_SHEKEL_COIN.outerDiameterMm;
 
 function sampleBrightness(data) {
   let sum = 0;
@@ -341,8 +343,9 @@ export function analyzeFrame(imageData, { coinDiameterMm = 23, coinMeta = null }
 
   const brightness = sampleBrightness(data);
   const sharpness = sampleSharpness(data, width, height);
-  const lightingOk = brightness > 55 && brightness < 210;
-  const sharpOk = sharpness > 18;
+  const lightingOk =
+    brightness > CAPTURE_CONFIG.BRIGHTNESS_MIN && brightness < CAPTURE_CONFIG.BRIGHTNESS_MAX;
+  const sharpOk = sharpness > CAPTURE_CONFIG.SHARPNESS_MIN;
 
   const coin = detectCoin(data, width, height, targetDiameterPx);
   const nail = coin.found
@@ -350,7 +353,7 @@ export function analyzeFrame(imageData, { coinDiameterMm = 23, coinMeta = null }
     : { found: false, widthPx: null, score: 0, centerX: guideCoinCx, centerY: guideCoinCy + targetDiameterPx };
 
   const coinR = coin.outerDiameterPx / 2;
-  const xAlignLimit = coin.outerDiameterPx * 0.18;
+  const xAlignLimit = coin.outerDiameterPx * CAPTURE_CONFIG.ALIGN_X_FRAC;
   const xDelta = nail.found ? Math.abs(nail.centerX - coin.centerX) : Infinity;
   const coinBottom = coin.centerY + coinR;
   const nailTop = nail.found ? (nail.topY ?? nail.centerY - 10) : null;
@@ -361,14 +364,21 @@ export function analyzeFrame(imageData, { coinDiameterMm = 23, coinMeta = null }
   const gapOk = gap != null && gap >= 4 && gap <= idealGap * 3.5;
   const verticalOk = nail.found && nail.centerY > coin.centerY + coinR * 0.5;
   const xOk = nail.found && xDelta <= xAlignLimit;
-  // Soft plane hint: brightness similarity between coin region and nail region
   const samePlaneHint = true;
 
-  const perspectiveOk = coin.found && coin.perspectiveRatio >= 0.72;
-  const sizeOk = coin.found && coin.sizeRatio >= 0.78 && coin.sizeRatio <= 1.28;
+  const perspectiveOk = coin.found && coin.perspectiveRatio >= CAPTURE_CONFIG.PERSPECTIVE_MIN;
+  const sizeOk =
+    coin.found &&
+    coin.sizeRatio >= CAPTURE_CONFIG.COIN_SIZE_RATIO_MIN &&
+    coin.sizeRatio <= CAPTURE_CONFIG.COIN_SIZE_RATIO_MAX;
   const coinValid =
-    coin.found && !coin.multiCoin && !coin.clipped && coin.confidence >= 0.28 && perspectiveOk && sizeOk;
-  const fingerValid = nail.found && nail.score >= 0.25 && nail.tipVisible;
+    coin.found &&
+    !coin.multiCoin &&
+    !coin.clipped &&
+    coin.confidence >= CAPTURE_CONFIG.COIN_CONFIDENCE_MIN &&
+    perspectiveOk &&
+    sizeOk;
+  const fingerValid = nail.found && nail.score >= CAPTURE_CONFIG.NAIL_SCORE_MIN && nail.tipVisible;
   const nailValid = fingerValid && nail.widthPx != null && nail.widthPx > 6;
 
   // Optional bimetallic inner/outer sanity for 10₪
@@ -411,8 +421,11 @@ export function analyzeFrame(imageData, { coinDiameterMm = 23, coinMeta = null }
   const tips = [];
   if (!lightingOk) {
     tips.push({
-      code: brightness < 55 ? "dark" : "glare",
-      textHe: brightness < 55 ? "התאורה חלשה — קרבי לחלון או הדליקי אור" : "יש סינוור — הרחיקי מהאור הישיר",
+      code: brightness < CAPTURE_CONFIG.BRIGHTNESS_MIN ? "dark" : "glare",
+      textHe:
+        brightness < CAPTURE_CONFIG.BRIGHTNESS_MIN
+          ? "עברִי למקום מואר יותר"
+          : "הפחיתי תאורה ישירה",
     });
   }
   if (!sharpOk) tips.push({ code: "blur", textHe: "התמונה מטושטשת — החזיקי את הטלפון יציב" });
@@ -422,8 +435,11 @@ export function analyzeFrame(imageData, { coinDiameterMm = 23, coinMeta = null }
     tips.push({ code: "place", textHe: "מקמי את המטבע למעלה ואת האצבע ישירות מתחתיו" });
   } else {
     if (!perspectiveOk) tips.push({ code: "perspective", textHe: "החזיקי את הטלפון במקביל למשטח" });
-    if (coin.sizeRatio < 0.78) tips.push({ code: "too-far", textHe: "קרבי את הטלפון" });
-    else if (coin.sizeRatio > 1.28) tips.push({ code: "too-close", textHe: "הרחיקי מעט את הטלפון" });
+    if (coin.sizeRatio < CAPTURE_CONFIG.COIN_SIZE_RATIO_MIN) {
+      tips.push({ code: "too-far", textHe: "קרבי מעט את הטלפון" });
+    } else if (coin.sizeRatio > CAPTURE_CONFIG.COIN_SIZE_RATIO_MAX) {
+      tips.push({ code: "too-close", textHe: "הרחיקי מעט את הטלפון" });
+    }
   }
 
   tips.push(...directionalTips(coin, nail, guideCoinCx, guideCoinCy, targetDiameterPx, align));
