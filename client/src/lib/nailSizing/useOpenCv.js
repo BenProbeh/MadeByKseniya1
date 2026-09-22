@@ -1,6 +1,6 @@
 /**
- * Safe OpenCV.js loader — waits for window.cv (script in index.html).
- * Supports builds that expose cv as a Promise or require onRuntimeInitialized.
+ * Safe OpenCV.js loader — singleton wait for window.cv (script in index.html).
+ * Does not inject scripts. Clears poll interval as soon as ready.
  */
 
 import { useEffect, useState } from "react";
@@ -11,6 +11,11 @@ const INITIAL = {
   ready: false,
   error: null,
 };
+
+/** Module-level cache so StrictMode remounts don't re-fight initialization. */
+let cachedCv = null;
+let cachedError = null;
+let resolving = null;
 
 function isCvRuntimeReady(cv) {
   return !!(cv && typeof cv.Mat === "function" && typeof cv.HoughCircles === "function");
@@ -37,7 +42,7 @@ function waitRuntimeInitialized(cv) {
         try {
           if (typeof prev === "function") prev();
         } catch {
-          /* ignore prior hook errors */
+          /* ignore */
         }
         if (isCvRuntimeReady(cv)) finish(cv);
         else finish(null, new Error("OpenCV runtime missing Mat/HoughCircles"));
@@ -46,7 +51,6 @@ function waitRuntimeInitialized(cv) {
       finish(null, error);
     }
 
-    // Some builds become ready without firing the hook shortly after assign
     window.setTimeout(() => {
       if (isCvRuntimeReady(cv)) finish(cv);
     }, 0);
@@ -54,6 +58,8 @@ function waitRuntimeInitialized(cv) {
 }
 
 async function resolveCvFromWindow() {
+  if (cachedCv) return cachedCv;
+  if (cachedError) throw cachedError;
   if (typeof window === "undefined" || window.cv == null) return null;
 
   let loadedCv = window.cv instanceof Promise ? await window.cv : window.cv;
@@ -63,23 +69,55 @@ async function resolveCvFromWindow() {
     loadedCv = await waitRuntimeInitialized(loadedCv);
   }
 
-  return isCvRuntimeReady(loadedCv) ? loadedCv : null;
+  if (!isCvRuntimeReady(loadedCv)) return null;
+  cachedCv = loadedCv;
+  return loadedCv;
+}
+
+function resolveOnce() {
+  if (cachedCv) return Promise.resolve(cachedCv);
+  if (cachedError) return Promise.reject(cachedError);
+  if (resolving) return resolving;
+  resolving = (async () => {
+    try {
+      const cv = await resolveCvFromWindow();
+      resolving = null;
+      return cv;
+    } catch (e) {
+      cachedError = e instanceof Error ? e : new Error(String(e));
+      resolving = null;
+      throw cachedError;
+    }
+  })();
+  return resolving;
 }
 
 export function useOpenCv() {
-  const [state, setState] = useState(INITIAL);
+  const [state, setState] = useState(() => {
+    if (cachedCv) {
+      return { cv: cachedCv, loading: false, ready: true, error: null };
+    }
+    if (cachedError) {
+      return { cv: null, loading: false, ready: false, error: cachedError };
+    }
+    return INITIAL;
+  });
 
   useEffect(() => {
+    if (cachedCv) {
+      setState({ cv: cachedCv, loading: false, ready: true, error: null });
+      return undefined;
+    }
+
     let cancelled = false;
     let intervalId = 0;
     let timeoutId = 0;
 
-    async function resolveOpenCv() {
+    async function tick() {
       try {
-        const loadedCv = await resolveCvFromWindow();
+        const loadedCv = await resolveOnce();
         if (cancelled) return;
         if (!loadedCv) return;
-
         setState({
           cv: loadedCv,
           loading: false,
@@ -101,21 +139,20 @@ export function useOpenCv() {
       }
     }
 
-    void resolveOpenCv();
+    void tick();
     intervalId = window.setInterval(() => {
-      void resolveOpenCv();
-    }, 120);
+      void tick();
+    }, 150);
 
     timeoutId = window.setTimeout(() => {
-      if (cancelled) return;
-      setState((prev) => {
-        if (prev.ready) return prev;
-        return {
-          cv: null,
-          loading: false,
-          ready: false,
-          error: new Error("OpenCV load timeout"),
-        };
+      if (cancelled || cachedCv) return;
+      const err = new Error("OpenCV load timeout");
+      cachedError = err;
+      setState({
+        cv: null,
+        loading: false,
+        ready: false,
+        error: err,
       });
       window.clearInterval(intervalId);
     }, 25000);
@@ -130,17 +167,16 @@ export function useOpenCv() {
   return state;
 }
 
-/** Imperative one-shot resolver (tests / non-React). */
 export async function waitForOpenCv({ timeoutMs = 15000 } = {}) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      const cv = await resolveCvFromWindow();
+      const cv = await resolveOnce();
       if (cv) return cv;
     } catch {
-      /* keep waiting */
+      /* keep waiting until timeout */
     }
     await new Promise((r) => setTimeout(r, 50));
   }
-  throw new Error("OpenCV not available");
+  throw cachedError || new Error("OpenCV not available");
 }

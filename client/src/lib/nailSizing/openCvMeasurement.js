@@ -1,11 +1,15 @@
 /**
- * Compose OpenCV coin/quality + modular nail detector into analyzeFrame-compatible result.
- * OpenCV is source of truth for coin, sharpness, lighting, pixelsPerMm.
+ * Compose OpenCV coin/quality (on downscaled ROI) + modular nail detector.
  */
 
 import { OPEN_CV_SIZING_CONFIG } from "./openCvConfig.js";
-import { getCoinRoi, calculatePixelsPerMm, calculateNailWidthMm } from "./frameCapture.js";
-import { detectCoin, coinResultToAnalysisCoin } from "./coinDetector.js";
+import {
+  getCoinRoi,
+  readVideoRoiScaled,
+  calculatePixelsPerMm,
+  calculateNailWidthMm,
+} from "./frameCapture.js";
+import { detectCoinFromScaledRoi, coinResultToAnalysisCoin } from "./coinDetector.js";
 import { evaluateImageQuality, lightingReasonToHint } from "./imageQuality.js";
 import { nailDetector } from "./nailDetector.js";
 import { GUIDE_LAYOUT } from "./measurementEngine.js";
@@ -27,15 +31,64 @@ function emptyNail(guide) {
   };
 }
 
+function detectNailUnderCoin(video, canvas, coin) {
+  if (!video || !coin?.center || !(coin.found || coin.detected)) {
+    return emptyNail({ cx: 0, cy: 0, diameterPx: 100 });
+  }
+  const d = coin.outerDiameterPx || coin.diameterPx || 80;
+  const fingerRoi = {
+    x: Math.max(0, Math.floor(coin.center.x - d * 0.75)),
+    y: Math.max(0, Math.floor(coin.center.y + d * 0.35)),
+    width: Math.min(video.videoWidth, Math.ceil(d * 1.5)),
+    height: Math.min(video.videoHeight, Math.ceil(d * 2.0)),
+  };
+  fingerRoi.width = Math.min(fingerRoi.width, video.videoWidth - fingerRoi.x);
+  fingerRoi.height = Math.min(fingerRoi.height, video.videoHeight - fingerRoi.y);
+
+  const pack = readVideoRoiScaled(video, canvas, fingerRoi, 280);
+  if (!pack) return emptyNail({ cx: coin.center.x, cy: coin.center.y + d, diameterPx: d });
+
+  const inv = 1 / pack.scale;
+  const localCoin = {
+    found: true,
+    detected: true,
+    center: {
+      x: (coin.center.x - fingerRoi.x) * pack.scale,
+      y: (coin.center.y - fingerRoi.y) * pack.scale,
+    },
+    outerDiameterPx: d * pack.scale,
+    diameterPx: d * pack.scale,
+  };
+  const hit = nailDetector.detect(pack.imageData, localCoin);
+  return {
+    found: !!hit.found,
+    presence: !!hit.presence,
+    widthPx: hit.widthPx != null ? hit.widthPx * inv : null,
+    score: hit.score || 0,
+    left: hit.left != null ? fingerRoi.x + hit.left * inv : null,
+    right: hit.right != null ? fingerRoi.x + hit.right * inv : null,
+    center: {
+      x: fingerRoi.x + hit.center.x * inv,
+      y: fingerRoi.y + hit.center.y * inv,
+    },
+    topY: hit.topY != null ? fingerRoi.y + hit.topY * inv : null,
+    heightPx: (hit.heightPx || d) * inv,
+    tipVisible: hit.tipVisible !== false,
+    reason: hit.reason,
+    method: hit.method || "heuristic",
+  };
+}
+
 /**
- * @param {object} cv — OpenCV runtime
- * @param {ImageData} imageData
- * @param {{ coinDiameterMm?: number, coinMeta?: object, prevCoin?: object|null }} opts
+ * Live / capture analysis from video element — OpenCV never sees full HD.
  */
-export function analyzeFrameWithOpenCv(cv, imageData, opts = {}) {
-  const { coinDiameterMm = 23, coinMeta = null, prevCoin = null } = opts;
-  const width = imageData.width;
-  const height = imageData.height;
+export function analyzeVideoWithOpenCv(cv, video, processCanvas, opts = {}) {
+  const startedAt = performance.now();
+  const { coinDiameterMm = 23, coinMeta = null, prevCoin = null, nailCanvas = null } = opts;
+  if (!cv || !video?.videoWidth) return null;
+
+  const width = video.videoWidth;
+  const height = video.videoHeight;
   const minSide = Math.min(width, height);
   const targetDiameterPx = minSide * GUIDE_LAYOUT.coinDiameterFrac;
   const guideCoinCx = width * GUIDE_LAYOUT.coinCx;
@@ -43,11 +96,13 @@ export function analyzeFrameWithOpenCv(cv, imageData, opts = {}) {
   const outerMm = coinMeta?.outerDiameterMm ?? coinDiameterMm ?? OPEN_CV_SIZING_CONFIG.coin.diameterMm;
 
   const roi = getCoinRoi(width, height, OPEN_CV_SIZING_CONFIG.coinRoiPadding);
-  const coinResult = detectCoin(cv, imageData, roi, OPEN_CV_SIZING_CONFIG, prevCoin);
-  const quality = evaluateImageQuality(cv, imageData, roi, OPEN_CV_SIZING_CONFIG);
+  const pack = readVideoRoiScaled(video, processCanvas, roi, OPEN_CV_SIZING_CONFIG.maxProcessingWidth);
+  if (!pack) return null;
+
+  const coinResult = detectCoinFromScaledRoi(cv, pack, OPEN_CV_SIZING_CONFIG, prevCoin);
+  const quality = evaluateImageQuality(cv, pack.imageData, OPEN_CV_SIZING_CONFIG);
 
   const coin = coinResultToAnalysisCoin(coinResult, targetDiameterPx);
-  // Prefer OpenCV diameter for calibration even when soft-detected
   if (coinResult.diameterPx > 0) {
     coin.diameterPx = coinResult.diameterPx;
     coin.outerDiameterPx = coinResult.diameterPx;
@@ -67,28 +122,8 @@ export function analyzeFrameWithOpenCv(cv, imageData, opts = {}) {
 
   const guide = { cx: guideCoinCx, cy: guideCoinCy, diameterPx: targetDiameterPx };
   let nail = emptyNail(guide);
-  if (coin.found || coinResult.confidence >= 0.4) {
-    const nailHit = nailDetector.detect(imageData, {
-      found: true,
-      detected: true,
-      center: coin.center,
-      outerDiameterPx: coin.outerDiameterPx,
-      diameterPx: coin.diameterPx,
-    });
-    nail = {
-      found: !!nailHit.found,
-      presence: !!nailHit.presence,
-      widthPx: nailHit.widthPx,
-      score: nailHit.score || 0,
-      left: nailHit.left,
-      right: nailHit.right,
-      center: nailHit.center,
-      topY: nailHit.topY,
-      heightPx: nailHit.heightPx,
-      tipVisible: nailHit.tipVisible !== false,
-      reason: nailHit.reason,
-      method: nailHit.method || "heuristic",
-    };
+  if (coin.found || coinResult.confidence >= 0.45) {
+    nail = detectNailUnderCoin(video, nailCanvas || processCanvas, coin);
   }
 
   const brightness = quality.lighting?.meanBrightness ?? 0;
@@ -116,26 +151,18 @@ export function analyzeFrameWithOpenCv(cv, imageData, opts = {}) {
         coin.sizeRatio <= OPEN_CV_SIZING_CONFIG.coin.maxScaleRatio));
 
   const tips = [];
-  if (!quality.sharpnessValid) {
-    tips.push({ code: "blur", textHe: "החזיקי את הטלפון יציב" });
-  }
+  if (!quality.sharpnessValid) tips.push({ code: "blur", textHe: "החזיקי את הטלפון יציב" });
   const lightHint = lightingReasonToHint(quality.lighting?.reason);
   if (lightHint) tips.push({ code: quality.lighting.reason, textHe: lightHint });
 
   if (coinResult.multiCoin) {
     tips.push({ code: "multi-coin", textHe: "השאירי מטבע אחד בלבד בפריים" });
   } else if (!coin.found) {
-    if (coinResult.reason === "coin-clipped") {
-      tips.push({ code: "coin-clip", textHe: "הכניסי את כל המטבע למסגרת" });
-    } else if (coinResult.reason === "coin-too-small") {
-      tips.push({ code: "too-far", textHe: "קרבי מעט את הטלפון" });
-    } else if (coinResult.reason === "coin-too-large") {
-      tips.push({ code: "too-close", textHe: "הרחיקי מעט את הטלפון" });
-    } else if (coinResult.reason === "coin-angled") {
-      tips.push({ code: "perspective", textHe: "החזיקי את הטלפון במקביל למשטח" });
-    } else {
-      tips.push({ code: "place", textHe: "מקמי את המטבע בתוך העיגול" });
-    }
+    if (coinResult.reason === "coin-clipped") tips.push({ code: "coin-clip", textHe: "הכניסי את כל המטבע למסגרת" });
+    else if (coinResult.reason === "coin-too-small") tips.push({ code: "too-far", textHe: "קרבי מעט את הטלפון" });
+    else if (coinResult.reason === "coin-too-large") tips.push({ code: "too-close", textHe: "הרחיקי מעט את הטלפון" });
+    else if (coinResult.reason === "coin-angled") tips.push({ code: "perspective", textHe: "החזיקי את הטלפון במקביל למשטח" });
+    else tips.push({ code: "place", textHe: "מקמי את המטבע בתוך העיגול" });
   } else if (!nail.found) {
     tips.push({ code: "finger-miss", textHe: "מקמי את האצבע ישירות מתחת למטבע" });
   } else if (nail.widthPx == null) {
@@ -143,11 +170,10 @@ export function analyzeFrameWithOpenCv(cv, imageData, opts = {}) {
   }
 
   const pixelsPerMm = coin.pixelsPerMm ?? calculatePixelsPerMm(coin.outerDiameterPx, outerMm);
-  const widthMmEstimate =
-    nail.widthPx != null && pixelsPerMm ? calculateNailWidthMm(nail.widthPx, pixelsPerMm) : null;
+  const totalMs = performance.now() - startedAt;
 
   return {
-    ready: false, // final ready comes from evaluateMeasurementQuality
+    ready: false,
     confidence: 0,
     brightness,
     sharpness,
@@ -159,8 +185,12 @@ export function analyzeFrameWithOpenCv(cv, imageData, opts = {}) {
       quality,
       roi,
       pixelsPerMm,
-      widthMmEstimate,
+      widthMmEstimate:
+        nail.widthPx != null && pixelsPerMm ? calculateNailWidthMm(nail.widthPx, pixelsPerMm) : null,
       fpsTarget: OPEN_CV_SIZING_CONFIG.processingFps,
+      processingMs: totalMs,
+      houghMs: coinResult.timings?.hough ?? null,
+      processSize: coinResult.timings?.roi || `${pack.outW}×${pack.outH}`,
     },
     validation: {
       coinValid: coin.found && !coin.clipped && sizeOk && perspectiveOk,
@@ -178,13 +208,29 @@ export function analyzeFrameWithOpenCv(cv, imageData, opts = {}) {
     finger: nail,
     guides: {
       layout: GUIDE_LAYOUT,
-      targetCoin: {
-        cx: guideCoinCx,
-        cy: guideCoinCy,
-        diameterPx: targetDiameterPx,
-      },
+      targetCoin: { cx: guideCoinCx, cy: guideCoinCy, diameterPx: targetDiameterPx },
     },
   };
+}
+
+/** Alias kept for capture path that already has ImageData from full freeze — re-read via video preferred. */
+export function analyzeFrameWithOpenCv(cv, imageData, opts = {}) {
+  // Full-frame ImageData path is intentionally not used for live Hough.
+  // Callers should use analyzeVideoWithOpenCv. This stub avoids accidental HD work.
+  if (imageData && imageData.width * imageData.height > 320 * 400) {
+    return {
+      ready: false,
+      confidence: 0,
+      brightness: 0,
+      sharpness: 0,
+      tips: [{ code: "engine", textHe: "מנוע המדידה מעבד…" }],
+      coin: { found: false, score: 0, center: { x: 0, y: 0 }, outerDiameterPx: 0 },
+      nail: emptyNail({ cx: 0, cy: 0, diameterPx: 100 }),
+      finger: emptyNail({ cx: 0, cy: 0, diameterPx: 100 }),
+      openCv: { ready: true, rejected: "frame-too-large" },
+    };
+  }
+  return null;
 }
 
 export function openCvHintPriority(analysis, { openCvReady, openCvLoading, openCvError } = {}) {

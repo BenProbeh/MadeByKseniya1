@@ -1,20 +1,13 @@
 /**
- * OpenCV.js coin detector for 10₪ (bimetallic, outer Ø 23mm).
- * Always deletes every cv.Mat — never leave Mats around.
+ * OpenCV.js coin detector — runs ONLY on a small pre-cropped/downscaled ImageData.
+ * Never call with full HD frames.
  */
 
 import { OPEN_CV_SIZING_CONFIG } from "./openCvConfig.js";
 import { calculatePixelsPerMm } from "./frameCapture.js";
+import { matCreated, trackedDelete } from "./matTracker.js";
 
-function clampRoi(roi, width, height) {
-  const x = Math.max(0, Math.min(width - 2, Math.floor(roi.x)));
-  const y = Math.max(0, Math.min(height - 2, Math.floor(roi.y)));
-  const right = Math.max(x + 2, Math.min(width, Math.floor(roi.x + roi.width)));
-  const bottom = Math.max(y + 2, Math.min(height, Math.floor(roi.y + roi.height)));
-  return { x, y, width: right - x, height: bottom - y, guide: roi.guide };
-}
-
-function notDetected(reason) {
+function notDetected(reason, timings = null) {
   return {
     detected: false,
     found: false,
@@ -34,11 +27,11 @@ function notDetected(reason) {
     sizeRatio: 0,
     pixelsPerMm: null,
     score: 0,
+    timings,
   };
 }
 
-function edgeContrastScore(grayMat, cx, cy, radius, samples = 36) {
-  // Sample grayscale difference across the circle rim (relative to ROI mat)
+function edgeContrastScore(grayMat, cx, cy, radius, samples = 24) {
   let sum = 0;
   let n = 0;
   const cols = grayMat.cols;
@@ -54,20 +47,11 @@ function edgeContrastScore(grayMat, cx, cy, radius, samples = 36) {
     if (xIn < 0 || yIn < 0 || xOut < 0 || yOut < 0 || xIn >= cols || yIn >= rows || xOut >= cols || yOut >= rows) {
       continue;
     }
-    const gIn = grayMat.ucharAt(yIn, xIn);
-    const gOut = grayMat.ucharAt(yOut, xOut);
-    sum += Math.abs(gOut - gIn);
+    sum += Math.abs(grayMat.ucharAt(yOut, xOut) - grayMat.ucharAt(yIn, xIn));
     n += 1;
   }
-  if (n < samples * 0.55) return { score: 0, coverage: n / samples };
+  if (n < samples * 0.5) return { score: 0, coverage: n / samples };
   return { score: Math.min(1, sum / n / 40), coverage: n / samples };
-}
-
-function bimetallicHint(grayMat, cx, cy, outerR, expectedInnerRatio) {
-  const innerR = outerR * expectedInnerRatio;
-  if (innerR < 4) return 0.5;
-  const inner = edgeContrastScore(grayMat, cx, cy, innerR, 28);
-  return inner.score;
 }
 
 function perspectiveHint(grayMat, cx, cy, radius) {
@@ -89,43 +73,63 @@ function perspectiveHint(grayMat, cx, cy, radius) {
 }
 
 /**
- * Score + select best Hough circle candidate for 10₪.
+ * @param {object[]} candidates — already in FULL video coordinates
+ * @param {object} meta — { roi, guide, grayMat in small space?, scale, fullW, fullH }
  */
-export function selectBestCoinCandidate(candidates, roi, config, grayRoiMat, prevBest = null) {
+export function selectBestCoinCandidate(candidates, meta, config = OPEN_CV_SIZING_CONFIG, prevBest = null) {
   const coinCfg = config.coin;
-  const guide = roi.guide || {
+  const roi = meta.roi;
+  const guide = meta.guide || roi.guide || {
     cx: roi.x + roi.width / 2,
     cy: roi.y + roi.height / 2,
     diameterPx: Math.min(roi.width, roi.height) * 0.55,
+    radiusPx: Math.min(roi.width, roi.height) * 0.275,
   };
   const targetD = guide.diameterPx;
-  const expectedInner = coinCfg.innerDiameterMm / coinCfg.diameterMm;
+  const scale = meta.scale || 1;
+  const grayMat = meta.grayMat || null;
+  const fullW = meta.fullWidth || Infinity;
+  const fullH = meta.fullHeight || Infinity;
 
   if (!candidates.length) return notDetected("coin-not-detected");
 
-  const scored = candidates.map((c) => {
-    const localX = c.centerX - roi.x;
-    const localY = c.centerY - roi.y;
+  // Cheap pre-rank by distance to guide + size, then deep-score top N
+  const pre = candidates
+    .map((c) => {
+      const centerDist = Math.hypot(c.centerX - guide.cx, c.centerY - guide.cy);
+      const sizeRatio = c.diameterPx / targetD;
+      const sizeFit = Math.max(0, 1 - Math.abs(sizeRatio - 1));
+      const centerFit = Math.max(0, 1 - centerDist / Math.max(guide.radiusPx * 2, 1));
+      return { c, sizeRatio, preScore: centerFit * 0.55 + sizeFit * 0.45 };
+    })
+    .sort((a, b) => b.preScore - a.preScore)
+    .slice(0, config.maxCandidatesToScore || 5);
+
+  const scored = pre.map(({ c, sizeRatio }) => {
+    const localX = (c.centerX - roi.x) * scale;
+    const localY = (c.centerY - roi.y) * scale;
+    const localR = c.radiusPx * scale;
     const centerDist = Math.hypot(c.centerX - guide.cx, c.centerY - guide.cy);
-    const centerScore = Math.max(0, 1 - centerDist / (guide.radiusPx * (1 + coinCfg.maxCenterOffsetFrac * 2) || 1));
-    const sizeRatio = c.diameterPx / targetD;
+    const centerScore = Math.max(
+      0,
+      1 - centerDist / (guide.radiusPx * (1 + coinCfg.maxCenterOffsetFrac * 2) || 1)
+    );
     const scaleScore =
       sizeRatio >= coinCfg.minScaleRatio && sizeRatio <= coinCfg.maxScaleRatio
         ? Math.max(0, 1 - Math.abs(sizeRatio - 1) * 1.1)
         : 0.15;
     const margin = coinCfg.edgeMarginPx;
     const fullyInRoi =
-      localX - c.radiusPx >= margin &&
-      localY - c.radiusPx >= margin &&
-      localX + c.radiusPx <= roi.width - margin &&
-      localY + c.radiusPx <= roi.height - margin;
-    const edge = grayRoiMat
-      ? edgeContrastScore(grayRoiMat, localX, localY, c.radiusPx)
-      : { score: 0.5, coverage: 1 };
-    const perspective = grayRoiMat ? perspectiveHint(grayRoiMat, localX, localY, c.radiusPx) : 0.7;
-    const bi = grayRoiMat ? bimetallicHint(grayRoiMat, localX, localY, c.radiusPx, expectedInner) : 0.5;
+      c.centerX - c.radiusPx >= roi.x + margin &&
+      c.centerY - c.radiusPx >= roi.y + margin &&
+      c.centerX + c.radiusPx <= roi.x + roi.width - margin &&
+      c.centerY + c.radiusPx <= roi.y + roi.height - margin;
+    const edge = grayMat
+      ? edgeContrastScore(grayMat, localX, localY, localR)
+      : { score: 0.55, coverage: 1 };
+    const perspective = grayMat ? perspectiveHint(grayMat, localX, localY, localR) : 0.7;
     let temporal = 0.5;
-    if (prevBest?.detected) {
+    if (prevBest?.detected || (prevBest?.confidence ?? 0) > 0.4) {
       const d = Math.hypot(c.centerX - prevBest.centerX, c.centerY - prevBest.centerY);
       temporal = Math.max(0, 1 - d / Math.max(targetD, 1));
     }
@@ -133,11 +137,10 @@ export function selectBestCoinCandidate(candidates, roi, config, grayRoiMat, pre
       0,
       Math.min(
         1,
-        centerScore * 0.22 +
-          scaleScore * 0.22 +
-          edge.score * 0.22 +
+        centerScore * 0.25 +
+          scaleScore * 0.25 +
+          edge.score * 0.2 +
           perspective * 0.12 +
-          bi * 0.12 +
           (fullyInRoi ? 0.1 : 0) +
           temporal * coinCfg.temporalWeight
       )
@@ -145,11 +148,11 @@ export function selectBestCoinCandidate(candidates, roi, config, grayRoiMat, pre
     return {
       ...c,
       sizeRatio,
-      fullyVisible: fullyInRoi && edge.coverage >= 0.7,
+      fullyVisible: fullyInRoi && edge.coverage >= 0.65,
       perspectiveRatio: perspective,
       confidence,
-      clipped: !fullyInRoi || edge.coverage < 0.7,
-      innerDiameterPx: c.radiusPx * 2 * expectedInner,
+      clipped: !fullyInRoi || edge.coverage < 0.65,
+      innerDiameterPx: c.diameterPx * (coinCfg.innerDiameterMm / coinCfg.diameterMm),
     };
   });
 
@@ -157,22 +160,27 @@ export function selectBestCoinCandidate(candidates, roi, config, grayRoiMat, pre
   const best = scored[0];
   const second = scored[1];
   let multiCoin = false;
-  if (best && second && second.confidence > 0.45 && best.confidence > 0.45) {
+  if (best && second && second.confidence > 0.5 && best.confidence > 0.5) {
     const dist = Math.hypot(best.centerX - second.centerX, best.centerY - second.centerY);
     if (dist > best.diameterPx * 0.85) multiCoin = true;
   }
-
-  if (multiCoin) {
-    return { ...notDetected("multi-coin"), multiCoin: true };
-  }
+  if (multiCoin) return { ...notDetected("multi-coin"), multiCoin: true };
 
   const scaleValid =
     best.sizeRatio >= coinCfg.minScaleRatio && best.sizeRatio <= coinCfg.maxScaleRatio;
   const perspectiveValid = best.perspectiveRatio >= 0.55;
-  const detected =
-    best.confidence >= coinCfg.minConfidence && best.fullyVisible && scaleValid && !best.clipped;
+  const clippedFrame =
+    best.centerX - best.radiusPx < coinCfg.edgeMarginPx ||
+    best.centerY - best.radiusPx < coinCfg.edgeMarginPx ||
+    best.centerX + best.radiusPx > fullW - coinCfg.edgeMarginPx ||
+    best.centerY + best.radiusPx > fullH - coinCfg.edgeMarginPx;
 
-  const pixelsPerMm = calculatePixelsPerMm(best.diameterPx, coinCfg.diameterMm);
+  const detected =
+    best.confidence >= coinCfg.minConfidence &&
+    best.fullyVisible &&
+    scaleValid &&
+    !best.clipped &&
+    !clippedFrame;
 
   return {
     detected,
@@ -180,7 +188,7 @@ export function selectBestCoinCandidate(candidates, roi, config, grayRoiMat, pre
     confidence: best.confidence,
     reason: detected
       ? null
-      : !best.fullyVisible || best.clipped
+      : clippedFrame || best.clipped
         ? "coin-clipped"
         : !scaleValid
           ? best.sizeRatio < coinCfg.minScaleRatio
@@ -195,13 +203,13 @@ export function selectBestCoinCandidate(candidates, roi, config, grayRoiMat, pre
     diameterPx: best.diameterPx,
     outerDiameterPx: best.diameterPx,
     innerDiameterPx: best.innerDiameterPx,
-    fullyVisible: best.fullyVisible,
+    fullyVisible: best.fullyVisible && !clippedFrame,
     scaleValid,
     perspectiveValid,
-    clipped: best.clipped,
+    clipped: best.clipped || clippedFrame,
     multiCoin: false,
     sizeRatio: best.sizeRatio,
-    pixelsPerMm,
+    pixelsPerMm: calculatePixelsPerMm(best.diameterPx, coinCfg.diameterMm),
     score: best.confidence,
     perspectiveRatio: best.perspectiveRatio,
     center: { x: best.centerX, y: best.centerY },
@@ -209,37 +217,50 @@ export function selectBestCoinCandidate(candidates, roi, config, grayRoiMat, pre
 }
 
 /**
- * Detect 10₪ coin in ImageData using OpenCV HoughCircles within ROI.
+ * Detect coin from a SMALL ImageData (already ROI-cropped + downscaled).
+ * @param {object} pack — from readVideoRoiScaled
  */
-export function detectCoin(cv, imageData, roi, config = OPEN_CV_SIZING_CONFIG, prevBest = null) {
-  if (!cv || typeof cv.Mat !== "function" || !imageData?.data) {
-    return notDetected("opencv-unavailable");
+export function detectCoinFromScaledRoi(cv, pack, config = OPEN_CV_SIZING_CONFIG, prevBest = null) {
+  const timings = { total: 0, mat: 0, gray: 0, blur: 0, hough: 0, score: 0 };
+  const t0 = performance.now();
+
+  if (!cv || typeof cv.Mat !== "function" || !pack?.imageData?.data) {
+    return notDetected("opencv-unavailable", timings);
   }
 
-  const width = imageData.width;
-  const height = imageData.height;
-  const safeRoi = clampRoi(roi || { x: 0, y: 0, width, height }, width, height);
-  if (safeRoi.width < 16 || safeRoi.height < 16) {
-    return notDetected("roi-too-small");
+  const { imageData, roi, scale, fullWidth, fullHeight } = pack;
+  if (imageData.width < 16 || imageData.height < 16) {
+    return notDetected("roi-too-small", timings);
   }
 
-  const source = cv.matFromImageData(imageData);
-  const roiRect = new cv.Rect(safeRoi.x, safeRoi.y, safeRoi.width, safeRoi.height);
-  let cropped = null;
+  let source = null;
   const gray = new cv.Mat();
+  matCreated(1);
   const blurred = new cv.Mat();
+  matCreated(1);
   const circles = new cv.Mat();
+  matCreated(1);
 
   try {
-    cropped = source.roi(roiRect);
-    cv.cvtColor(cropped, gray, cv.COLOR_RGBA2GRAY);
+    let t = performance.now();
+    source = cv.matFromImageData(imageData);
+    matCreated(1);
+    timings.mat = performance.now() - t;
+
+    t = performance.now();
+    cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY);
+    timings.gray = performance.now() - t;
+
+    t = performance.now();
     cv.medianBlur(gray, blurred, 5);
+    timings.blur = performance.now() - t;
 
-    const minSide = Math.min(safeRoi.width, safeRoi.height);
-    const minRadius = Math.max(8, Math.floor(minSide * config.hough.minRadiusRatio));
-    const maxRadius = Math.max(minRadius + 4, Math.floor(minSide * config.hough.maxRadiusRatio));
-    const minDist = Math.max(minRadius, Math.floor(minSide * config.hough.minDistanceRatio));
+    const expectedRadius = imageData.width * config.hough.expectedRadiusFrac;
+    const minRadius = Math.max(6, Math.round(expectedRadius * config.hough.minRadiusFactor));
+    const maxRadius = Math.max(minRadius + 2, Math.round(expectedRadius * config.hough.maxRadiusFactor));
+    const minDist = Math.max(minRadius, Math.floor(imageData.height * config.hough.minDistanceRatio));
 
+    t = performance.now();
     cv.HoughCircles(
       blurred,
       circles,
@@ -251,59 +272,85 @@ export function detectCoin(cv, imageData, roi, config = OPEN_CV_SIZING_CONFIG, p
       minRadius,
       maxRadius
     );
+    timings.hough = performance.now() - t;
 
+    const inv = 1 / (scale || 1);
     const candidates = [];
-    const count = circles.cols;
-    for (let index = 0; index < count; index += 1) {
-      const localX = circles.data32F[index * 3];
-      const localY = circles.data32F[index * 3 + 1];
-      const radius = circles.data32F[index * 3 + 2];
-      if (!Number.isFinite(localX) || !Number.isFinite(localY) || !Number.isFinite(radius) || radius < 4) {
-        continue;
-      }
+    for (let index = 0; index < circles.cols; index += 1) {
+      const lx = circles.data32F[index * 3];
+      const ly = circles.data32F[index * 3 + 1];
+      const lr = circles.data32F[index * 3 + 2];
+      if (!Number.isFinite(lx) || !Number.isFinite(ly) || !Number.isFinite(lr) || lr < 3) continue;
       candidates.push({
-        centerX: safeRoi.x + localX,
-        centerY: safeRoi.y + localY,
-        radiusPx: radius,
-        diameterPx: radius * 2,
+        centerX: roi.x + lx * inv,
+        centerY: roi.y + ly * inv,
+        radiusPx: lr * inv,
+        diameterPx: lr * 2 * inv,
       });
     }
 
-    // Also reject if circle extends outside full frame
-    const ranked = selectBestCoinCandidate(candidates, safeRoi, config, gray, prevBest);
-    if (ranked.detected || ranked.confidence > 0) {
-      const margin = config.coin.edgeMarginPx;
-      const clippedFrame =
-        ranked.centerX - ranked.radiusPx < margin ||
-        ranked.centerY - ranked.radiusPx < margin ||
-        ranked.centerX + ranked.radiusPx > width - margin ||
-        ranked.centerY + ranked.radiusPx > height - margin;
-      if (clippedFrame) {
-        return {
-          ...ranked,
-          detected: false,
-          found: false,
-          fullyVisible: false,
-          clipped: true,
-          reason: "coin-clipped",
-        };
-      }
+    t = performance.now();
+    const ranked = selectBestCoinCandidate(
+      candidates,
+      {
+        roi,
+        guide: roi.guide,
+        grayMat: gray,
+        scale,
+        fullWidth,
+        fullHeight,
+      },
+      config,
+      prevBest
+    );
+    timings.score = performance.now() - t;
+    timings.total = performance.now() - t0;
+    timings.roi = `${imageData.width}×${imageData.height}`;
+
+    if (typeof console !== "undefined" && timings.total > 50) {
+      // eslint-disable-next-line no-console
+      console.debug(
+        "[NailSizing] OpenCV frame:",
+        Math.round(timings.total),
+        "ms · Hough",
+        Math.round(timings.hough),
+        "ms · ROI",
+        timings.roi
+      );
     }
-    return ranked;
+
+    return { ...ranked, timings };
   } catch {
-    return notDetected("coin-detect-error");
+    timings.total = performance.now() - t0;
+    return notDetected("coin-detect-error", timings);
   } finally {
-    circles.delete();
-    blurred.delete();
-    gray.delete();
-    if (cropped) cropped.delete();
-    source.delete();
+    trackedDelete(circles);
+    trackedDelete(blurred);
+    trackedDelete(gray);
+    trackedDelete(source);
   }
 }
 
-/**
- * Map OpenCV coin result onto measurementEngine-compatible coin object.
- */
+/** @deprecated Prefer detectCoinFromScaledRoi — kept for tests with synthetic small mats */
+export function detectCoin(cv, imageData, roi, config = OPEN_CV_SIZING_CONFIG, prevBest = null) {
+  if (!cv || !imageData) return notDetected("opencv-unavailable");
+  // Treat imageData as already the ROI content at scale 1 when roi matches image size
+  const pack = {
+    imageData,
+    roi: roi || { x: 0, y: 0, width: imageData.width, height: imageData.height },
+    scale: 1,
+    fullWidth: (roi ? roi.x + roi.width : imageData.width) + 8,
+    fullHeight: (roi ? roi.y + roi.height : imageData.height) + 8,
+  };
+  if (roi && (imageData.width !== roi.width || imageData.height !== roi.height)) {
+    // Legacy path accidentally fed full frame — refuse to process huge inputs
+    if (imageData.width * imageData.height > 320 * 320 * 2) {
+      return notDetected("frame-too-large");
+    }
+  }
+  return detectCoinFromScaledRoi(cv, pack, config, prevBest);
+}
+
 export function coinResultToAnalysisCoin(coinResult, targetDiameterPx) {
   if (!coinResult?.detected && !(coinResult?.confidence > 0)) {
     return {

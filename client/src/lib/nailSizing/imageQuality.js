@@ -1,34 +1,31 @@
 /**
- * OpenCV-based sharpness (Laplacian variance) and lighting checks.
- * Every Mat is deleted in finally.
+ * OpenCV sharpness / lighting on SMALL ImageData only.
  */
 
 import { OPEN_CV_SIZING_CONFIG } from "./openCvConfig.js";
+import { matCreated, trackedDelete } from "./matTracker.js";
 
-export function calculateSharpness(cv, imageData, roi = null) {
+export function calculateSharpness(cv, imageData) {
   if (!cv || !imageData?.data) return 0;
+  if (imageData.width * imageData.height > 400 * 400) {
+    // Refuse oversized inputs — caller must downscale
+    return 0;
+  }
 
-  const source = cv.matFromImageData(imageData);
+  let source = null;
   const gray = new cv.Mat();
+  matCreated(1);
   const laplacian = new cv.Mat();
+  matCreated(1);
   const mean = new cv.Mat();
+  matCreated(1);
   const standardDeviation = new cv.Mat();
-  let cropped = null;
+  matCreated(1);
 
   try {
-    let work = source;
-    if (roi && roi.width > 8 && roi.height > 8) {
-      const rect = new cv.Rect(
-        Math.max(0, Math.floor(roi.x)),
-        Math.max(0, Math.floor(roi.y)),
-        Math.min(imageData.width - Math.floor(roi.x), Math.floor(roi.width)),
-        Math.min(imageData.height - Math.floor(roi.y), Math.floor(roi.height))
-      );
-      cropped = source.roi(rect);
-      work = cropped;
-    }
-
-    cv.cvtColor(work, gray, cv.COLOR_RGBA2GRAY);
+    source = cv.matFromImageData(imageData);
+    matCreated(1);
+    cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY);
     cv.Laplacian(gray, laplacian, cv.CV_64F);
     cv.meanStdDev(laplacian, mean, standardDeviation);
     const deviation = standardDeviation.doubleAt(0, 0);
@@ -36,16 +33,15 @@ export function calculateSharpness(cv, imageData, roi = null) {
   } catch {
     return 0;
   } finally {
-    standardDeviation.delete();
-    mean.delete();
-    laplacian.delete();
-    gray.delete();
-    if (cropped) cropped.delete();
-    source.delete();
+    trackedDelete(standardDeviation);
+    trackedDelete(mean);
+    trackedDelete(laplacian);
+    trackedDelete(gray);
+    trackedDelete(source);
   }
 }
 
-export function evaluateLighting(cv, imageData, roi = null, config = OPEN_CV_SIZING_CONFIG.quality) {
+export function evaluateLighting(cv, imageData, config = OPEN_CV_SIZING_CONFIG.quality) {
   if (!cv || !imageData?.data) {
     return {
       valid: false,
@@ -56,34 +52,33 @@ export function evaluateLighting(cv, imageData, roi = null, config = OPEN_CV_SIZ
       reason: "opencv-unavailable",
     };
   }
+  if (imageData.width * imageData.height > 400 * 400) {
+    return {
+      valid: false,
+      meanBrightness: 0,
+      darkPixelRatio: 1,
+      brightPixelRatio: 0,
+      contrast: 0,
+      reason: "frame-too-large",
+    };
+  }
 
-  const source = cv.matFromImageData(imageData);
+  let source = null;
   const gray = new cv.Mat();
-  let cropped = null;
+  matCreated(1);
 
   try {
-    let work = source;
-    if (roi && roi.width > 8 && roi.height > 8) {
-      const rect = new cv.Rect(
-        Math.max(0, Math.floor(roi.x)),
-        Math.max(0, Math.floor(roi.y)),
-        Math.min(imageData.width - Math.floor(roi.x), Math.floor(roi.width)),
-        Math.min(imageData.height - Math.floor(roi.y), Math.floor(roi.height))
-      );
-      cropped = source.roi(rect);
-      work = cropped;
-    }
-
-    cv.cvtColor(work, gray, cv.COLOR_RGBA2GRAY);
+    source = cv.matFromImageData(imageData);
+    matCreated(1);
+    cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY);
     const meanMat = cv.mean(gray);
     const meanBrightness = meanMat[0];
 
-    // Sample ratios without allocating another full Mat histogram when possible
     let dark = 0;
     let bright = 0;
     let sumSq = 0;
     let n = 0;
-    const step = Math.max(1, Math.floor((gray.rows * gray.cols) / 4000));
+    const step = Math.max(2, Math.floor((gray.rows * gray.cols) / 1500));
     for (let i = 0; i < gray.rows * gray.cols; i += step) {
       const y = Math.floor(i / gray.cols);
       const x = i % gray.cols;
@@ -106,7 +101,6 @@ export function evaluateLighting(cv, imageData, roi = null, config = OPEN_CV_SIZ
       reason = "too-bright";
     }
 
-    // Soft gate — do not block solely on mild contrast
     const valid =
       meanBrightness >= config.minimumBrightness &&
       meanBrightness <= config.maximumBrightness &&
@@ -131,15 +125,14 @@ export function evaluateLighting(cv, imageData, roi = null, config = OPEN_CV_SIZ
       reason: "lighting-error",
     };
   } finally {
-    if (cropped) cropped.delete();
-    gray.delete();
-    source.delete();
+    trackedDelete(gray);
+    trackedDelete(source);
   }
 }
 
-export function evaluateImageQuality(cv, imageData, roi = null, config = OPEN_CV_SIZING_CONFIG) {
-  const sharpness = calculateSharpness(cv, imageData, roi);
-  const lighting = evaluateLighting(cv, imageData, roi, config.quality);
+export function evaluateImageQuality(cv, imageData, config = OPEN_CV_SIZING_CONFIG) {
+  const sharpness = calculateSharpness(cv, imageData);
+  const lighting = evaluateLighting(cv, imageData, config.quality);
   const sharpnessValid = sharpness >= config.quality.minimumSharpness;
   return {
     sharpness,

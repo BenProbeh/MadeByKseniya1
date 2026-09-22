@@ -1,10 +1,24 @@
 /**
- * Frame + ROI helpers for OpenCV coin detection.
+ * Frame + ROI helpers — crop/downscale BEFORE OpenCV (never feed full HD to Mats).
  */
 
 import { GUIDE_LAYOUT } from "./measurementEngine.js";
 import { getCoverTransform } from "./videoGeometry.js";
 import { OPEN_CV_SIZING_CONFIG } from "./openCvConfig.js";
+
+export function ensureCanvasSize(canvas, width, height) {
+  if (!canvas) return false;
+  let changed = false;
+  if (canvas.width !== width) {
+    canvas.width = width;
+    changed = true;
+  }
+  if (canvas.height !== height) {
+    canvas.height = height;
+    changed = true;
+  }
+  return changed;
+}
 
 /**
  * Read a camera frame into ImageData. Avoids resizing canvas when resolution unchanged.
@@ -22,8 +36,7 @@ export function readVideoFrame(video, canvas) {
 
   const w = video.videoWidth;
   const h = video.videoHeight;
-  if (canvas.width !== w) canvas.width = w;
-  if (canvas.height !== h) canvas.height = h;
+  ensureCanvasSize(canvas, w, h);
 
   const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context) return null;
@@ -32,8 +45,59 @@ export function readVideoFrame(video, canvas) {
 }
 
 /**
- * Guide coin rect in video-native pixels (center + diameter from GUIDE_LAYOUT).
+ * Draw only the coin ROI from video onto a small canvas and return ImageData + scale map.
+ * This is the live-path input for OpenCV — never full-resolution Mat.
  */
+export function readVideoRoiScaled(
+  video,
+  canvas,
+  roi,
+  maxWidth = OPEN_CV_SIZING_CONFIG.maxProcessingWidth
+) {
+  if (
+    !video ||
+    !canvas ||
+    !roi ||
+    video.readyState < 2 ||
+    video.videoWidth <= 0 ||
+    video.videoHeight <= 0 ||
+    roi.width < 8 ||
+    roi.height < 8
+  ) {
+    return null;
+  }
+
+  const scale = Math.min(1, maxWidth / roi.width);
+  const outW = Math.max(1, Math.round(roi.width * scale));
+  const outH = Math.max(1, Math.round(roi.height * scale));
+  ensureCanvasSize(canvas, outW, outH);
+
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return null;
+
+  context.drawImage(
+    video,
+    roi.x,
+    roi.y,
+    roi.width,
+    roi.height,
+    0,
+    0,
+    outW,
+    outH
+  );
+
+  return {
+    imageData: context.getImageData(0, 0, outW, outH),
+    roi,
+    scale,
+    outW,
+    outH,
+    fullWidth: video.videoWidth,
+    fullHeight: video.videoHeight,
+  };
+}
+
 export function getGuideCoinInVideo(videoWidth, videoHeight) {
   const minSide = Math.min(videoWidth, videoHeight);
   const diameterPx = minSide * GUIDE_LAYOUT.coinDiameterFrac;
@@ -42,9 +106,6 @@ export function getGuideCoinInVideo(videoWidth, videoHeight) {
   return { cx, cy, diameterPx, radiusPx: diameterPx / 2 };
 }
 
-/**
- * Expand guide coin into a padded ROI clamped to the frame.
- */
 export function getCoinRoi(videoWidth, videoHeight, padding = OPEN_CV_SIZING_CONFIG.coinRoiPadding) {
   const guide = getGuideCoinInVideo(videoWidth, videoHeight);
   const pad = guide.radiusPx * (1 + padding * 2);
@@ -63,10 +124,6 @@ export function getCoinRoi(videoWidth, videoHeight, padding = OPEN_CV_SIZING_CON
   };
 }
 
-/**
- * Map display-space guide circle (if needed) into video ROI via cover transform.
- * Prefer getCoinRoi for the built-in vertical guide.
- */
 export function displayRectToVideoRoi(displayRect, videoW, videoH, displayW, displayH, paddingFrac = 0.2) {
   const t = getCoverTransform(videoW, videoH, displayW, displayH);
   const vx0 = (displayRect.x - t.offsetX) / t.scale;
@@ -100,4 +157,15 @@ export function calculateNailWidthMm(nailWidthPx, pixelsPerMm) {
     return null;
   }
   return nailWidthPx / pixelsPerMm;
+}
+
+/** Map a point from downscaled ROI space → full video pixels. */
+export function scaledRoiToFull(localX, localY, radius, pack) {
+  const inv = 1 / (pack.scale || 1);
+  return {
+    centerX: pack.roi.x + localX * inv,
+    centerY: pack.roi.y + localY * inv,
+    radiusPx: radius * inv,
+    diameterPx: radius * 2 * inv,
+  };
 }
