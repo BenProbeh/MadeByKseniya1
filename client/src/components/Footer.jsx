@@ -4,6 +4,7 @@ const siteLinks = [
   { to: "/services", label: "מסלולים" },
   { to: "/gallery", label: "גלריה" },
   { to: "/build-a-set", label: "עצבי סט" },
+  { to: "/nail-sizing", label: "מדידת ציפורניים" },
   { to: "/about", label: "אודות" },
   { to: "/booking", label: "קביעת תור" },
 ];

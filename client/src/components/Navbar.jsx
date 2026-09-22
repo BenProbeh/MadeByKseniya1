@@ -8,6 +8,7 @@ const links = [
   { to: "/services", label: "מסלולים" },
   { to: "/gallery", label: "גלריה" },
   { to: "/build-a-set", label: "עצבי סט" },
+  { to: "/nail-sizing", label: "מדידה" },
   { to: "/about", label: "אודות" },
 ];
 

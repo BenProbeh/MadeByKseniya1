@@ -47,4 +47,21 @@ export const updateAppointment = (id, payload) =>
 export const sendChatMessage = (messages) =>
   api.post("/chat", { messages }).then((r) => r.data);
 
+export const saveMeasurementProfile = (payload) =>
+  api
+    .post("/measurements/profile", payload)
+    .then((r) => r.data)
+    .catch((err) => {
+      if (isNoBackend(err)) {
+        return { id: `local-${Date.now()}`, phone: payload.phone, offline: true };
+      }
+      throw err;
+    });
+
+export const getMeasurementProfile = (phone) =>
+  api
+    .get("/measurements/profile", { params: { phone } })
+    .then((r) => r.data)
+    .catch(() => null);
+
 export default api;

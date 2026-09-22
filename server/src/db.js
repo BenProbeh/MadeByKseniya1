@@ -30,6 +30,45 @@ db.exec(`
     notes TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS measurement_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone TEXT NOT NULL,
+    coin_id TEXT,
+    consent_store_images INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS finger_measurements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL REFERENCES measurement_profiles(id),
+    hand_id TEXT NOT NULL,
+    finger_id TEXT NOT NULL,
+    width_mm REAL,
+    size INTEGER,
+    confidence REAL,
+    coin_id TEXT,
+    manual_override INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'confirmed',
+    capture_quality_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS measurement_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT NOT NULL UNIQUE,
+    profile_id INTEGER NOT NULL REFERENCES measurement_profiles(id),
+    phone TEXT NOT NULL,
+    expires_at TEXT,
+    revoked_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_measurement_profiles_phone ON measurement_profiles(phone);
+  CREATE INDEX IF NOT EXISTS idx_finger_measurements_profile ON finger_measurements(profile_id);
+  CREATE INDEX IF NOT EXISTS idx_measurement_links_token ON measurement_links(token);
 `);
 
 const seedCount = db.prepare("SELECT COUNT(*) AS c FROM services").get().c;

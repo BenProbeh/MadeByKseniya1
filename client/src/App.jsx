@@ -10,6 +10,7 @@ import Gallery from "./pages/Gallery.jsx";
 import About from "./pages/About.jsx";
 import Booking from "./pages/Booking.jsx";
 import Configurator from "./pages/Configurator.jsx";
+import NailSizing from "./pages/NailSizing.jsx";
 
 export default function App() {
   const { pathname } = useLocation();
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="/gallery" element={<Gallery />} />
           <Route path="/about" element={<About />} />
           <Route path="/build-a-set" element={<Configurator />} />
+          <Route path="/nail-sizing" element={<NailSizing />} />
           <Route path="/booking" element={<Booking />} />
         </Routes>
       </main>

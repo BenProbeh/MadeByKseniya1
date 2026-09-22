@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import NailPreview from "../components/NailPreview.jsx";
 import ShadePhoto from "../components/ShadePhoto.jsx";
@@ -139,6 +139,19 @@ export default function Configurator() {
       <ScrollCue label="המשיכי לגלול לעיצוב הסט המלא" />
 
       <FullConfigurator onBookSet={(selection) => goToBooking(buildSetSummary(selection))} />
+
+      <div className="max-w-6xl mx-auto px-6 pb-16">
+        <div className="glass-panel p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-5">
+          <div className="text-center md:text-right space-y-2">
+            <span className="section-eyebrow justify-center md:justify-start">Sizing</span>
+            <p className="font-serif text-xl text-white">רוצה מדידה מדויקת יותר לסט?</p>
+            <p className="text-sm text-white/55">מדדי את הציפורניים עם מטבע ומצלמה — ונשמור את המידות לפעם הבאה.</p>
+          </div>
+          <Link to="/nail-sizing" className="btn-ghost whitespace-nowrap shrink-0">
+            מדידת מידת הציפורניים
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }
