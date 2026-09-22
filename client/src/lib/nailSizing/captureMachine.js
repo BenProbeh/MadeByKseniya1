@@ -1,9 +1,14 @@
-import { CAPTURE_CONFIG, CaptureState, isLiveCaptureState } from "./captureConfig.js";
+import {
+  AUTO_CAPTURE_CONFIG,
+  CAPTURE_CONFIG,
+  CaptureState,
+  isLiveCaptureState,
+} from "./captureConfig.js";
 
-export { CAPTURE_CONFIG, CaptureState, isLiveCaptureState };
+export { AUTO_CAPTURE_CONFIG, CAPTURE_CONFIG, CaptureState, isLiveCaptureState };
 
 /**
- * Single capture gate — geometry only. No sharpness/lighting/nail-precision/stability timers.
+ * Single capture gate — geometry only. No sharpness/lighting/nail-precision.
  */
 export function isFrameReadyForCapture(result) {
   if (!result) return false;
@@ -84,7 +89,6 @@ export function buildCaptureGate(analysis, { cameraReady = false } = {}, config 
   return {
     ...gate,
     ready: isFrameReadyForCapture(gate),
-    framesNeeded: config.REQUIRED_VALID_FRAMES,
     debug: {
       ...gate,
       horizontalDifference: Number.isFinite(horizontalDifference) ? Math.round(horizontalDifference) : null,
@@ -96,51 +100,128 @@ export function buildCaptureGate(analysis, { cameraReady = false } = {}, config 
 }
 
 /**
- * Pure consecutive-frame counter (ref-friendly). No timers.
+ * Warmup + continuous alignment hold. Geometry gate unchanged.
  */
-export function createFrameCounter(required = CAPTURE_CONFIG.REQUIRED_VALID_FRAMES) {
-  let count = 0;
+export function createAlignmentHoldTracker(timing = AUTO_CAPTURE_CONFIG) {
+  let cameraReadyAt = null;
+  let validSince = null;
+
   return {
-    get count() {
-      return count;
+    get cameraReadyAt() {
+      return cameraReadyAt;
     },
-    push(ready) {
-      if (ready) count += 1;
-      else count = 0;
-      return count;
+    markCameraReady(now = performance.now()) {
+      cameraReadyAt = now;
+      validSince = null;
     },
-    shouldCapture() {
-      return count >= required;
+    resetSession() {
+      cameraReadyAt = null;
+      validSince = null;
     },
-    reset() {
-      count = 0;
+    resetAlignment() {
+      validSince = null;
+    },
+    evaluate({ ready, captureLocked, now = performance.now() }) {
+      if (captureLocked) {
+        return {
+          shouldCapture: false,
+          progress: 0,
+          warmupComplete: false,
+          blockedBy: "captureLocked",
+          validDuration: 0,
+        };
+      }
+      if (cameraReadyAt == null) {
+        return {
+          shouldCapture: false,
+          progress: 0,
+          warmupComplete: false,
+          blockedBy: "cameraNotMarkedReady",
+          validDuration: 0,
+        };
+      }
+
+      const warmupComplete = now - cameraReadyAt >= timing.cameraWarmupMs;
+      if (!warmupComplete) {
+        validSince = null;
+        return {
+          shouldCapture: false,
+          progress: 0,
+          warmupComplete: false,
+          blockedBy: "warmup",
+          validDuration: 0,
+          warmupRemainingMs: Math.max(0, timing.cameraWarmupMs - (now - cameraReadyAt)),
+        };
+      }
+
+      if (!ready) {
+        validSince = null;
+        return {
+          shouldCapture: false,
+          progress: 0,
+          warmupComplete: true,
+          blockedBy: "alignment",
+          validDuration: 0,
+        };
+      }
+
+      if (validSince == null) validSince = now;
+      const validDuration = now - validSince;
+      const progress = Math.min(1, validDuration / timing.requiredAlignmentMs);
+      if (validDuration >= timing.requiredAlignmentMs) {
+        validSince = null;
+        return {
+          shouldCapture: true,
+          progress: 1,
+          warmupComplete: true,
+          blockedBy: null,
+          validDuration,
+        };
+      }
+      return {
+        shouldCapture: false,
+        progress,
+        warmupComplete: true,
+        blockedBy: null,
+        validDuration,
+      };
     },
   };
 }
 
 /**
- * Drive auto-capture decision from gate + counter + lock.
- * Returns { count, shouldCapture, gate }.
+ * Single auto-capture decision path: geometry gate + warmup + alignment hold.
  */
 export function handleDetectionForCapture({
   analysis,
   cameraReady,
   captureLocked,
-  counter,
+  holdTracker,
+  now = performance.now(),
   config = CAPTURE_CONFIG,
 }) {
   const gate = buildCaptureGate(analysis, { cameraReady }, config);
-  if (captureLocked) {
-    return { count: counter.count, shouldCapture: false, gate, blockedBy: "captureLocked" };
+  if (!holdTracker) {
+    return {
+      gate,
+      shouldCapture: false,
+      progress: 0,
+      warmupComplete: false,
+      blockedBy: "missingHoldTracker",
+    };
   }
-  const count = counter.push(gate.ready);
-  const shouldCapture = count >= config.REQUIRED_VALID_FRAMES;
-  if (shouldCapture) counter.reset();
+  const hold = holdTracker.evaluate({
+    ready: gate.ready,
+    captureLocked,
+    now,
+  });
   return {
-    count: shouldCapture ? config.REQUIRED_VALID_FRAMES : count,
-    shouldCapture,
     gate,
-    blockedBy: gate.ready ? null : firstFalseKey(gate),
+    shouldCapture: hold.shouldCapture,
+    progress: hold.progress,
+    warmupComplete: hold.warmupComplete,
+    blockedBy: hold.blockedBy || (gate.ready ? null : firstFalseKey(gate)),
+    validDuration: hold.validDuration || 0,
   };
 }
 
@@ -160,20 +241,22 @@ function firstFalseKey(gate) {
   return null;
 }
 
-export function deriveLiveState(gate) {
+export function deriveLiveState(gate, { warmupComplete = true } = {}) {
   if (!gate?.cameraReady) return CaptureState.INITIALIZING;
+  if (!warmupComplete) return CaptureState.SEARCHING;
   if (!gate.coinDetected && !gate.fingerDetected) return CaptureState.SEARCHING;
   if (!gate.ready) return CaptureState.ALIGNING;
   return CaptureState.HOLD_STILL;
 }
 
-export function hintForState(state, gate, failReason) {
+export function hintForState(state, gate, failReason, { warmupComplete = true } = {}) {
   if (state === CaptureState.INITIALIZING) return "מכינים את המצלמה…";
   if (state === CaptureState.CAPTURING) return "מצלמים…";
   if (state === CaptureState.SUCCESS) return "הצילום בוצע בהצלחה";
   if (state === CaptureState.FAILED) return failReason || "הצילום נכשל — מנסים שוב";
+  if (!warmupComplete) return "מקמי את המטבע ואת האצבע בתוך המסגרות";
   if (state === CaptureState.HOLD_STILL || state === CaptureState.COUNTING_DOWN) {
-    return "מעולה — מצלמים";
+    return "מעולה — הישארי במקום";
   }
   if (!gate) return "מקמי את המטבע למעלה ואת האצבע ישירות מתחתיו";
   if (!gate.coinDetected) return "מקמי את המטבע באזור העליון";
@@ -183,10 +266,4 @@ export function hintForState(state, gate, failReason) {
   if (!gate.verticalDistanceValid) return "קרבי מעט את האצבע אל המטבע";
   if (!gate.coinScaleValid) return "קרבי או הרחיקי מעט את הטלפון";
   return "מקמי את המטבע למעלה ואת האצבע ישירות מתחתיו";
-}
-
-/** @deprecated — kept so old imports don't crash; always prefer isFrameReadyForCapture */
-export function readyForAutoCapture(args) {
-  const gate = buildCaptureGate(args.analysis, { cameraReady: args.cameraReady });
-  return gate.ready && !args.captureLocked && (args.stability?.stable !== false || args.frameCount >= 3);
 }

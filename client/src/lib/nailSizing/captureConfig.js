@@ -1,5 +1,5 @@
 /**
- * Capture config — fast 3-frame auto-capture (bank-check style).
+ * Capture config — geometry gate + warmup / alignment hold timing.
  * Nail precision runs on the frozen frame after capture.
  */
 
@@ -9,8 +9,14 @@ export const TEN_SHEKEL_COIN = {
   calibrationDiameterMm: 23,
 };
 
+/** Timing for auto-capture pacing (single source of truth). */
+export const AUTO_CAPTURE_CONFIG = {
+  cameraWarmupMs: 2500,
+  requiredAlignmentMs: 800,
+};
+
 export const CAPTURE_CONFIG = {
-  /** Consecutive valid frames required before auto-capture. */
+  /** @deprecated Prefer AUTO_CAPTURE_CONFIG — kept for older imports. */
   REQUIRED_VALID_FRAMES: 3,
   FRAME_INTERVAL_MS: 80,
 

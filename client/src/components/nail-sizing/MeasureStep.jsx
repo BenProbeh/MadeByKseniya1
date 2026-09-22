@@ -9,9 +9,9 @@ import {
   CONFIDENCE_AUTO_OK,
 } from "../../lib/nailSizing/sizing.js";
 import { findCoinById } from "../../lib/nailSizing/coins.js";
-import { CAPTURE_CONFIG, CaptureState, TEN_SHEKEL_COIN } from "../../lib/nailSizing/captureConfig.js";
+import { CAPTURE_CONFIG, CaptureState, TEN_SHEKEL_COIN, AUTO_CAPTURE_CONFIG } from "../../lib/nailSizing/captureConfig.js";
 import {
-  createFrameCounter,
+  createAlignmentHoldTracker,
   deriveLiveState,
   handleDetectionForCapture,
   hintForState,
@@ -73,15 +73,19 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
   const overlayRef = useRef(null);
   const detectCanvasRef = useRef(null);
   const captureCanvasRef = useRef(null);
-  const counterRef = useRef(createFrameCounter(CAPTURE_CONFIG.REQUIRED_VALID_FRAMES));
+  const holdTrackerRef = useRef(createAlignmentHoldTracker(AUTO_CAPTURE_CONFIG));
   const captureLockRef = useRef(false);
   const captureStateRef = useRef(CaptureState.INITIALIZING);
   const runIdRef = useRef(0);
+  const flashTimerRef = useRef(0);
+  const successTimerRef = useRef(0);
+  const failTimerRef = useRef(0);
 
   const [captureState, setCaptureState] = useState(CaptureState.INITIALIZING);
   const [analysis, setAnalysis] = useState(null);
   const [gate, setGate] = useState(null);
-  const [frameCount, setFrameCount] = useState(0);
+  const [alignmentProgress, setAlignmentProgress] = useState(0);
+  const [warmupComplete, setWarmupComplete] = useState(false);
   const [frozenUrl, setFrozenUrl] = useState(null);
   const [flash, setFlash] = useState(false);
   const [failReason, setFailReason] = useState("");
@@ -117,17 +121,29 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
   useEffect(() => {
     runIdRef.current += 1;
     captureLockRef.current = false;
-    counterRef.current = createFrameCounter(CAPTURE_CONFIG.REQUIRED_VALID_FRAMES);
+    holdTrackerRef.current = createAlignmentHoldTracker(AUTO_CAPTURE_CONFIG);
+    window.clearTimeout(flashTimerRef.current);
+    window.clearTimeout(successTimerRef.current);
+    window.clearTimeout(failTimerRef.current);
     setDraft(null);
     setAnalysis(null);
     setGate(null);
-    setFrameCount(0);
+    setAlignmentProgress(0);
+    setWarmupComplete(false);
     setFrozenUrl(null);
     setFlash(false);
     setFailReason("");
     setManualMm("");
     setState(status === "ready" ? CaptureState.SEARCHING : CaptureState.INITIALIZING);
   }, [finger.key, setState, status]);
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(flashTimerRef.current);
+      window.clearTimeout(successTimerRef.current);
+      window.clearTimeout(failTimerRef.current);
+    };
+  }, []);
 
   const drawOverlay = useCallback((result, video) => {
     const overlay = overlayRef.current;
@@ -174,7 +190,7 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
       const runId = runIdRef.current;
       setState(CaptureState.CAPTURING);
       setFlash(true);
-      window.setTimeout(() => setFlash(false), CAPTURE_CONFIG.CAPTURE_FLASH_MS);
+      flashTimerRef.current = window.setTimeout(() => setFlash(false), CAPTURE_CONFIG.CAPTURE_FLASH_MS);
 
       try {
         const video = videoRef.current;
@@ -197,7 +213,6 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
           outerMm,
           captured.dataUrl
         );
-        // If nail width missing, still keep draft with preview for manual fix
         setDraft(draftCandidate);
         setManualMm(draftCandidate.widthMm != null ? String(draftCandidate.widthMm) : "");
         setAnalysis(measured || liveResult);
@@ -210,7 +225,7 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
           /* ignore */
         }
 
-        window.setTimeout(() => {
+        successTimerRef.current = window.setTimeout(() => {
           if (runId !== runIdRef.current) return;
           setState(CaptureState.REVIEW);
         }, CAPTURE_CONFIG.SUCCESS_HOLD_MS);
@@ -220,9 +235,9 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
         setFailReason("הצילום נכשל — מנסים שוב");
         setState(CaptureState.FAILED);
         captureLockRef.current = false;
-        counterRef.current.reset();
-        setFrameCount(0);
-        window.setTimeout(() => {
+        holdTrackerRef.current.resetAlignment();
+        setAlignmentProgress(0);
+        failTimerRef.current = window.setTimeout(() => {
           if (runId !== runIdRef.current) return;
           setFailReason("");
           setState(CaptureState.ALIGNING);
@@ -244,6 +259,17 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
       if (captureLockRef.current || !isLiveCaptureState(captureStateRef.current)) return;
 
       const video = videoRef.current;
+      // Start warmup clock only once video stream has real dimensions
+      if (
+        video &&
+        video.readyState >= 2 &&
+        video.videoWidth > 0 &&
+        video.videoHeight > 0 &&
+        holdTrackerRef.current.cameraReadyAt == null
+      ) {
+        holdTrackerRef.current.markCameraReady(performance.now());
+      }
+
       const imageData = captureCanvasFrame(video, detectCanvasRef.current);
       if (imageData && coin) {
         const result = analyzeFrame(imageData, { coinDiameterMm: outerMm, coinMeta: coin });
@@ -254,20 +280,23 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
           analysis: result,
           cameraReady: status === "ready",
           captureLocked: captureLockRef.current,
-          counter: counterRef.current,
+          holdTracker: holdTrackerRef.current,
         });
         setGate(decision.gate);
-        setFrameCount(decision.count);
+        setAlignmentProgress(decision.progress || 0);
+        setWarmupComplete(!!decision.warmupComplete);
 
-        const next = deriveLiveState(decision.gate);
+        const next = deriveLiveState(decision.gate, { warmupComplete: decision.warmupComplete });
         if (isLiveCaptureState(captureStateRef.current) && next !== captureStateRef.current) {
-          setState(decision.gate.ready ? CaptureState.HOLD_STILL : next);
+          setState(
+            decision.warmupComplete && decision.gate.ready ? CaptureState.HOLD_STILL : next
+          );
         }
 
         if (debugCapture) {
-          // Temporary diagnostics — only with ?debugCapture=1
           // eslint-disable-next-line no-console
           console.table({
+            warmupComplete: decision.warmupComplete,
             cameraReady: decision.gate.cameraReady,
             coinDetected: decision.gate.coinDetected,
             fingerDetected: decision.gate.fingerDetected,
@@ -275,7 +304,7 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
             horizontalAlignmentValid: decision.gate.horizontalAlignmentValid,
             coinScaleValid: decision.gate.coinScaleValid,
             verticalDistanceValid: decision.gate.verticalDistanceValid,
-            consecutiveValidFrames: decision.count,
+            alignmentProgress: decision.progress,
             captureLocked: captureLockRef.current,
             blockedBy: decision.blockedBy,
           });
@@ -311,12 +340,16 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
   function restartLive() {
     runIdRef.current += 1;
     captureLockRef.current = false;
-    counterRef.current.reset();
+    holdTrackerRef.current = createAlignmentHoldTracker(AUTO_CAPTURE_CONFIG);
+    window.clearTimeout(flashTimerRef.current);
+    window.clearTimeout(successTimerRef.current);
+    window.clearTimeout(failTimerRef.current);
     setDraft(null);
     setFrozenUrl(null);
     setFlash(false);
     setFailReason("");
-    setFrameCount(0);
+    setAlignmentProgress(0);
+    setWarmupComplete(false);
     setGate(null);
     setManualMm("");
     void attachToVideo?.(videoRef.current);
@@ -342,12 +375,12 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
   const live = isLiveCaptureState(captureState) || captureState === CaptureState.INITIALIZING;
   const busy = captureState === CaptureState.CAPTURING || captureState === CaptureState.SUCCESS;
   const showGuide = live && status === "ready" && !frozenUrl;
-  const readyGate = !!gate?.ready;
-  const coinGuideState = gate?.coinDetected ? (readyGate ? "ok" : "warn") : "idle";
-  const fingerGuideState = gate?.fingerDetected ? (readyGate ? "ok" : "warn") : "idle";
-  const ringState = readyGate ? "ok" : gate?.coinDetected || gate?.fingerDetected ? "warn" : "idle";
-  const progress = Math.min(1, frameCount / CAPTURE_CONFIG.REQUIRED_VALID_FRAMES);
-  const hint = hintForState(captureState, gate, failReason);
+  const holding = warmupComplete && !!gate?.ready;
+  const coinGuideState = holding ? "ok" : gate?.coinDetected ? "warn" : "idle";
+  const fingerGuideState = holding ? "ok" : gate?.fingerDetected ? "warn" : "idle";
+  const ringState = holding ? "ok" : gate?.coinDetected || gate?.fingerDetected ? "warn" : "idle";
+  const progress = holding ? alignmentProgress : 0;
+  const hint = hintForState(captureState, gate, failReason, { warmupComplete });
   const showSuccessCheck = captureState === CaptureState.SUCCESS && !!frozenUrl;
 
   return (
@@ -393,7 +426,7 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
                 <div className="nail-guide" />
               </div>
             </div>
-            <p className="measurement-guide__hint" data-ok={readyGate ? "true" : "false"}>
+            <p className="measurement-guide__hint" data-ok={holding ? "true" : "false"}>
               {hint}
             </p>
           </div>
@@ -426,6 +459,9 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
 
         {debugCapture && live && gate && (
           <div className="absolute top-2 left-2 z-[7] rounded-lg bg-black/80 text-[10px] leading-tight p-2 font-mono space-y-0.5 pointer-events-none">
+            <div className={warmupComplete ? "text-green-400" : "text-red-400"}>
+              warmup: {warmupComplete ? "true" : "false"}
+            </div>
             {[
               ["camera", gate.cameraReady],
               ["coin", gate.coinDetected],
@@ -439,9 +475,7 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
                 {label}: {ok ? "true" : "false"}
               </div>
             ))}
-            <div className="text-white/80">
-              frames: {frameCount}/{CAPTURE_CONFIG.REQUIRED_VALID_FRAMES}
-            </div>
+            <div className="text-white/80">hold: {Math.round(alignmentProgress * 100)}%</div>
             <div className={captureLockRef.current ? "text-amber-300" : "text-white/80"}>
               locked: {captureLockRef.current ? "true" : "false"}
             </div>
@@ -465,10 +499,8 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
 
       <div className="glass-panel p-4 space-y-2" aria-live="polite">
         <p className="text-sm text-white/80">{hint}</p>
-        {readyGate && live && (
-          <p className="text-sm text-violet-200">
-            מצלמים… {frameCount}/{CAPTURE_CONFIG.REQUIRED_VALID_FRAMES}
-          </p>
+        {holding && live && (
+          <p className="text-sm text-violet-200">הישארי במקום… {Math.round(alignmentProgress * 100)}%</p>
         )}
       </div>
 
@@ -481,11 +513,11 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
             <button
               type="button"
               className="btn-ghost text-sm"
-              disabled={!gate?.ready || busy}
+              disabled={!gate?.ready || !warmupComplete || busy}
               onClick={() => {
-                if (!gate?.ready || captureLockRef.current) return;
+                if (!gate?.ready || !warmupComplete || captureLockRef.current) return;
                 captureLockRef.current = true;
-                counterRef.current.reset();
+                holdTrackerRef.current.resetAlignment();
                 void captureCurrentFrame(analysis);
               }}
             >

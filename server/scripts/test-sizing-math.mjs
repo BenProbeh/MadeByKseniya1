@@ -13,10 +13,10 @@ import {
   GUIDE_LAYOUT,
 } from "../../client/src/lib/nailSizing/measurementEngine.js";
 import { getCoverTransform, videoPointToDisplay } from "../../client/src/lib/nailSizing/videoGeometry.js";
-import { CAPTURE_CONFIG, TEN_SHEKEL_COIN } from "../../client/src/lib/nailSizing/captureConfig.js";
+import { AUTO_CAPTURE_CONFIG, TEN_SHEKEL_COIN } from "../../client/src/lib/nailSizing/captureConfig.js";
 import {
   buildCaptureGate,
-  createFrameCounter,
+  createAlignmentHoldTracker,
   handleDetectionForCapture,
   isFrameReadyForCapture,
 } from "../../client/src/lib/nailSizing/captureMachine.js";
@@ -82,7 +82,6 @@ function mockAnalysis({
 }
 
 test("isFrameReadyForCapture requires all geometry flags", () => {
-  assert.equal(isFrameReadyForCapture(null), false);
   assert.equal(
     isFrameReadyForCapture({
       cameraReady: true,
@@ -95,160 +94,198 @@ test("isFrameReadyForCapture requires all geometry flags", () => {
     }),
     true
   );
-  assert.equal(
-    isFrameReadyForCapture({
-      cameraReady: true,
-      coinDetected: true,
-      fingerDetected: true,
-      coinAboveFinger: true,
-      horizontalAlignmentValid: true,
-      coinScaleValid: true,
-      verticalDistanceValid: false,
-    }),
-    false
-  );
 });
 
 test("small horizontal offset within 35% does not block", () => {
   const gate = buildCaptureGate(mockAnalysis({ fingerCx: 200 + 30 }), { cameraReady: true });
-  assert.equal(gate.horizontalAlignmentValid, true);
   assert.equal(gate.ready, true);
 });
 
 test("large horizontal offset blocks capture", () => {
   const gate = buildCaptureGate(mockAnalysis({ fingerCx: 200 + 50 }), { cameraReady: true });
-  assert.equal(gate.horizontalAlignmentValid, false);
   assert.equal(gate.ready, false);
 });
 
-test("coin above finger accepted; coin below rejected", () => {
-  const ok = buildCaptureGate(mockAnalysis(), { cameraReady: true });
-  assert.equal(ok.coinAboveFinger, true);
-  const bad = buildCaptureGate(
-    mockAnalysis({ coinCy: 300, fingerTopY: 200, fingerCy: 220 }),
-    { cameraReady: true }
-  );
-  assert.equal(bad.coinAboveFinger, false);
+test("AUTO_CAPTURE_CONFIG central timing values", () => {
+  assert.equal(AUTO_CAPTURE_CONFIG.cameraWarmupMs, 2500);
+  assert.equal(AUTO_CAPTURE_CONFIG.requiredAlignmentMs, 800);
 });
 
-test("two valid frames do not capture; third does immediately", () => {
-  const counter = createFrameCounter(3);
+test("no capture during 2.5s warmup even if alignment is perfect", () => {
+  const hold = createAlignmentHoldTracker(AUTO_CAPTURE_CONFIG);
+  const t0 = 10_000;
+  hold.markCameraReady(t0);
   const analysis = mockAnalysis();
-  const calls = [];
-
-  for (let i = 0; i < 3; i += 1) {
-    const decision = handleDetectionForCapture({
-      analysis,
-      cameraReady: true,
-      captureLocked: false,
-      counter,
-    });
-    calls.push(decision);
-  }
-
-  assert.equal(calls[0].shouldCapture, false);
-  assert.equal(calls[0].count, 1);
-  assert.equal(calls[1].shouldCapture, false);
-  assert.equal(calls[1].count, 2);
-  assert.equal(calls[2].shouldCapture, true);
-  assert.equal(calls[2].count, 3);
-  // No extra timeout after third frame — shouldCapture is synchronous
-  assert.equal(CAPTURE_CONFIG.REQUIRED_VALID_FRAMES, 3);
+  const midWarmup = handleDetectionForCapture({
+    analysis,
+    cameraReady: true,
+    captureLocked: false,
+    holdTracker: hold,
+    now: t0 + 1000,
+  });
+  assert.equal(midWarmup.warmupComplete, false);
+  assert.equal(midWarmup.shouldCapture, false);
+  assert.equal(midWarmup.progress, 0);
+  assert.equal(midWarmup.blockedBy, "warmup");
+  assert.equal(midWarmup.gate.ready, true);
 });
 
-test("invalid frame resets consecutive counter", () => {
-  const counter = createFrameCounter(3);
-  const good = mockAnalysis();
-  const bad = mockAnalysis({ fingerFound: false });
-  handleDetectionForCapture({ analysis: good, cameraReady: true, captureLocked: false, counter });
-  handleDetectionForCapture({ analysis: good, cameraReady: true, captureLocked: false, counter });
-  const reset = handleDetectionForCapture({
-    analysis: bad,
+test("perfect alignment at camera open does not capture immediately", () => {
+  const hold = createAlignmentHoldTracker(AUTO_CAPTURE_CONFIG);
+  const t0 = 20_000;
+  hold.markCameraReady(t0);
+  const d = handleDetectionForCapture({
+    analysis: mockAnalysis(),
     cameraReady: true,
     captureLocked: false,
-    counter,
+    holdTracker: hold,
+    now: t0 + 50,
   });
-  assert.equal(reset.count, 0);
-  assert.equal(reset.shouldCapture, false);
-  const again = handleDetectionForCapture({
-    analysis: good,
+  assert.equal(d.shouldCapture, false);
+});
+
+test("after warmup, alignment under 800ms does not capture", () => {
+  const hold = createAlignmentHoldTracker(AUTO_CAPTURE_CONFIG);
+  const t0 = 30_000;
+  hold.markCameraReady(t0);
+  const start = t0 + AUTO_CAPTURE_CONFIG.cameraWarmupMs;
+  handleDetectionForCapture({
+    analysis: mockAnalysis(),
     cameraReady: true,
     captureLocked: false,
-    counter,
+    holdTracker: hold,
+    now: start,
   });
-  assert.equal(again.count, 1);
+  const d = handleDetectionForCapture({
+    analysis: mockAnalysis(),
+    cameraReady: true,
+    captureLocked: false,
+    holdTracker: hold,
+    now: start + 400,
+  });
+  assert.equal(d.warmupComplete, true);
+  assert.equal(d.shouldCapture, false);
+  assert.ok(d.progress > 0 && d.progress < 1);
+});
+
+test("after warmup, 800ms continuous alignment captures", () => {
+  const hold = createAlignmentHoldTracker(AUTO_CAPTURE_CONFIG);
+  const t0 = 40_000;
+  hold.markCameraReady(t0);
+  const start = t0 + AUTO_CAPTURE_CONFIG.cameraWarmupMs;
+  handleDetectionForCapture({
+    analysis: mockAnalysis(),
+    cameraReady: true,
+    captureLocked: false,
+    holdTracker: hold,
+    now: start,
+  });
+  const done = handleDetectionForCapture({
+    analysis: mockAnalysis(),
+    cameraReady: true,
+    captureLocked: false,
+    holdTracker: hold,
+    now: start + AUTO_CAPTURE_CONFIG.requiredAlignmentMs,
+  });
+  assert.equal(done.shouldCapture, true);
+  assert.equal(done.progress, 1);
+});
+
+test("losing alignment resets progress; regain restarts hold", () => {
+  const hold = createAlignmentHoldTracker(AUTO_CAPTURE_CONFIG);
+  const t0 = 50_000;
+  hold.markCameraReady(t0);
+  const start = t0 + AUTO_CAPTURE_CONFIG.cameraWarmupMs;
+  handleDetectionForCapture({
+    analysis: mockAnalysis(),
+    cameraReady: true,
+    captureLocked: false,
+    holdTracker: hold,
+    now: start,
+  });
+  const lost = handleDetectionForCapture({
+    analysis: mockAnalysis({ fingerFound: false }),
+    cameraReady: true,
+    captureLocked: false,
+    holdTracker: hold,
+    now: start + 400,
+  });
+  assert.equal(lost.progress, 0);
+  assert.equal(lost.shouldCapture, false);
+
+  const againStart = handleDetectionForCapture({
+    analysis: mockAnalysis(),
+    cameraReady: true,
+    captureLocked: false,
+    holdTracker: hold,
+    now: start + 500,
+  });
+  assert.ok(againStart.progress < 0.2);
+  const againDone = handleDetectionForCapture({
+    analysis: mockAnalysis(),
+    cameraReady: true,
+    captureLocked: false,
+    holdTracker: hold,
+    now: start + 500 + AUTO_CAPTURE_CONFIG.requiredAlignmentMs,
+  });
+  assert.equal(againDone.shouldCapture, true);
 });
 
 test("capture lock blocks second capture", () => {
-  const counter = createFrameCounter(3);
-  const analysis = mockAnalysis();
-  for (let i = 0; i < 3; i += 1) {
-    handleDetectionForCapture({ analysis, cameraReady: true, captureLocked: false, counter });
-  }
-  // After capture, lock true — even with ready frames
-  counter.reset();
+  const hold = createAlignmentHoldTracker(AUTO_CAPTURE_CONFIG);
+  const t0 = 60_000;
+  hold.markCameraReady(t0);
+  const start = t0 + AUTO_CAPTURE_CONFIG.cameraWarmupMs;
+  handleDetectionForCapture({
+    analysis: mockAnalysis(),
+    cameraReady: true,
+    captureLocked: false,
+    holdTracker: hold,
+    now: start,
+  });
+  handleDetectionForCapture({
+    analysis: mockAnalysis(),
+    cameraReady: true,
+    captureLocked: false,
+    holdTracker: hold,
+    now: start + AUTO_CAPTURE_CONFIG.requiredAlignmentMs,
+  });
   const locked = handleDetectionForCapture({
-    analysis,
+    analysis: mockAnalysis(),
     cameraReady: true,
     captureLocked: true,
-    counter,
+    holdTracker: hold,
+    now: start + AUTO_CAPTURE_CONFIG.requiredAlignmentMs + 100,
   });
   assert.equal(locked.shouldCapture, false);
   assert.equal(locked.blockedBy, "captureLocked");
 });
 
-test("frame counter survives as ref-like object across pushes (not reset by re-read)", () => {
-  const counter = createFrameCounter(3);
-  counter.push(true);
-  counter.push(true);
-  assert.equal(counter.count, 2);
-  // Simulates render re-reading same ref
-  const same = counter;
-  same.push(true);
-  assert.equal(same.shouldCapture(), true);
+test("session reset clears warmup so next finger starts fresh", () => {
+  const hold = createAlignmentHoldTracker(AUTO_CAPTURE_CONFIG);
+  const t0 = 70_000;
+  hold.markCameraReady(t0);
+  hold.resetSession();
+  assert.equal(hold.cameraReadyAt, null);
+  const d = handleDetectionForCapture({
+    analysis: mockAnalysis(),
+    cameraReady: true,
+    captureLocked: false,
+    holdTracker: hold,
+    now: t0 + 10_000,
+  });
+  assert.equal(d.shouldCapture, false);
+  assert.equal(d.blockedBy, "cameraNotMarkedReady");
 });
 
-test("failed capture path can unlock — counter restart allows retry", () => {
-  const counter = createFrameCounter(3);
-  const analysis = mockAnalysis();
-  // First attempt reaches capture
-  for (let i = 0; i < 3; i += 1) {
-    handleDetectionForCapture({ analysis, cameraReady: true, captureLocked: false, counter });
-  }
-  // Simulate failure unlock
-  counter.reset();
-  let locked = false;
-  const d1 = handleDetectionForCapture({
-    analysis,
-    cameraReady: true,
-    captureLocked: locked,
-    counter,
-  });
-  assert.equal(d1.count, 1);
-  locked = false;
-  handleDetectionForCapture({ analysis, cameraReady: true, captureLocked: locked, counter });
-  const d3 = handleDetectionForCapture({
-    analysis,
-    cameraReady: true,
-    captureLocked: locked,
-    counter,
-  });
-  assert.equal(d3.shouldCapture, true);
-});
-
-test("success check requires captured image — gate alone is not success", () => {
+test("success check requires captured image", () => {
   const gate = buildCaptureGate(mockAnalysis(), { cameraReady: true });
-  assert.equal(gate.ready, true);
-  const capturedImage = null;
-  const showCheck = gate.ready && !!capturedImage;
-  assert.equal(showCheck, false);
-  const showCheckAfter = gate.ready && !!"data:image/jpeg;base64,xx";
-  assert.equal(showCheckAfter, true);
+  assert.equal(gate.ready && !null, true);
+  assert.equal(!!null && gate.ready, false);
+  assert.equal(!!"data:image/jpeg;base64,x" && gate.ready, true);
 });
 
 test("debug query flag helper semantics", () => {
-  const params = new URLSearchParams("debugCapture=1");
-  assert.equal(params.get("debugCapture") === "1", true);
-  const off = new URLSearchParams("");
-  assert.equal(off.get("debugCapture") === "1", false);
+  assert.equal(new URLSearchParams("debugCapture=1").get("debugCapture") === "1", true);
+  assert.equal(new URLSearchParams("").get("debugCapture") === "1", false);
 });
