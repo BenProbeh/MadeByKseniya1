@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { analyzeFrame, captureCanvasFrame } from "../../lib/nailSizing/measurementEngine.js";
 import { getCoverTransform, videoPointToDisplay, videoLengthToDisplay } from "../../lib/nailSizing/videoGeometry.js";
 import {
@@ -11,18 +11,27 @@ import {
 import { findCoinById } from "../../lib/nailSizing/coins.js";
 import { CAPTURE_CONFIG, CaptureState, TEN_SHEKEL_COIN } from "../../lib/nailSizing/captureConfig.js";
 import {
-  createStabilityTracker,
+  createFrameCounter,
   deriveLiveState,
+  handleDetectionForCapture,
   hintForState,
   isLiveCaptureState,
-  readyForAutoCapture,
-  toStabilitySample,
 } from "../../lib/nailSizing/captureMachine.js";
 
+function useDebugCapture() {
+  return useMemo(() => {
+    try {
+      return new URLSearchParams(window.location.search).get("debugCapture") === "1";
+    } catch {
+      return false;
+    }
+  }, []);
+}
+
 function buildDraftFromAnalysis(result, coinId, outerMm, dataUrl) {
-  const diameterPx = result.coin.outerDiameterPx || result.coin.diameterPx;
+  const diameterPx = result.coin?.outerDiameterPx || result.coin?.diameterPx;
   const pxPerMm = pixelsPerMillimeter(diameterPx, outerMm);
-  const widthMm = widthPxToMm(result.nail.widthPx, pxPerMm);
+  const widthMm = widthPxToMm(result.nail?.widthPx, pxPerMm);
   return {
     widthMm,
     size: widthMmToSize(widthMm),
@@ -31,8 +40,8 @@ function buildDraftFromAnalysis(result, coinId, outerMm, dataUrl) {
     captureQuality: {
       brightness: result.brightness,
       sharpness: result.sharpness,
-      coinScore: result.coin.score,
-      nailScore: result.nail.score,
+      coinScore: result.coin?.score,
+      nailScore: result.nail?.score,
       outerDiameterPx: diameterPx,
       calibrationMm: outerMm,
     },
@@ -43,34 +52,36 @@ function buildDraftFromAnalysis(result, coinId, outerMm, dataUrl) {
   };
 }
 
-function failReasonFromAnalysis(result) {
-  if (!result) return "לא הצלחנו לאמת את הצילום";
-  if (!result.validation?.sharpnessValid) return "התמונה מטושטשת — החזיקי את הטלפון יציב";
-  if (!result.validation?.lightingValid) return "התאורה אינה מספיקה — נסי שוב במקום מואר";
-  if (!result.validation?.coinValid) return "המטבע לא זוהה מספיק בבירור";
-  if (!result.validation?.nailValid) return "הציפורן לא זוהתה מספיק בבירור";
-  if (!result.validation?.verticalAlignmentValid) return "המטבע והאצבע אינם מיושרים";
-  if (!result.validation?.distanceValid) return "הרווח בין המטבע לאצבע אינו תקין";
-  if ((result.confidence ?? 0) < CAPTURE_CONFIG.DETECTION_CONFIDENCE_MIN) {
-    return "רמת הביטחון נמוכה מדי — נסי שוב";
+function captureVideoFrame(video, canvas) {
+  if (!video || !canvas || video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+    return null;
   }
-  return result.tips?.find((t) => !t.ok)?.textHe || "הצילום לא עבר בדיקה — מנסים שוב";
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+  return {
+    dataUrl: canvas.toDataURL("image/jpeg", 0.92),
+    imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
+  };
 }
 
 export default function MeasureStep({ camera, coinId, finger, existing, onConfirm, onBack }) {
+  const debugCapture = useDebugCapture();
   const { videoRef, setVideoRef, status, start, attachToVideo, errorHe } = camera;
   const viewportRef = useRef(null);
   const overlayRef = useRef(null);
   const detectCanvasRef = useRef(null);
-  const freezeCanvasRef = useRef(null);
-  const trackerRef = useRef(createStabilityTracker(CAPTURE_CONFIG));
-  const captureLockedRef = useRef(false);
+  const captureCanvasRef = useRef(null);
+  const counterRef = useRef(createFrameCounter(CAPTURE_CONFIG.REQUIRED_VALID_FRAMES));
+  const captureLockRef = useRef(false);
   const captureStateRef = useRef(CaptureState.INITIALIZING);
   const runIdRef = useRef(0);
 
   const [captureState, setCaptureState] = useState(CaptureState.INITIALIZING);
   const [analysis, setAnalysis] = useState(null);
-  const [progress, setProgress] = useState(0);
+  const [gate, setGate] = useState(null);
+  const [frameCount, setFrameCount] = useState(0);
   const [frozenUrl, setFrozenUrl] = useState(null);
   const [flash, setFlash] = useState(false);
   const [failReason, setFailReason] = useState("");
@@ -97,8 +108,6 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
       if (isLiveCaptureState(captureStateRef.current) || captureStateRef.current === CaptureState.INITIALIZING) {
         setState(CaptureState.SEARCHING);
       }
-    } else if (status === "requesting") {
-      setState(CaptureState.INITIALIZING);
     } else if (status !== "ready") {
       setState(CaptureState.INITIALIZING);
       if (status !== "requesting") void start();
@@ -106,42 +115,19 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
   }, [status, start, attachToVideo, videoRef, setState]);
 
   useEffect(() => {
-    // Reset machine when switching finger
     runIdRef.current += 1;
-    captureLockedRef.current = false;
-    trackerRef.current = createStabilityTracker(CAPTURE_CONFIG);
+    captureLockRef.current = false;
+    counterRef.current = createFrameCounter(CAPTURE_CONFIG.REQUIRED_VALID_FRAMES);
     setDraft(null);
     setAnalysis(null);
-    setProgress(0);
+    setGate(null);
+    setFrameCount(0);
     setFrozenUrl(null);
     setFlash(false);
     setFailReason("");
     setManualMm("");
     setState(status === "ready" ? CaptureState.SEARCHING : CaptureState.INITIALIZING);
   }, [finger.key, setState, status]);
-
-  const pausePreviewTracks = useCallback(() => {
-    const stream = videoRef.current?.srcObject;
-    stream?.getVideoTracks?.().forEach((t) => {
-      try {
-        t.enabled = false;
-      } catch {
-        /* ignore */
-      }
-    });
-  }, [videoRef]);
-
-  const resumePreviewTracks = useCallback(() => {
-    const stream = videoRef.current?.srcObject;
-    stream?.getVideoTracks?.().forEach((t) => {
-      try {
-        t.enabled = true;
-      } catch {
-        /* ignore */
-      }
-    });
-    void attachToVideo?.(videoRef.current);
-  }, [videoRef, attachToVideo]);
 
   const drawOverlay = useCallback((result, video) => {
     const overlay = overlayRef.current;
@@ -159,124 +145,103 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
     ctx.clearRect(0, 0, displayW, displayH);
     const transform = getCoverTransform(video.videoWidth, video.videoHeight, displayW, displayH);
 
-    if (result.coin?.found) {
+    if (result.coin?.found || (result.coin?.score ?? 0) > 0.12) {
       const c = videoPointToDisplay(result.coin.center.x, result.coin.center.y, transform);
-      const r = videoLengthToDisplay(result.coin.outerDiameterPx / 2, transform);
-      ctx.strokeStyle = result.validation?.coinValid ? "rgba(74,222,128,0.95)" : "rgba(209,125,255,0.85)";
+      const r = videoLengthToDisplay((result.coin.outerDiameterPx || result.coin.diameterPx) / 2, transform);
+      ctx.strokeStyle = "rgba(74,222,128,0.95)";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
       ctx.stroke();
     }
-    if (result.nail?.found && result.nail.left != null && result.nail.right != null) {
-      const a = videoPointToDisplay(result.nail.left, result.nail.center.y, transform);
-      const b = videoPointToDisplay(result.nail.right, result.nail.center.y, transform);
-      ctx.strokeStyle = result.validation?.nailValid ? "rgba(74,222,128,0.95)" : "rgba(251,191,36,0.9)";
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-      ctx.fillStyle = ctx.strokeStyle;
-      ctx.beginPath();
-      ctx.arc(a.x, a.y, 3, 0, Math.PI * 2);
-      ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
-      ctx.fill();
+    if (result.nail?.found || result.nail?.presence) {
+      const cy = result.nail.center.y;
+      if (result.nail.left != null && result.nail.right != null) {
+        const a = videoPointToDisplay(result.nail.left, cy, transform);
+        const b = videoPointToDisplay(result.nail.right, cy, transform);
+        ctx.strokeStyle = "rgba(74,222,128,0.95)";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
     }
   }, []);
 
-  const runCapturePipeline = useCallback(async () => {
-    if (captureLockedRef.current) return;
-    captureLockedRef.current = true;
-    const runId = runIdRef.current;
-    setState(CaptureState.CAPTURING);
-    setFlash(true);
-    window.setTimeout(() => setFlash(false), CAPTURE_CONFIG.CAPTURE_FLASH_MS);
+  const captureCurrentFrame = useCallback(
+    async (liveResult) => {
+      const runId = runIdRef.current;
+      setState(CaptureState.CAPTURING);
+      setFlash(true);
+      window.setTimeout(() => setFlash(false), CAPTURE_CONFIG.CAPTURE_FLASH_MS);
 
-    const video = videoRef.current;
-    const freezeCanvas = freezeCanvasRef.current;
-    const imageData = captureCanvasFrame(video, freezeCanvas);
-    if (!imageData || !coin) {
-      captureLockedRef.current = false;
-      setFailReason("לא הצלחנו ללכוד פריים");
-      setState(CaptureState.FAILED);
-      return;
-    }
+      try {
+        const video = videoRef.current;
+        const captured = captureVideoFrame(video, captureCanvasRef.current);
+        if (!captured?.dataUrl) {
+          throw new Error("CAPTURE_FAILED");
+        }
 
-    const dataUrl = freezeCanvas.toDataURL("image/jpeg", 0.85);
-    setFrozenUrl(dataUrl);
-    pausePreviewTracks();
-    setState(CaptureState.VALIDATING);
+        // Freeze first — checkmark only after real image exists
+        setFrozenUrl(captured.dataUrl);
 
-    // Full-resolution re-check of the frozen frame (not the live stream)
-    await new Promise((r) => window.setTimeout(r, 40));
-    if (runId !== runIdRef.current) return;
+        // Measure from frozen frame (does not block showing success)
+        const measured =
+          captured.imageData != null
+            ? analyzeFrame(captured.imageData, { coinDiameterMm: outerMm, coinMeta: coin })
+            : liveResult;
+        const draftCandidate = buildDraftFromAnalysis(
+          measured || liveResult || {},
+          coinId,
+          outerMm,
+          captured.dataUrl
+        );
+        // If nail width missing, still keep draft with preview for manual fix
+        setDraft(draftCandidate);
+        setManualMm(draftCandidate.widthMm != null ? String(draftCandidate.widthMm) : "");
+        setAnalysis(measured || liveResult);
+        drawOverlay(measured || liveResult, video);
 
-    const result = analyzeFrame(imageData, { coinDiameterMm: outerMm, coinMeta: coin });
-    const draftCandidate = buildDraftFromAnalysis(result, coinId, outerMm, dataUrl);
-    const passed =
-      result.ready &&
-      (result.confidence ?? 0) >= CAPTURE_CONFIG.DETECTION_CONFIDENCE_MIN &&
-      draftCandidate.widthMm != null;
+        setState(CaptureState.SUCCESS);
+        try {
+          navigator.vibrate?.(40);
+        } catch {
+          /* ignore */
+        }
 
-    if (!passed) {
-      setFailReason(failReasonFromAnalysis(result));
-      setFrozenUrl(null);
-      setDraft(null);
-      setState(CaptureState.FAILED);
-      resumePreviewTracks();
-      trackerRef.current.reset();
-      setProgress(0);
-      window.setTimeout(() => {
-        if (runId !== runIdRef.current) return;
-        captureLockedRef.current = false;
-        setFailReason("");
-        setState(CaptureState.ALIGNING);
-      }, CAPTURE_CONFIG.FAILED_HOLD_MS);
-      return;
-    }
+        window.setTimeout(() => {
+          if (runId !== runIdRef.current) return;
+          setState(CaptureState.REVIEW);
+        }, CAPTURE_CONFIG.SUCCESS_HOLD_MS);
+      } catch {
+        setFrozenUrl(null);
+        setDraft(null);
+        setFailReason("הצילום נכשל — מנסים שוב");
+        setState(CaptureState.FAILED);
+        captureLockRef.current = false;
+        counterRef.current.reset();
+        setFrameCount(0);
+        window.setTimeout(() => {
+          if (runId !== runIdRef.current) return;
+          setFailReason("");
+          setState(CaptureState.ALIGNING);
+        }, CAPTURE_CONFIG.FAILED_HOLD_MS);
+      }
+    },
+    [coin, coinId, outerMm, videoRef, setState, drawOverlay]
+  );
 
-    setDraft(draftCandidate);
-    setManualMm(String(draftCandidate.widthMm));
-    setAnalysis(result);
-    drawOverlay(result, video);
-    setState(CaptureState.SUCCESS);
-    try {
-      navigator.vibrate?.(40);
-    } catch {
-      /* ignore */
-    }
-
-    window.setTimeout(() => {
-      if (runId !== runIdRef.current) return;
-      setState(CaptureState.REVIEW);
-      // unlock only for retake path
-      captureLockedRef.current = false;
-    }, CAPTURE_CONFIG.SUCCESS_HOLD_MS);
-  }, [
-    coin,
-    coinId,
-    outerMm,
-    videoRef,
-    pausePreviewTracks,
-    resumePreviewTracks,
-    setState,
-    drawOverlay,
-  ]);
-
-  // Live detection loop — only in live states, never a fake countdown timer
   const liveLoopActive = isLiveCaptureState(captureState);
 
   useEffect(() => {
-    if (status !== "ready") return undefined;
-    if (!liveLoopActive) return undefined;
-
+    if (status !== "ready" || !liveLoopActive) return undefined;
     let alive = true;
     let timer = 0;
 
     const tick = () => {
       if (!alive) return;
-      if (captureLockedRef.current || !isLiveCaptureState(captureStateRef.current)) return;
+      if (captureLockRef.current || !isLiveCaptureState(captureStateRef.current)) return;
 
       const video = videoRef.current;
       const imageData = captureCanvasFrame(video, detectCanvasRef.current);
@@ -285,31 +250,40 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
         setAnalysis(result);
         drawOverlay(result, video);
 
-        const now = performance.now();
-        const sample = toStabilitySample(result, now);
-        let stability;
-        if (result.ready) {
-          stability = trackerRef.current.push(sample);
-        } else {
-          trackerRef.current.reset();
-          stability = { stable: false, progress: 0, motionValid: false, frameCount: 0, stableMs: 0 };
-        }
-        setProgress(stability.progress || 0);
-
-        const nextLive = deriveLiveState(result, stability);
-        if (isLiveCaptureState(captureStateRef.current) && nextLive !== captureStateRef.current) {
-          setState(nextLive);
-        }
-
-        const canShoot = readyForAutoCapture({
-          cameraReady: status === "ready",
+        const decision = handleDetectionForCapture({
           analysis: result,
-          stability,
-          captureLocked: captureLockedRef.current,
+          cameraReady: status === "ready",
+          captureLocked: captureLockRef.current,
+          counter: counterRef.current,
         });
+        setGate(decision.gate);
+        setFrameCount(decision.count);
 
-        if (canShoot) {
-          void runCapturePipeline();
+        const next = deriveLiveState(decision.gate);
+        if (isLiveCaptureState(captureStateRef.current) && next !== captureStateRef.current) {
+          setState(decision.gate.ready ? CaptureState.HOLD_STILL : next);
+        }
+
+        if (debugCapture) {
+          // Temporary diagnostics — only with ?debugCapture=1
+          // eslint-disable-next-line no-console
+          console.table({
+            cameraReady: decision.gate.cameraReady,
+            coinDetected: decision.gate.coinDetected,
+            fingerDetected: decision.gate.fingerDetected,
+            coinAboveFinger: decision.gate.coinAboveFinger,
+            horizontalAlignmentValid: decision.gate.horizontalAlignmentValid,
+            coinScaleValid: decision.gate.coinScaleValid,
+            verticalDistanceValid: decision.gate.verticalDistanceValid,
+            consecutiveValidFrames: decision.count,
+            captureLocked: captureLockRef.current,
+            blockedBy: decision.blockedBy,
+          });
+        }
+
+        if (decision.shouldCapture) {
+          captureLockRef.current = true;
+          void captureCurrentFrame(result);
           return;
         }
       }
@@ -322,19 +296,30 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
       alive = false;
       window.clearTimeout(timer);
     };
-  }, [status, liveLoopActive, coin, outerMm, videoRef, drawOverlay, runCapturePipeline, setState]);
+  }, [
+    status,
+    liveLoopActive,
+    coin,
+    outerMm,
+    videoRef,
+    drawOverlay,
+    captureCurrentFrame,
+    setState,
+    debugCapture,
+  ]);
 
   function restartLive() {
     runIdRef.current += 1;
-    captureLockedRef.current = false;
-    trackerRef.current.reset();
+    captureLockRef.current = false;
+    counterRef.current.reset();
     setDraft(null);
     setFrozenUrl(null);
     setFlash(false);
     setFailReason("");
-    setProgress(0);
+    setFrameCount(0);
+    setGate(null);
     setManualMm("");
-    resumePreviewTracks();
+    void attachToVideo?.(videoRef.current);
     setState(CaptureState.SEARCHING);
   }
 
@@ -355,20 +340,15 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
   }
 
   const live = isLiveCaptureState(captureState) || captureState === CaptureState.INITIALIZING;
-  const busy =
-    captureState === CaptureState.CAPTURING ||
-    captureState === CaptureState.VALIDATING ||
-    captureState === CaptureState.SUCCESS;
+  const busy = captureState === CaptureState.CAPTURING || captureState === CaptureState.SUCCESS;
   const showGuide = live && status === "ready" && !frozenUrl;
-  const coinGuideState = analysis?.validation?.coinValid ? "ok" : analysis?.coin?.found ? "warn" : "idle";
-  const fingerGuideState = analysis?.validation?.nailValid ? "ok" : analysis?.nail?.found ? "warn" : "idle";
-  const ringState =
-    captureState === CaptureState.HOLD_STILL || captureState === CaptureState.COUNTING_DOWN
-      ? "ok"
-      : analysis?.guideState === "warn"
-        ? "warn"
-        : "idle";
-  const hint = hintForState(captureState, analysis, failReason);
+  const readyGate = !!gate?.ready;
+  const coinGuideState = gate?.coinDetected ? (readyGate ? "ok" : "warn") : "idle";
+  const fingerGuideState = gate?.fingerDetected ? (readyGate ? "ok" : "warn") : "idle";
+  const ringState = readyGate ? "ok" : gate?.coinDetected || gate?.fingerDetected ? "warn" : "idle";
+  const progress = Math.min(1, frameCount / CAPTURE_CONFIG.REQUIRED_VALID_FRAMES);
+  const hint = hintForState(captureState, gate, failReason);
+  const showSuccessCheck = captureState === CaptureState.SUCCESS && !!frozenUrl;
 
   return (
     <div className="space-y-5">
@@ -386,31 +366,24 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
       >
         <video
           ref={setVideoRef || videoRef}
-          className={`absolute inset-0 w-full h-full object-cover transition-opacity ${
-            frozenUrl ? "opacity-0" : "opacity-100"
-          }`}
+          className={`absolute inset-0 w-full h-full object-cover ${frozenUrl ? "opacity-0" : "opacity-100"}`}
           playsInline
           muted
           autoPlay
         />
         {frozenUrl && (
-          <img
-            src={frozenUrl}
-            alt=""
-            className="absolute inset-0 w-full h-full object-cover"
-            draggable={false}
-          />
+          <img src={frozenUrl} alt="" className="absolute inset-0 w-full h-full object-cover" draggable={false} />
         )}
         <canvas ref={overlayRef} className="absolute inset-0 w-full h-full pointer-events-none z-[1]" />
         <canvas ref={detectCanvasRef} className="hidden" />
-        <canvas ref={freezeCanvasRef} className="hidden" />
+        <canvas ref={captureCanvasRef} className="hidden" />
 
         {showGuide && (
           <div className="measurement-guide" aria-hidden="true">
             <div className="measurement-progress-ring" data-state={ringState}>
               <div
                 className="measurement-progress-ring__arc"
-                style={{ ["--progress"]: `${Math.round(Math.min(1, progress) * 100)}%` }}
+                style={{ ["--progress"]: `${Math.round(progress * 100)}%` }}
               />
             </div>
             <div className="measurement-axis">
@@ -420,14 +393,7 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
                 <div className="nail-guide" />
               </div>
             </div>
-            <p
-              className="measurement-guide__hint"
-              data-ok={
-                captureState === CaptureState.HOLD_STILL || captureState === CaptureState.COUNTING_DOWN
-                  ? "true"
-                  : "false"
-              }
-            >
+            <p className="measurement-guide__hint" data-ok={readyGate ? "true" : "false"}>
               {hint}
             </p>
           </div>
@@ -435,8 +401,8 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
 
         {flash && <div className="measurement-capture-flash" aria-hidden="true" />}
 
-        {captureState === CaptureState.SUCCESS && (
-          <div className="measurement-success-overlay" role="status">
+        {showSuccessCheck && (
+          <div className="measurement-success-overlay capture-success" role="status">
             <div className="measurement-success-badge" aria-hidden="true">
               ✓
             </div>
@@ -444,19 +410,41 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
           </div>
         )}
 
-        {(captureState === CaptureState.CAPTURING || captureState === CaptureState.VALIDATING) && (
+        {captureState === CaptureState.CAPTURING && (
           <div className="absolute inset-0 z-[4] flex items-center justify-center bg-oled-950/35">
-            <p className="text-sm text-white/85">
-              {captureState === CaptureState.CAPTURING ? "מצלמים…" : "בודקים את הצילום…"}
-            </p>
+            <p className="text-sm text-white/85">מצלמים…</p>
           </div>
         )}
 
         {captureState === CaptureState.FAILED && (
           <div className="absolute inset-x-0 bottom-10 z-[4] px-4 text-center">
             <p className="text-sm text-amber-200 bg-oled-950/70 rounded-xl px-3 py-2 inline-block">
-              {failReason || "הצילום לא עבר בדיקה"}
+              {failReason || "הצילום נכשל"}
             </p>
+          </div>
+        )}
+
+        {debugCapture && live && gate && (
+          <div className="absolute top-2 left-2 z-[7] rounded-lg bg-black/80 text-[10px] leading-tight p-2 font-mono space-y-0.5 pointer-events-none">
+            {[
+              ["camera", gate.cameraReady],
+              ["coin", gate.coinDetected],
+              ["finger", gate.fingerDetected],
+              ["above", gate.coinAboveFinger],
+              ["aligned", gate.horizontalAlignmentValid],
+              ["scale", gate.coinScaleValid],
+              ["gap", gate.verticalDistanceValid],
+            ].map(([label, ok]) => (
+              <div key={label} className={ok ? "text-green-400" : "text-red-400"}>
+                {label}: {ok ? "true" : "false"}
+              </div>
+            ))}
+            <div className="text-white/80">
+              frames: {frameCount}/{CAPTURE_CONFIG.REQUIRED_VALID_FRAMES}
+            </div>
+            <div className={captureLockRef.current ? "text-amber-300" : "text-white/80"}>
+              locked: {captureLockRef.current ? "true" : "false"}
+            </div>
           </div>
         )}
 
@@ -477,18 +465,10 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
 
       <div className="glass-panel p-4 space-y-2" aria-live="polite">
         <p className="text-sm text-white/80">{hint}</p>
-        {live &&
-          analysis?.tips
-            ?.filter((t) => !t.ok)
-            .slice(0, 2)
-            .map((tip) => (
-              <p key={tip.code} className="text-sm text-white/55 flex items-start gap-2">
-                <span aria-hidden="true">!</span>
-                <span>{tip.textHe}</span>
-              </p>
-            ))}
-        {(captureState === CaptureState.HOLD_STILL || captureState === CaptureState.COUNTING_DOWN) && (
-          <p className="text-sm text-violet-200">סורקים… {Math.round(Math.min(1, progress) * 100)}%</p>
+        {readyGate && live && (
+          <p className="text-sm text-violet-200">
+            מצלמים… {frameCount}/{CAPTURE_CONFIG.REQUIRED_VALID_FRAMES}
+          </p>
         )}
       </div>
 
@@ -501,10 +481,12 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
             <button
               type="button"
               className="btn-ghost text-sm"
-              disabled={!analysis?.ready || busy}
+              disabled={!gate?.ready || busy}
               onClick={() => {
-                if (!analysis?.ready || busy) return;
-                void runCapturePipeline();
+                if (!gate?.ready || captureLockRef.current) return;
+                captureLockRef.current = true;
+                counterRef.current.reset();
+                void captureCurrentFrame(analysis);
               }}
             >
               צילום ידני
@@ -534,14 +516,6 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
               <p className="text-sm text-white/70">{confidenceLabelHe(draft?.confidence)}</p>
             </div>
           </div>
-          {draft?.captureQuality?.calibrationMm && (
-            <p className="text-xs text-white/40 text-center">
-              כיול לפי קוטר חיצוני {draft.captureQuality.calibrationMm} מ״מ
-              {draft.captureQuality.outerDiameterPx
-                ? ` · ${Math.round(draft.captureQuality.outerDiameterPx)}px`
-                : ""}
-            </p>
-          )}
 
           <label className="block text-sm text-white/60">
             תיקון ידני (מ״מ)
@@ -565,19 +539,11 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
               type="button"
               className="btn-violet"
               onClick={() => confirmDraft(manualMm)}
-              disabled={
-                !manualMm ||
-                (draft?.confidence < CONFIDENCE_AUTO_OK && Number(manualMm) === draft?.widthMm)
-              }
+              disabled={!manualMm}
             >
               אישור האצבע
             </button>
           </div>
-          {draft?.confidence < CONFIDENCE_AUTO_OK && (
-            <p className="text-xs text-amber-200 text-center">
-              הביטחון נמוך — צלמי שוב או עדכני את המידה ידנית לפני אישור.
-            </p>
-          )}
         </div>
       )}
     </div>

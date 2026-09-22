@@ -178,11 +178,11 @@ function detectCoin(data, width, height, targetDiameterPx) {
   const score =
     best.confidence *
     (multiCoin ? 0.15 : 1) *
-    (inUpperZone ? 1 : 0.45) *
-    (sizeRatio > 0.55 && sizeRatio < 1.55 ? 1 : 0.5);
+    (inUpperZone ? 1 : 0.55) *
+    (sizeRatio > 0.5 && sizeRatio < 1.7 ? 1 : 0.55);
 
   return {
-    found: score > 0.18 && !multiCoin,
+    found: score > CAPTURE_CONFIG.COIN_CONFIDENCE_MIN && !multiCoin,
     multiCoin,
     centerX: best.centerX,
     centerY: best.centerY,
@@ -198,25 +198,59 @@ function detectCoin(data, width, height, targetDiameterPx) {
   };
 }
 
-function detectNailBelowCoin(data, width, height, coin) {
+function detectFingerBelowCoin(data, width, height, coin) {
   const coinR = coin.outerDiameterPx / 2;
   const gap = Math.min(width, height) * GUIDE_LAYOUT.gapFrac;
   const expectedTop = coin.centerY + coinR + gap;
   const fingerW = coin.outerDiameterPx * GUIDE_LAYOUT.fingerWidthRatio;
   const fingerH = fingerW * GUIDE_LAYOUT.fingerHeightRatio;
 
-  const x0 = Math.floor(coin.centerX - fingerW * 0.75);
-  const x1 = Math.floor(coin.centerX + fingerW * 0.75);
-  const y0 = Math.floor(expectedTop);
-  const y1 = Math.floor(Math.min(height - 2, expectedTop + fingerH * 1.15));
+  const x0 = Math.max(2, Math.floor(coin.centerX - fingerW * 0.85));
+  const x1 = Math.min(width - 2, Math.floor(coin.centerX + fingerW * 0.85));
+  const y0 = Math.max(2, Math.floor(expectedTop - coinR * 0.05));
+  const y1 = Math.min(height - 2, Math.floor(expectedTop + fingerH * 1.2));
 
   if (y0 >= y1 - 8 || x0 >= x1 - 8) {
-    return { found: false, widthPx: null, score: 0, centerX: coin.centerX, centerY: expectedTop + fingerH / 2 };
+    return {
+      found: false,
+      presence: false,
+      widthPx: null,
+      score: 0,
+      centerX: coin.centerX,
+      centerY: expectedTop + fingerH / 2,
+      topY: expectedTop,
+      heightPx: fingerH,
+    };
   }
 
-  // Scan horizontal rows in upper third of finger ROI (nail plate zone)
-  const nailY0 = y0 + Math.floor((y1 - y0) * 0.08);
-  const nailY1 = y0 + Math.floor((y1 - y0) * 0.42);
+  // Presence: enough darker / edged pixels in the finger ROI under the coin
+  let dark = 0;
+  let edged = 0;
+  let samples = 0;
+  let massX = 0;
+  let massY = 0;
+  let massN = 0;
+  for (let y = y0; y < y1; y += 3) {
+    for (let x = x0; x < x1; x += 3) {
+      const g = grayAt(data, width, height, x, y);
+      const edge = Math.abs(g - grayAt(data, width, height, x - 2, y));
+      samples += 1;
+      if (g < 165) {
+        dark += 1;
+        massX += x;
+        massY += y;
+        massN += 1;
+      }
+      if (edge > 10) edged += 1;
+    }
+  }
+  const darkRatio = samples ? dark / samples : 0;
+  const edgeRatio = samples ? edged / samples : 0;
+  const presence = darkRatio > 0.08 || edgeRatio > 0.05;
+
+  // Nail width scan (best-effort; not required for capture gate)
+  const nailY0 = y0 + Math.floor((y1 - y0) * 0.06);
+  const nailY1 = y0 + Math.floor((y1 - y0) * 0.5);
   let bestWidth = 0;
   let bestLeft = null;
   let bestRight = null;
@@ -228,24 +262,18 @@ function detectNailBelowCoin(data, width, height, coin) {
     let right = null;
     for (let x = x0; x < x1; x += 1) {
       const g = grayAt(data, width, height, x, y);
-      const gL = grayAt(data, width, height, x - 2, y);
-      const edge = Math.abs(g - gL);
-      // Finger/nail tends darker than background sheet
-      if (g < 155 && edge > 8) {
-        if (left == null) left = x;
-        right = x;
-      } else if (g < 130) {
+      if (g < 160) {
         if (left == null) left = x;
         right = x;
       }
     }
-    if (left != null && right != null && right - left > 6) {
+    if (left != null && right != null && right - left > 5) {
       const w = right - left;
-      // Prefer widths in plausible nail range vs coin
       const expected = fingerW * 0.85;
       const fit = 1 - Math.min(1, Math.abs(w - expected) / expected);
-      const centered = 1 - Math.min(1, Math.abs((left + right) / 2 - coin.centerX) / (coin.outerDiameterPx * 0.5));
-      const rowScore = fit * 0.6 + centered * 0.4;
+      const centered =
+        1 - Math.min(1, Math.abs((left + right) / 2 - coin.centerX) / Math.max(coin.outerDiameterPx * 0.5, 1));
+      const rowScore = fit * 0.55 + centered * 0.45;
       if (rowScore > bestScore) {
         bestScore = rowScore;
         bestWidth = w;
@@ -256,33 +284,27 @@ function detectNailBelowCoin(data, width, height, coin) {
     }
   }
 
-  if (!bestWidth || bestLeft == null) {
-    return {
-      found: false,
-      widthPx: null,
-      score: 0,
-      centerX: coin.centerX,
-      centerY: expectedTop + fingerH / 2,
-      topY: expectedTop,
-      tipVisible: false,
-    };
-  }
-
-  const centerX = (bestLeft + bestRight) / 2;
-  const tipVisible = bestY < height - 8 && bestLeft > 4 && bestRight < width - 4;
-  const belowCoin = bestY > coin.centerY + coinR;
-  const score = bestScore * (tipVisible ? 1 : 0.4) * (belowCoin ? 1 : 0.3);
+  const centerX = bestLeft != null ? (bestLeft + bestRight) / 2 : massN ? massX / massN : coin.centerX;
+  const centerY = bestLeft != null ? bestY : massN ? massY / massN : expectedTop + fingerH * 0.35;
+  const topY = Math.min(expectedTop, centerY - fingerH * 0.15);
+  const score = Math.max(
+    0,
+    Math.min(1, bestScore * 0.7 + darkRatio * 1.2 + edgeRatio * 0.8)
+  );
+  const belowCoin = centerY > coin.centerY + coinR * 0.4;
 
   return {
-    found: score > 0.22 && tipVisible && belowCoin,
-    widthPx: bestWidth,
-    score: Math.max(0, Math.min(1, score)),
+    found: presence && belowCoin && score >= CAPTURE_CONFIG.FINGER_SCORE_MIN,
+    presence: presence && belowCoin,
+    widthPx: bestWidth || null,
+    score,
     left: bestLeft,
     right: bestRight,
     centerX,
-    centerY: bestY,
-    topY: expectedTop,
-    tipVisible,
+    centerY,
+    topY,
+    heightPx: fingerH,
+    tipVisible: bestLeft != null && bestLeft > 2 && bestRight < width - 2,
     fingerBox: { x0, x1, y0, y1, fingerW, fingerH },
   };
 }
@@ -348,9 +370,22 @@ export function analyzeFrame(imageData, { coinDiameterMm = 23, coinMeta = null }
   const sharpOk = sharpness > CAPTURE_CONFIG.SHARPNESS_MIN;
 
   const coin = detectCoin(data, width, height, targetDiameterPx);
-  const nail = coin.found
-    ? detectNailBelowCoin(data, width, height, coin)
-    : { found: false, widthPx: null, score: 0, centerX: guideCoinCx, centerY: guideCoinCy + targetDiameterPx };
+  const nail = coin.found || coin.confidence >= CAPTURE_CONFIG.COIN_CONFIDENCE_MIN
+    ? detectFingerBelowCoin(data, width, height, {
+        ...coin,
+        centerX: coin.centerX,
+        centerY: coin.centerY,
+        outerDiameterPx: coin.outerDiameterPx,
+      })
+    : {
+        found: false,
+        presence: false,
+        widthPx: null,
+        score: 0,
+        centerX: guideCoinCx,
+        centerY: guideCoinCy + targetDiameterPx,
+        topY: guideCoinCy + targetDiameterPx / 2,
+      };
 
   const coinR = coin.outerDiameterPx / 2;
   const xAlignLimit = coin.outerDiameterPx * CAPTURE_CONFIG.ALIGN_X_FRAC;
@@ -504,7 +539,21 @@ export function analyzeFrame(imageData, { coinDiameterMm = 23, coinMeta = null }
       left: nail.left,
       right: nail.right,
       center: { x: nail.centerX, y: nail.centerY },
+      topY: nail.topY,
+      heightPx: nail.heightPx,
       found: nail.found,
+      presence: nail.presence,
+    },
+    finger: {
+      widthPx: nail.widthPx,
+      score: nail.score || 0,
+      left: nail.left,
+      right: nail.right,
+      center: { x: nail.centerX, y: nail.centerY },
+      topY: nail.topY,
+      heightPx: nail.heightPx,
+      found: nail.found,
+      presence: nail.presence,
     },
     guides: {
       layout: GUIDE_LAYOUT,

@@ -332,4 +332,17 @@
       opacity: 1;
     }
   }
+
+  .capture-success {
+    animation: captureSuccess 220ms ease-out forwards;
+  }
+
+  @keyframes captureSuccess {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
 }

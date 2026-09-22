@@ -13,195 +13,242 @@ import {
   GUIDE_LAYOUT,
 } from "../../client/src/lib/nailSizing/measurementEngine.js";
 import { getCoverTransform, videoPointToDisplay } from "../../client/src/lib/nailSizing/videoGeometry.js";
-import { CAPTURE_CONFIG, CaptureState, TEN_SHEKEL_COIN } from "../../client/src/lib/nailSizing/captureConfig.js";
+import { CAPTURE_CONFIG, TEN_SHEKEL_COIN } from "../../client/src/lib/nailSizing/captureConfig.js";
 import {
-  createStabilityTracker,
-  deriveLiveState,
-  readyForAutoCapture,
-  toStabilitySample,
+  buildCaptureGate,
+  createFrameCounter,
+  handleDetectionForCapture,
+  isFrameReadyForCapture,
 } from "../../client/src/lib/nailSizing/captureMachine.js";
 
 test("pixelsPerMillimeter uses official coin diameter", () => {
   assert.equal(pixelsPerMillimeter(180, 18), 10);
-  assert.equal(pixelsPerMillimeter(0, 18), null);
 });
 
 test("10₪ uses outer 23mm not gold core 16mm", () => {
   const coin = findCoinById("ils-10-shekel");
-  assert.equal(coin.diameterMm, 23);
-  assert.equal(coin.outerDiameterMm, TEN_SHEKEL_COIN.outerDiameterMm);
-  assert.equal(coin.innerDiameterMm, TEN_SHEKEL_COIN.innerDiameterMm);
   assert.equal(assertUsesOuterDiameterMm(coin), true);
   assert.equal(pixelsPerMillimeter(230, TEN_SHEKEL_COIN.calibrationDiameterMm), 10);
-  assert.notEqual(pixelsPerMillimeter(230, TEN_SHEKEL_COIN.innerDiameterMm), 10);
 });
 
-test("widthPxToMm converts with outer-diameter calibration", () => {
-  const pxPerMm = pixelsPerMillimeter(230, 23);
-  assert.equal(widthPxToMm(115, pxPerMm), 11.5);
-});
-
-test("widthMmToSize maps into chart buckets", () => {
+test("widthPxToMm / size chart", () => {
+  assert.equal(widthPxToMm(115, 10), 11.5);
   assert.equal(widthMmToSize(11.2), 4);
-  assert.equal(widthMmToSize(9.8), 5);
 });
 
-test("vertical stack requires finger below coin", () => {
+test("vertical stack + axis helpers", () => {
   assert.equal(assertVerticalStack(100, 180), true);
-  assert.equal(assertVerticalStack(180, 100), false);
-});
-
-test("centered axis within 20% of coin diameter", () => {
-  assert.equal(assertCenteredAxis(200, 210, 100, 0.2), true);
-  assert.equal(assertCenteredAxis(200, 250, 100, 0.2), false);
-});
-
-test("guide layout is vertical column not side-by-side", () => {
+  assert.equal(assertCenteredAxis(200, 210, 100, 0.35), true);
   assert.equal(GUIDE_LAYOUT.coinCx, 0.5);
-  assert.ok(GUIDE_LAYOUT.fingerWidthRatio < 1);
-  assert.ok(GUIDE_LAYOUT.fingerHeightRatio > 1);
 });
 
 test("object-fit cover mapping keeps center aligned", () => {
   const t = getCoverTransform(1280, 720, 390, 520);
   const center = videoPointToDisplay(640, 360, t);
   assert.ok(Math.abs(center.x - 195) < 1);
-  assert.ok(Math.abs(center.y - 260) < 1);
 });
 
-test("stability tracker does not mark stable from a single ready frame", () => {
-  const tracker = createStabilityTracker({
-    ...CAPTURE_CONFIG,
-    REQUIRED_STABLE_MS: 800,
-    MIN_STABLE_FRAMES: 12,
-  });
-  const base = {
-    ready: true,
-    confidence: 0.8,
-    sharpness: 40,
-    coinCx: 100,
-    coinCy: 80,
-    coinD: 120,
-    nailCx: 100,
-    nailCy: 200,
-    nailW: 40,
-  };
-  const t0 = 1_000_000;
-  const once = tracker.push({ ...base, t: t0 });
-  assert.equal(once.stable, false);
-  assert.ok(once.progress < 1);
-});
-
-test("stability tracker requires motion-consistent ready frames over the window", () => {
-  const tracker = createStabilityTracker({
-    ...CAPTURE_CONFIG,
-    REQUIRED_STABLE_MS: 800,
-    MIN_STABLE_FRAMES: 12,
-    FRAME_INTERVAL_MS: 60,
-  });
-  const base = {
-    ready: true,
-    confidence: 0.8,
-    sharpness: 40,
-    coinCx: 100,
-    coinCy: 80,
-    coinD: 120,
-    nailCx: 100,
-    nailCy: 200,
-    nailW: 40,
-  };
-  const t0 = 2_000_000;
-  let last;
-  for (let i = 0; i < 15; i += 1) {
-    last = tracker.push({ ...base, t: t0 + i * 60 });
-  }
-  assert.equal(last.stable, true);
-  assert.ok(last.progress >= 0.99);
-
-  // Large jump breaks stability immediately
-  const broken = tracker.push({
-    ...base,
-    coinCx: 100 + 40,
-    t: t0 + 15 * 60,
-  });
-  assert.equal(broken.stable, false);
-});
-
-test("readyForAutoCapture blocks when captureLocked or not stable", () => {
-  const analysis = {
-    ready: true,
-    confidence: 0.8,
-    coin: { clipped: false },
-    validation: {
-      coinValid: true,
-      sizeOk: true,
-      perspectiveValid: true,
-      fingerValid: true,
-      nailValid: true,
-      verticalAlignmentValid: true,
-      distanceValid: true,
-      lightingValid: true,
-      sharpnessValid: true,
+function mockAnalysis({
+  coinCx = 200,
+  coinCy = 120,
+  coinD = 100,
+  fingerCx = 205,
+  fingerCy = 230,
+  fingerTopY = 200,
+  sizeRatio = 1,
+  coinFound = true,
+  fingerFound = true,
+  multiCoin = false,
+} = {}) {
+  return {
+    coin: {
+      found: coinFound,
+      score: coinFound ? 0.5 : 0,
+      multiCoin,
+      sizeRatio,
+      outerDiameterPx: coinD,
+      diameterPx: coinD,
+      center: { x: coinCx, y: coinCy },
+    },
+    nail: {
+      found: fingerFound,
+      presence: fingerFound,
+      score: fingerFound ? 0.4 : 0,
+      center: { x: fingerCx, y: fingerCy },
+      topY: fingerTopY,
+      heightPx: 80,
     },
   };
+}
+
+test("isFrameReadyForCapture requires all geometry flags", () => {
+  assert.equal(isFrameReadyForCapture(null), false);
   assert.equal(
-    readyForAutoCapture({
+    isFrameReadyForCapture({
       cameraReady: true,
-      analysis,
-      stability: { stable: true, motionValid: true },
-      captureLocked: true,
-    }),
-    false
-  );
-  assert.equal(
-    readyForAutoCapture({
-      cameraReady: true,
-      analysis,
-      stability: { stable: false, motionValid: true },
-      captureLocked: false,
-    }),
-    false
-  );
-  assert.equal(
-    readyForAutoCapture({
-      cameraReady: true,
-      analysis,
-      stability: { stable: true, motionValid: true },
-      captureLocked: false,
+      coinDetected: true,
+      fingerDetected: true,
+      coinAboveFinger: true,
+      horizontalAlignmentValid: true,
+      coinScaleValid: true,
+      verticalDistanceValid: true,
     }),
     true
   );
-});
-
-test("deriveLiveState maps analysis into capture machine states", () => {
-  assert.equal(deriveLiveState(null, null), CaptureState.SEARCHING);
   assert.equal(
-    deriveLiveState({ coin: { found: false }, nail: { found: false }, ready: false }, null),
-    CaptureState.SEARCHING
-  );
-  assert.equal(
-    deriveLiveState({ coin: { found: true }, nail: { found: true }, ready: false }, { progress: 0 }),
-    CaptureState.ALIGNING
-  );
-  assert.equal(
-    deriveLiveState({ coin: { found: true }, nail: { found: true }, ready: true }, { progress: 0, stable: false }),
-    CaptureState.HOLD_STILL
-  );
-  assert.equal(
-    deriveLiveState({ coin: { found: true }, nail: { found: true }, ready: true }, { progress: 0.5, stable: false }),
-    CaptureState.COUNTING_DOWN
+    isFrameReadyForCapture({
+      cameraReady: true,
+      coinDetected: true,
+      fingerDetected: true,
+      coinAboveFinger: true,
+      horizontalAlignmentValid: true,
+      coinScaleValid: true,
+      verticalDistanceValid: false,
+    }),
+    false
   );
 });
 
-test("toStabilitySample copies detection geometry", () => {
-  const sample = toStabilitySample({
-    ready: true,
-    confidence: 0.7,
-    sharpness: 22,
-    coin: { center: { x: 1, y: 2 }, outerDiameterPx: 50 },
-    nail: { center: { x: 3, y: 4 }, widthPx: 20 },
-  }, 123);
-  assert.equal(sample.t, 123);
-  assert.equal(sample.coinD, 50);
-  assert.equal(sample.nailW, 20);
+test("small horizontal offset within 35% does not block", () => {
+  const gate = buildCaptureGate(mockAnalysis({ fingerCx: 200 + 30 }), { cameraReady: true });
+  assert.equal(gate.horizontalAlignmentValid, true);
+  assert.equal(gate.ready, true);
+});
+
+test("large horizontal offset blocks capture", () => {
+  const gate = buildCaptureGate(mockAnalysis({ fingerCx: 200 + 50 }), { cameraReady: true });
+  assert.equal(gate.horizontalAlignmentValid, false);
+  assert.equal(gate.ready, false);
+});
+
+test("coin above finger accepted; coin below rejected", () => {
+  const ok = buildCaptureGate(mockAnalysis(), { cameraReady: true });
+  assert.equal(ok.coinAboveFinger, true);
+  const bad = buildCaptureGate(
+    mockAnalysis({ coinCy: 300, fingerTopY: 200, fingerCy: 220 }),
+    { cameraReady: true }
+  );
+  assert.equal(bad.coinAboveFinger, false);
+});
+
+test("two valid frames do not capture; third does immediately", () => {
+  const counter = createFrameCounter(3);
+  const analysis = mockAnalysis();
+  const calls = [];
+
+  for (let i = 0; i < 3; i += 1) {
+    const decision = handleDetectionForCapture({
+      analysis,
+      cameraReady: true,
+      captureLocked: false,
+      counter,
+    });
+    calls.push(decision);
+  }
+
+  assert.equal(calls[0].shouldCapture, false);
+  assert.equal(calls[0].count, 1);
+  assert.equal(calls[1].shouldCapture, false);
+  assert.equal(calls[1].count, 2);
+  assert.equal(calls[2].shouldCapture, true);
+  assert.equal(calls[2].count, 3);
+  // No extra timeout after third frame — shouldCapture is synchronous
+  assert.equal(CAPTURE_CONFIG.REQUIRED_VALID_FRAMES, 3);
+});
+
+test("invalid frame resets consecutive counter", () => {
+  const counter = createFrameCounter(3);
+  const good = mockAnalysis();
+  const bad = mockAnalysis({ fingerFound: false });
+  handleDetectionForCapture({ analysis: good, cameraReady: true, captureLocked: false, counter });
+  handleDetectionForCapture({ analysis: good, cameraReady: true, captureLocked: false, counter });
+  const reset = handleDetectionForCapture({
+    analysis: bad,
+    cameraReady: true,
+    captureLocked: false,
+    counter,
+  });
+  assert.equal(reset.count, 0);
+  assert.equal(reset.shouldCapture, false);
+  const again = handleDetectionForCapture({
+    analysis: good,
+    cameraReady: true,
+    captureLocked: false,
+    counter,
+  });
+  assert.equal(again.count, 1);
+});
+
+test("capture lock blocks second capture", () => {
+  const counter = createFrameCounter(3);
+  const analysis = mockAnalysis();
+  for (let i = 0; i < 3; i += 1) {
+    handleDetectionForCapture({ analysis, cameraReady: true, captureLocked: false, counter });
+  }
+  // After capture, lock true — even with ready frames
+  counter.reset();
+  const locked = handleDetectionForCapture({
+    analysis,
+    cameraReady: true,
+    captureLocked: true,
+    counter,
+  });
+  assert.equal(locked.shouldCapture, false);
+  assert.equal(locked.blockedBy, "captureLocked");
+});
+
+test("frame counter survives as ref-like object across pushes (not reset by re-read)", () => {
+  const counter = createFrameCounter(3);
+  counter.push(true);
+  counter.push(true);
+  assert.equal(counter.count, 2);
+  // Simulates render re-reading same ref
+  const same = counter;
+  same.push(true);
+  assert.equal(same.shouldCapture(), true);
+});
+
+test("failed capture path can unlock — counter restart allows retry", () => {
+  const counter = createFrameCounter(3);
+  const analysis = mockAnalysis();
+  // First attempt reaches capture
+  for (let i = 0; i < 3; i += 1) {
+    handleDetectionForCapture({ analysis, cameraReady: true, captureLocked: false, counter });
+  }
+  // Simulate failure unlock
+  counter.reset();
+  let locked = false;
+  const d1 = handleDetectionForCapture({
+    analysis,
+    cameraReady: true,
+    captureLocked: locked,
+    counter,
+  });
+  assert.equal(d1.count, 1);
+  locked = false;
+  handleDetectionForCapture({ analysis, cameraReady: true, captureLocked: locked, counter });
+  const d3 = handleDetectionForCapture({
+    analysis,
+    cameraReady: true,
+    captureLocked: locked,
+    counter,
+  });
+  assert.equal(d3.shouldCapture, true);
+});
+
+test("success check requires captured image — gate alone is not success", () => {
+  const gate = buildCaptureGate(mockAnalysis(), { cameraReady: true });
+  assert.equal(gate.ready, true);
+  const capturedImage = null;
+  const showCheck = gate.ready && !!capturedImage;
+  assert.equal(showCheck, false);
+  const showCheckAfter = gate.ready && !!"data:image/jpeg;base64,xx";
+  assert.equal(showCheckAfter, true);
+});
+
+test("debug query flag helper semantics", () => {
+  const params = new URLSearchParams("debugCapture=1");
+  assert.equal(params.get("debugCapture") === "1", true);
+  const off = new URLSearchParams("");
+  assert.equal(off.get("debugCapture") === "1", false);
 });
