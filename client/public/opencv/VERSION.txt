@@ -1,4 +1,0 @@
-OpenCV.js pinned build for MadeByKseniya nail sizing
-Package: @techstark/opencv-js@4.10.0-release.1
-Source: https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js
-Downloaded as local fixed asset — do not switch to "latest" CDN in production.

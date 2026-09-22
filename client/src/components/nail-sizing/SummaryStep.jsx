@@ -1,5 +1,5 @@
 import { ALL_FINGERS } from "../../lib/nailSizing/constants.js";
-import { confidenceLabelHe } from "../../lib/nailSizing/sizing.js";
+import { getQualityLevel } from "../../lib/nailSizing/photoQuality.js";
 
 export default function SummaryStep({
   measurements,
@@ -38,6 +38,8 @@ export default function SummaryStep({
                 {rows.map((f) => {
                   const m = measurements[f.key];
                   const needs = m?.status !== "confirmed";
+                  const q =
+                    m?.photoQualityScore != null ? getQualityLevel(m.photoQualityScore) : null;
                   return (
                     <li
                       key={f.key}
@@ -46,8 +48,11 @@ export default function SummaryStep({
                       <div className="min-w-0">
                         <p className="text-white/90">{f.fingerLabelHe}</p>
                         <p className="text-xs text-white/45">
-                          {m?.widthMm != null ? `${m.widthMm} מ״מ · מידה ${m.size}` : "טרם נמדד"}
-                          {m?.confidence != null ? ` · ${confidenceLabelHe(m.confidence)}` : ""}
+                          {m?.status === "confirmed"
+                            ? m?.photoQualityScore != null
+                              ? `צולם · איכות ${m.photoQualityScore}/100 · ${q?.label || ""}`
+                              : "צולם"
+                            : "טרם נמדד"}
                         </p>
                       </div>
                       <button type="button" className="btn-text text-xs shrink-0" onClick={() => onRetake(f.key)}>

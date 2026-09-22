@@ -1,0 +1,14 @@
+---
+description: Always commit and push to main after completing work so Vercel deploys
+alwaysApply: true
+---
+
+# Auto commit + push for Vercel
+
+After finishing any code change in this project (unless the user explicitly says not to):
+
+1. Create a git commit with a clear message matching the repo style.
+2. Push to `origin` on the current branch (`git push -u origin HEAD`) so Vercel redeploys.
+3. Do this without waiting for the user to ask for a commit or push.
+4. Follow the existing git safety protocol (no force push, no amend unless required, no secrets).
+5. Briefly tell the user the commit was pushed and Vercel will update.
