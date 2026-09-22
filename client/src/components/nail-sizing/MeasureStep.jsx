@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { calculatePhotoQuality, getGuideRegions, getQualityLevel } from "../../lib/nailSizing/photoQuality.js";
+import {
+  scrollCameraIntoView as scrollCameraElementIntoView,
+  scheduleAfterPaint,
+} from "../../lib/nailSizing/scrollCameraIntoView.js";
 
 function scoreColorClass(score) {
   if (score >= 85) return "text-emerald-400";
@@ -10,9 +14,12 @@ function scoreColorClass(score) {
 
 export default function MeasureStep({ camera, coinId, finger, existing, onConfirm, onBack }) {
   const { videoRef, setVideoRef, status, start, attachToVideo, errorHe } = camera;
+  const cameraSectionRef = useRef(null);
   const captureCanvasRef = useRef(null);
   const captureLockRef = useRef(false);
   const successTimerRef = useRef(0);
+  const cameraCenteredRef = useRef(false);
+  const scrollCancelRef = useRef(null);
 
   const [phase, setPhase] = useState("camera"); // camera | flash | review
   const [capturedImage, setCapturedImage] = useState(null);
@@ -21,16 +28,38 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
   const [showLowConfirm, setShowLowConfirm] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
 
+  const scrollCameraIntoView = useCallback(({ immediate = false } = {}) => {
+    scrollCameraElementIntoView(cameraSectionRef.current, { immediate });
+  }, []);
+
+  const scheduleCenter = useCallback(
+    ({ immediate = false } = {}) => {
+      if (scrollCancelRef.current) {
+        scrollCancelRef.current();
+        scrollCancelRef.current = null;
+      }
+      scrollCancelRef.current = scheduleAfterPaint(() => {
+        scrollCameraIntoView({ immediate });
+      });
+    },
+    [scrollCameraIntoView]
+  );
+
   useEffect(() => {
     document.body.classList.add("mbk-nail-measuring");
     return () => {
       document.body.classList.remove("mbk-nail-measuring");
       window.clearTimeout(successTimerRef.current);
+      if (scrollCancelRef.current) {
+        scrollCancelRef.current();
+        scrollCancelRef.current = null;
+      }
     };
   }, []);
 
   useEffect(() => {
     captureLockRef.current = false;
+    cameraCenteredRef.current = false;
     setPhase("camera");
     setCapturedImage(null);
     setPhotoQuality(null);
@@ -38,6 +67,17 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
     setShowLowConfirm(false);
     setVideoReady(false);
   }, [finger.key]);
+
+  // Enter measure / new finger → center once after paint
+  useEffect(() => {
+    scheduleCenter();
+    return () => {
+      if (scrollCancelRef.current) {
+        scrollCancelRef.current();
+        scrollCancelRef.current = null;
+      }
+    };
+  }, [finger.key, scheduleCenter]);
 
   useEffect(() => {
     if (status === "ready") {
@@ -68,6 +108,16 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
       window.clearInterval(id);
     };
   }, [videoRef, status, onVideoMeta, finger.key]);
+
+  // After camera becomes ready the first time per finger, re-center once
+  // (layout may change when video gets dimensions)
+  useEffect(() => {
+    if (status !== "ready" || !videoReady || cameraCenteredRef.current) return undefined;
+    if (phase !== "camera") return undefined;
+    cameraCenteredRef.current = true;
+    scheduleCenter();
+    return undefined;
+  }, [status, videoReady, phase, scheduleCenter]);
 
   const cameraReady = status === "ready";
   const canCapture = cameraReady && videoReady && phase === "camera";
@@ -114,12 +164,14 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
   function retake() {
     window.clearTimeout(successTimerRef.current);
     captureLockRef.current = false;
+    cameraCenteredRef.current = false;
     setCapturedImage(null);
     setPhotoQuality(null);
     setShowLowConfirm(false);
     setError("");
     setPhase("camera");
     void attachToVideo?.(videoRef.current);
+    scheduleCenter();
   }
 
   function confirmCapture() {
@@ -145,9 +197,7 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
     });
   }
 
-  const level = photoQuality
-    ? getQualityLevel(photoQuality.score)
-    : null;
+  const level = photoQuality ? getQualityLevel(photoQuality.score) : null;
 
   return (
     <div className="space-y-5">
@@ -159,93 +209,99 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
         )}
       </div>
 
-      <div className="relative overflow-hidden rounded-xl border border-white/[0.08] bg-black aspect-[3/4] max-h-[min(70vh,640px)] mx-auto w-full">
-        <video
-          ref={setVideoRef || videoRef}
-          className={`absolute inset-0 w-full h-full object-cover ${capturedImage && phase !== "camera" ? "opacity-0" : "opacity-100"}`}
-          playsInline
-          muted
-          autoPlay
-          onLoadedMetadata={onVideoMeta}
-          onPlaying={onVideoMeta}
-        />
-        {capturedImage && phase !== "camera" && (
-          <img
-            src={capturedImage}
-            alt=""
-            className="absolute inset-0 w-full h-full object-cover"
-            draggable={false}
+      <section
+        ref={cameraSectionRef}
+        className="camera-measurement-section space-y-4"
+        aria-label="צילום למדידת הציפורן"
+      >
+        <div className="relative overflow-hidden rounded-xl border border-white/[0.08] bg-black aspect-[3/4] max-h-[min(70vh,640px)] mx-auto w-full">
+          <video
+            ref={setVideoRef || videoRef}
+            className={`absolute inset-0 w-full h-full object-cover ${capturedImage && phase !== "camera" ? "opacity-0" : "opacity-100"}`}
+            playsInline
+            muted
+            autoPlay
+            onLoadedMetadata={onVideoMeta}
+            onPlaying={onVideoMeta}
           />
-        )}
-        <canvas ref={captureCanvasRef} className="hidden" aria-hidden="true" />
+          {capturedImage && phase !== "camera" && (
+            <img
+              src={capturedImage}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover"
+              draggable={false}
+            />
+          )}
+          <canvas ref={captureCanvasRef} className="hidden" aria-hidden="true" />
 
-        {phase === "camera" && cameraReady && (
-          <div className="measurement-guide" aria-hidden="true">
-            <div className="measurement-progress-ring" data-state="idle">
-              <div className="measurement-progress-ring__arc" style={{ ["--progress"]: "0%" }} />
-            </div>
-            <div className="measurement-axis">
-              <div className="measurement-axis__spine" />
-              <div className="coin-guide" data-state="idle" />
-              <div className="finger-guide" data-state="idle">
-                <div className="nail-guide" />
+          {phase === "camera" && cameraReady && (
+            <div className="measurement-guide" aria-hidden="true">
+              <div className="measurement-progress-ring" data-state="idle">
+                <div className="measurement-progress-ring__arc" style={{ ["--progress"]: "0%" }} />
               </div>
+              <div className="measurement-axis">
+                <div className="measurement-axis__spine" />
+                <div className="coin-guide" data-state="idle" />
+                <div className="finger-guide" data-state="idle">
+                  <div className="nail-guide" />
+                </div>
+              </div>
+              <p className="measurement-guide__hint" data-ok="false">
+                מקמי את המטבע למעלה ואת האצבע ישירות מתחתיו
+              </p>
             </div>
-            <p className="measurement-guide__hint" data-ok="false">
-              מקמי את המטבע למעלה ואת האצבע ישירות מתחתיו
-            </p>
-          </div>
-        )}
+          )}
 
-        {phase === "flash" && (
-          <div className="measurement-success-overlay capture-success" role="status">
-            <div className="measurement-success-badge" aria-hidden="true">
-              ✓
+          {phase === "flash" && (
+            <div className="measurement-success-overlay capture-success" role="status">
+              <div className="measurement-success-badge" aria-hidden="true">
+                ✓
+              </div>
+              <p className="measurement-success-text">התמונה צולמה ונשמרה</p>
             </div>
-            <p className="measurement-success-text">התמונה צולמה ונשמרה</p>
-          </div>
-        )}
+          )}
 
-        {status !== "ready" && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-oled-950/70 px-4 text-center z-[3]">
-            <p className="text-sm text-white/70">
-              {status === "requesting" ? "פותחים את המצלמה…" : "ממתינים למצלמה…"}
-            </p>
-            {errorHe && <p className="text-sm text-red-300">{errorHe}</p>}
-            {(status === "denied" || status === "error" || status === "idle") && (
-              <button type="button" className="btn-violet" onClick={start}>
-                הפעילי מצלמה
+          {status !== "ready" && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-oled-950/70 px-4 text-center z-[3]">
+              <p className="text-sm text-white/70">
+                {status === "requesting" ? "פותחים את המצלמה…" : "ממתינים למצלמה…"}
+              </p>
+              {errorHe && <p className="text-sm text-red-300">{errorHe}</p>}
+              {(status === "denied" || status === "error" || status === "idle") && (
+                <button type="button" className="btn-violet" onClick={start}>
+                  הפעילי מצלמה
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {phase === "camera" && (
+          <>
+            <div className="glass-panel p-4 space-y-2 text-center" aria-live="polite">
+              <p className="text-sm text-white/80">מקמי את המטבע למעלה ואת האצבע ישירות מתחתיו</p>
+              <p className="text-xs text-white/50">
+                ודאי שהציפורן גלויה ושהטלפון נמצא במקביל למשטח
+              </p>
+              {error && <p className="text-sm text-amber-200">{error}</p>}
+            </div>
+
+            <div className="flex flex-wrap gap-3 justify-between items-center">
+              <button type="button" className="btn-ghost" onClick={onBack}>
+                חזרה
               </button>
-            )}
-          </div>
+              <button
+                type="button"
+                className="btn-violet min-w-[10rem]"
+                disabled={!canCapture}
+                onClick={captureCurrentFrame}
+              >
+                צלמי עכשיו
+              </button>
+            </div>
+          </>
         )}
-      </div>
-
-      {phase === "camera" && (
-        <>
-          <div className="glass-panel p-4 space-y-2 text-center" aria-live="polite">
-            <p className="text-sm text-white/80">מקמי את המטבע למעלה ואת האצבע ישירות מתחתיו</p>
-            <p className="text-xs text-white/50">
-              ודאי שהציפורן גלויה ושהטלפון נמצא במקביל למשטח
-            </p>
-            {error && <p className="text-sm text-amber-200">{error}</p>}
-          </div>
-
-          <div className="flex flex-wrap gap-3 justify-between items-center">
-            <button type="button" className="btn-ghost" onClick={onBack}>
-              חזרה
-            </button>
-            <button
-              type="button"
-              className="btn-violet min-w-[10rem]"
-              disabled={!canCapture}
-              onClick={captureCurrentFrame}
-            >
-              צלמי עכשיו
-            </button>
-          </div>
-        </>
-      )}
+      </section>
 
       {phase === "review" && photoQuality && (
         <div className="glass-panel p-5 space-y-4">

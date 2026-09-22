@@ -270,6 +270,11 @@
     visibility: hidden;
   }
 
+  .camera-measurement-section {
+    scroll-margin-top: calc(72px + env(safe-area-inset-top, 0px) + 12px);
+    scroll-margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+  }
+
   .measurement-capture-flash {
     position: absolute;
     inset: 0;

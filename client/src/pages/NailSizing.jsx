@@ -36,6 +36,9 @@ export default function NailSizing() {
   }, [session]);
 
   useEffect(() => {
+    if (session.step === "measure") {
+      return;
+    }
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [session.step, session.fingerIndex]);
 
