@@ -5,6 +5,7 @@ import PrepStep from "../components/nail-sizing/PrepStep.jsx";
 import CoinStep from "../components/nail-sizing/CoinStep.jsx";
 import CameraPermissionStep from "../components/nail-sizing/CameraPermissionStep.jsx";
 import GuideStep from "../components/nail-sizing/GuideStep.jsx";
+import FingerSelectStep from "../components/nail-sizing/FingerSelectStep.jsx";
 import MeasureStep from "../components/nail-sizing/MeasureStep.jsx";
 import SummaryStep from "../components/nail-sizing/SummaryStep.jsx";
 import { ALL_FINGERS, GUIDE_SEEN_KEY } from "../lib/nailSizing/constants.js";
@@ -18,6 +19,11 @@ import {
 } from "../lib/nailSizing/sessionStore.js";
 import { saveMeasurementProfile } from "../lib/api.js";
 
+function fingersFromKeys(keys) {
+  const set = new Set(keys || []);
+  return ALL_FINGERS.filter((f) => set.has(f.key));
+}
+
 export default function NailSizing() {
   const camera = useCamera();
   const [session, setSession] = useState(() => loadSession() || createSession());
@@ -30,11 +36,25 @@ export default function NailSizing() {
   }, [session]);
 
   useEffect(() => {
-    // Prevent accidental scroll restoration mid-flow on mobile.
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [session.step, session.fingerIndex]);
 
-  const finger = ALL_FINGERS[session.fingerIndex] || ALL_FINGERS[0];
+  // Old sessions may land on measure without finger selection — send them back.
+  useEffect(() => {
+    if (
+      session.step === "measure" &&
+      (!Array.isArray(session.selectedFingerKeys) || session.selectedFingerKeys.length === 0)
+    ) {
+      setSession((s) => ({ ...s, step: "fingers", fingerIndex: 0 }));
+    }
+  }, [session.step, session.selectedFingerKeys]);
+
+  const selectedFingers = useMemo(
+    () => fingersFromKeys(session.selectedFingerKeys),
+    [session.selectedFingerKeys]
+  );
+
+  const finger = selectedFingers[session.fingerIndex] || selectedFingers[0] || ALL_FINGERS[0];
 
   function patch(partial) {
     setSession((s) => ({ ...s, ...partial }));
@@ -45,9 +65,14 @@ export default function NailSizing() {
     patch({ step });
   }
 
+  function afterCamera() {
+    patch({ consentCamera: true, step: guideSeenBefore ? "fingers" : "guide" });
+  }
+
   const completedCount = useMemo(
-    () => Object.values(session.measurements).filter((m) => m.status === "confirmed").length,
-    [session.measurements]
+    () =>
+      selectedFingers.filter((f) => session.measurements[f.key]?.status === "confirmed").length,
+    [session.measurements, selectedFingers]
   );
 
   function handleFingerConfirm(payload) {
@@ -66,18 +91,32 @@ export default function NailSizing() {
       },
     };
 
-    const nextIndex = Math.min(session.fingerIndex + 1, ALL_FINGERS.length - 1);
-    const allDone = Object.values(measurements).every((m) => m.status === "confirmed");
+    const queue = fingersFromKeys(session.selectedFingerKeys);
+    const currentIdx = queue.findIndex((f) => f.key === key);
+    const allSelectedDone = queue.every((f) => measurements[f.key]?.status === "confirmed");
+    const nextIndex = Math.min(Math.max(currentIdx, 0) + 1, Math.max(queue.length - 1, 0));
 
     patch({
       measurements,
-      fingerIndex: allDone ? session.fingerIndex : nextIndex,
-      step: allDone ? "summary" : "measure",
+      fingerIndex: allSelectedDone ? currentIdx : nextIndex,
+      step: allSelectedDone ? "summary" : "measure",
     });
   }
 
   function retakeFinger(key) {
-    const idx = ALL_FINGERS.findIndex((f) => f.key === key);
+    const idx = selectedFingers.findIndex((f) => f.key === key);
+    if (idx < 0) {
+      const keys = session.selectedFingerKeys.includes(key)
+        ? session.selectedFingerKeys
+        : [...session.selectedFingerKeys, key];
+      const ordered = ALL_FINGERS.filter((f) => keys.includes(f.key));
+      patch({
+        selectedFingerKeys: ordered.map((f) => f.key),
+        fingerIndex: Math.max(0, ordered.findIndex((f) => f.key === key)),
+        step: "measure",
+      });
+      return;
+    }
     patch({ fingerIndex: Math.max(0, idx), step: "measure" });
   }
 
@@ -88,6 +127,7 @@ export default function NailSizing() {
         phone: session.phone,
         coinId: session.coinId,
         measurements: session.measurements,
+        selectedFingerKeys: session.selectedFingerKeys,
         completedCount,
         source: "camera-guided",
         createdAt: session.createdAt,
@@ -108,14 +148,14 @@ export default function NailSizing() {
           מדידת <span className="violet-text">מידת הציפורניים</span>
         </h1>
         <p className="text-white/60 text-sm md:text-base max-w-xl mx-auto">
-          כיול עם מטבע אמיתי, צילום מונחה לכל אצבע, ושמירת פרופיל מידות להזמנות הבאות.
+          כיול עם מטבע אמיתי, צילום מונחה לאצבעות שבחרת, ושמירת פרופיל מידות להזמנות הבאות.
         </p>
       </div>
 
       <SizingProgress
         step={session.step}
         fingerIndex={session.fingerIndex}
-        totalFingers={ALL_FINGERS.length}
+        totalFingers={selectedFingers.length || session.selectedFingerKeys?.length || 0}
       />
 
       {session.step === "prep" && <PrepStep onNext={() => goStep("coin")} />}
@@ -133,10 +173,7 @@ export default function NailSizing() {
         <CameraPermissionStep
           camera={camera}
           onBack={() => goStep("coin")}
-          onGrantedContinue={() => {
-            patch({ consentCamera: true });
-            goStep(guideSeenBefore ? "measure" : "guide");
-          }}
+          onGrantedContinue={afterCamera}
         />
       )}
 
@@ -144,21 +181,33 @@ export default function NailSizing() {
         <GuideStep
           canSkip={guideSeenBefore}
           onBack={() => goStep("camera")}
-          onSkip={() => goStep("measure")}
+          onSkip={() => goStep("fingers")}
           onNext={() => {
             sessionStorage.setItem(GUIDE_SEEN_KEY, "1");
+            goStep("fingers");
+          }}
+        />
+      )}
+
+      {session.step === "fingers" && (
+        <FingerSelectStep
+          selectedKeys={session.selectedFingerKeys || []}
+          onChange={(selectedFingerKeys) => patch({ selectedFingerKeys, fingerIndex: 0 })}
+          onBack={() => goStep(guideSeenBefore ? "camera" : "guide")}
+          onNext={() => {
+            if ((session.selectedFingerKeys || []).length === 0) return;
             goStep("measure");
           }}
         />
       )}
 
-      {session.step === "measure" && session.coinId && (
+      {session.step === "measure" && session.coinId && selectedFingers.length > 0 && (
         <MeasureStep
           camera={camera}
           coinId={session.coinId}
           finger={finger}
           existing={session.measurements[finger.key]}
-          onBack={() => goStep(guideSeenBefore ? "camera" : "guide")}
+          onBack={() => goStep("fingers")}
           onConfirm={handleFingerConfirm}
         />
       )}
@@ -175,13 +224,19 @@ export default function NailSizing() {
       {session.step === "summary" && (
         <SummaryStep
           measurements={session.measurements}
+          selectedFingerKeys={session.selectedFingerKeys}
           phone={session.phone}
           onPhoneChange={(phone) => patch({ phone })}
           onRetake={retakeFinger}
           onSave={handleSave}
           saving={saving}
           saved={saved}
-          onBack={() => patch({ step: "measure", fingerIndex: ALL_FINGERS.length - 1 })}
+          onBack={() =>
+            patch({
+              step: "measure",
+              fingerIndex: Math.max(selectedFingers.length - 1, 0),
+            })
+          }
         />
       )}
 

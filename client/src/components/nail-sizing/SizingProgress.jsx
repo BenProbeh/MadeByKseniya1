@@ -1,18 +1,26 @@
-const STEP_ORDER = ["prep", "coin", "camera", "guide", "measure", "summary"];
+const STEP_ORDER = ["prep", "coin", "camera", "guide", "fingers", "measure", "summary"];
 
-export default function SizingProgress({ step, fingerIndex = 0, totalFingers = 10 }) {
+export default function SizingProgress({ step, fingerIndex = 0, totalFingers = 0 }) {
   const idx = STEP_ORDER.indexOf(step);
   const labels = [
     { id: "prep", label: "הכנה" },
     { id: "coin", label: "מטבע" },
     { id: "camera", label: "מצלמה" },
+    { id: "fingers", label: "אצבעות" },
     { id: "measure", label: "מדידה" },
     { id: "summary", label: "סיום" },
   ];
 
-  // Map guide into camera bucket for compact progress
   const visualIdx =
-    step === "guide" ? 2 : step === "measure" ? 3 : step === "summary" ? 4 : Math.max(0, labels.findIndex((l) => l.id === step));
+    step === "guide"
+      ? 2
+      : step === "fingers"
+        ? 3
+        : step === "measure"
+          ? 4
+          : step === "summary"
+            ? 5
+            : Math.max(0, labels.findIndex((l) => l.id === step));
 
   return (
     <div className="space-y-3" aria-label="התקדמות המדידה">
@@ -36,7 +44,7 @@ export default function SizingProgress({ step, fingerIndex = 0, totalFingers = 1
           );
         })}
       </div>
-      {step === "measure" && (
+      {step === "measure" && totalFingers > 0 && (
         <p className="text-center text-xs text-white/45" aria-live="polite">
           אצבע {fingerIndex + 1} מתוך {totalFingers}
         </p>

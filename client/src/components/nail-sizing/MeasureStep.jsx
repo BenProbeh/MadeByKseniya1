@@ -12,7 +12,7 @@ export default function MeasureStep({
   onBack,
   stableFramesNeeded = 8,
 }) {
-  const { videoRef, status, start } = camera;
+  const { videoRef, setVideoRef, status, start, attachToVideo, errorHe } = camera;
   const canvasRef = useRef(null);
   const overlayRef = useRef(null);
   const [analysis, setAnalysis] = useState(null);
@@ -25,8 +25,22 @@ export default function MeasureStep({
   const coin = findCoinById(coinId);
 
   useEffect(() => {
-    if (status !== "ready") start();
-  }, [status, start]);
+    // Always (re)start or re-bind when entering measure — fixes black preview
+    // when permission was granted on a previous step without a mounted <video>.
+    if (status === "ready") {
+      void attachToVideo?.(videoRef.current);
+    } else if (status !== "requesting") {
+      void start();
+    }
+  }, [status, start, attachToVideo, videoRef]);
+
+  useEffect(() => {
+    setDraft(null);
+    setAnalysis(null);
+    setStableCount(0);
+    setCountdown(null);
+    setManualMm("");
+  }, [finger.key]);
 
   useEffect(() => {
     if (status !== "ready" || draft) return undefined;
@@ -149,7 +163,7 @@ export default function MeasureStep({
 
       <div className="relative overflow-hidden rounded-xl border border-white/[0.08] bg-black aspect-[3/4] max-h-[70vh] mx-auto w-full">
         <video
-          ref={videoRef}
+          ref={setVideoRef || videoRef}
           className="absolute inset-0 w-full h-full object-cover"
           playsInline
           muted
@@ -157,6 +171,19 @@ export default function MeasureStep({
         />
         <canvas ref={overlayRef} className="absolute inset-0 w-full h-full pointer-events-none" />
         <canvas ref={canvasRef} className="hidden" />
+        {status !== "ready" && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-oled-950/70 px-4 text-center">
+            <p className="text-sm text-white/70">
+              {status === "requesting" ? "פותחים את המצלמה…" : "ממתינים למצלמה…"}
+            </p>
+            {errorHe && <p className="text-sm text-red-300">{errorHe}</p>}
+            {(status === "denied" || status === "error" || status === "idle") && (
+              <button type="button" className="btn-violet" onClick={start}>
+                הפעילי מצלמה
+              </button>
+            )}
+          </div>
+        )}
         {countdown != null && (
           <div className="absolute inset-0 flex items-center justify-center bg-oled-950/40">
             <span className="font-serif text-6xl violet-text">{countdown}</span>

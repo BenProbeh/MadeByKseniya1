@@ -33,9 +33,20 @@ export function createSession({ phone = "", coinId = null } = {}) {
     coinId,
     step: "prep",
     fingerIndex: 0,
+    selectedFingerKeys: [],
     measurements: createEmptyMeasurements(),
     consentCamera: false,
     consentStoreImages: false,
+  };
+}
+
+export function normalizeSession(session) {
+  if (!session || typeof session !== "object") return createSession();
+  return {
+    ...createSession(),
+    ...session,
+    selectedFingerKeys: Array.isArray(session.selectedFingerKeys) ? session.selectedFingerKeys : [],
+    measurements: { ...createEmptyMeasurements(), ...(session.measurements || {}) },
   };
 }
 
@@ -43,7 +54,7 @@ export function loadSession() {
   try {
     const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw);
+    return normalizeSession(JSON.parse(raw));
   } catch {
     return null;
   }

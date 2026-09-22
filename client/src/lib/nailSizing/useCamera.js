@@ -1,10 +1,38 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+/**
+ * Camera stream can be opened before the <video> mounts (permission step).
+ * Always re-bind streamRef → video when the element appears, otherwise the
+ * browser shows "camera in use" while the UI stays black.
+ */
 export function useCamera() {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const [status, setStatus] = useState("idle"); // idle | requesting | ready | denied | unavailable | insecure | unsupported | error
   const [errorHe, setErrorHe] = useState("");
+
+  const attachToVideo = useCallback(async (el) => {
+    const stream = streamRef.current;
+    if (!el || !stream) return;
+    if (el.srcObject !== stream) {
+      el.srcObject = stream;
+    }
+    try {
+      await el.play();
+    } catch {
+      // Autoplay can fail until a user gesture; muted + playsInline usually ok.
+    }
+  }, []);
+
+  const setVideoRef = useCallback(
+    (node) => {
+      videoRef.current = node;
+      if (node) {
+        void attachToVideo(node);
+      }
+    },
+    [attachToVideo]
+  );
 
   const stop = useCallback(() => {
     streamRef.current?.getTracks?.().forEach((t) => t.stop());
@@ -27,6 +55,14 @@ export function useCamera() {
       return;
     }
 
+    // Already have a live stream — just re-bind to the current video element.
+    const live = streamRef.current?.getVideoTracks?.().some((t) => t.readyState === "live");
+    if (live) {
+      await attachToVideo(videoRef.current);
+      setStatus("ready");
+      return;
+    }
+
     setStatus("requesting");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -38,10 +74,7 @@ export function useCamera() {
         },
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {});
-      }
+      await attachToVideo(videoRef.current);
       setStatus("ready");
     } catch (err) {
       const name = err?.name || "";
@@ -61,23 +94,24 @@ export function useCamera() {
         setErrorHe("לא הצלחנו לפתוח את המצלמה. נסי שוב.");
       }
     }
-  }, []);
+  }, [attachToVideo]);
 
   useEffect(() => () => stop(), [stop]);
 
   useEffect(() => {
     const onVis = () => {
       if (document.hidden) return;
-      // If tracks ended while backgrounded, surface a recoverable state.
       const live = streamRef.current?.getVideoTracks?.().some((t) => t.readyState === "live");
       if (status === "ready" && !live) {
         setStatus("error");
         setErrorHe("חיבור המצלמה נקטע. לחצי שוב על הפעלת מצלמה.");
+      } else if (status === "ready" && live) {
+        void attachToVideo(videoRef.current);
       }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [status]);
+  }, [status, attachToVideo]);
 
-  return { videoRef, status, errorHe, start, stop };
+  return { videoRef, setVideoRef, status, errorHe, start, stop, attachToVideo };
 }

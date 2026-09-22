@@ -3,6 +3,7 @@ import { confidenceLabelHe } from "../../lib/nailSizing/sizing.js";
 
 export default function SummaryStep({
   measurements,
+  selectedFingerKeys,
   phone,
   onPhoneChange,
   onRetake,
@@ -11,20 +12,25 @@ export default function SummaryStep({
   saved,
   onBack,
 }) {
-  const missing = ALL_FINGERS.filter((f) => measurements[f.key]?.status !== "confirmed");
+  const selected = new Set(selectedFingerKeys?.length ? selectedFingerKeys : ALL_FINGERS.map((f) => f.key));
+  const selectedList = ALL_FINGERS.filter((f) => selected.has(f.key));
+  const missing = selectedList.filter((f) => measurements[f.key]?.status !== "confirmed");
 
   return (
     <div className="space-y-6">
       <div className="glass-panel p-6 text-center space-y-2">
         <span className="section-eyebrow justify-center">Summary</span>
         <h2 className="font-serif text-2xl md:text-3xl text-white">סיכום המידות</h2>
-        <p className="text-sm text-white/55">אפשר לצלם שוב אצבע בודדת בלי להתחיל מחדש.</p>
+        <p className="text-sm text-white/55">
+          מוצגות האצבעות שנבחרו למדידה. אפשר לצלם שוב אצבע בודדת בלי להתחיל מחדש.
+        </p>
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
         {["right", "left"].map((handId) => {
           const label = handId === "right" ? "יד ימין" : "יד שמאל";
-          const rows = ALL_FINGERS.filter((f) => f.handId === handId);
+          const rows = selectedList.filter((f) => f.handId === handId);
+          if (rows.length === 0) return null;
           return (
             <div key={handId} className="glass-panel p-5 space-y-3">
               <h3 className="font-serif text-xl text-white">{label}</h3>
@@ -82,7 +88,7 @@ export default function SummaryStep({
 
       {saved && (
         <p className="text-center text-violet-200 font-medium" role="status">
-          כל האצבעות נמדדו בהצלחה ✓
+          המידות שנבחרו נשמרו בהצלחה ✓
         </p>
       )}
 

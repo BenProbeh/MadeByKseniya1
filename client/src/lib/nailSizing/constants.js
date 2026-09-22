@@ -38,6 +38,7 @@ export const WIZARD_STEPS = [
   { id: "coin", labelHe: "בחירת מטבע" },
   { id: "camera", labelHe: "בדיקת מצלמה" },
   { id: "guide", labelHe: "הדרכה" },
+  { id: "fingers", labelHe: "בחירת אצבעות" },
   { id: "measure", labelHe: "מדידה" },
   { id: "summary", labelHe: "סיום" },
 ];
