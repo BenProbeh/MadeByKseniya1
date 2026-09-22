@@ -4,11 +4,17 @@ import {
   CaptureState,
   isLiveCaptureState,
 } from "./captureConfig.js";
+import {
+  evaluateMeasurementQuality,
+  getInstructionFromBlockers,
+} from "./measurementQuality.js";
 
 export { AUTO_CAPTURE_CONFIG, CAPTURE_CONFIG, CaptureState, isLiveCaptureState };
+export { evaluateMeasurementQuality, getInstructionFromBlockers, QUALITY_THRESHOLDS } from "./measurementQuality.js";
 
 /**
- * Single capture gate — geometry only. No sharpness/lighting/nail-precision.
+ * @deprecated Prefer evaluateMeasurementQuality(...).ready
+ * Kept for geometry-only checks in tests / UI nudges.
  */
 export function isFrameReadyForCapture(result) {
   if (!result) return false;
@@ -24,77 +30,27 @@ export function isFrameReadyForCapture(result) {
 }
 
 /**
- * Build gate flags from live analysis (+ camera ready).
+ * Build display gate from quality evaluation (geometry + same ready as approval).
  */
-export function buildCaptureGate(analysis, { cameraReady = false } = {}, config = CAPTURE_CONFIG) {
-  const coin = analysis?.coin;
-  const nail = analysis?.finger || analysis?.nail;
-  const diameterPx = coin?.outerDiameterPx || coin?.diameterPx || 0;
-  const radiusPx = diameterPx / 2;
-  const coinCx = coin?.center?.x;
-  const coinCy = coin?.center?.y;
-  const fingerCx = nail?.center?.x;
-  const fingerCy = nail?.center?.y;
-  const fingerTopY = nail?.topY ?? (fingerCy != null ? fingerCy - (nail?.heightPx || diameterPx * 0.4) / 2 : null);
-
-  const coinDetected =
-    cameraReady &&
-    !!coin &&
-    (coin.found === true || (coin.score ?? 0) >= config.COIN_CONFIDENCE_MIN) &&
-    diameterPx > 8 &&
-    coinCx != null &&
-    coinCy != null &&
-    !coin.multiCoin;
-
-  const fingerDetected =
-    cameraReady &&
-    !!nail &&
-    (nail.found === true || nail.presence === true) &&
-    fingerCx != null &&
-    fingerCy != null;
-
-  const coinAboveFinger =
-    coinDetected && fingerDetected && coinCy < (fingerTopY ?? fingerCy);
-
-  const horizontalDifference =
-    coinDetected && fingerDetected ? Math.abs(coinCx - fingerCx) : Infinity;
-  const horizontalAlignmentValid =
-    coinDetected && fingerDetected && horizontalDifference <= diameterPx * config.ALIGN_X_FRAC;
-
-  const sizeRatio = coin?.sizeRatio;
-  const coinScaleValid =
-    coinDetected &&
-    (sizeRatio == null ||
-      (sizeRatio >= config.COIN_SIZE_RATIO_MIN && sizeRatio <= config.COIN_SIZE_RATIO_MAX));
-
-  const verticalGap =
-    coinDetected && fingerDetected && fingerTopY != null
-      ? fingerTopY - (coinCy + radiusPx)
-      : null;
-  const verticalDistanceValid =
-    verticalGap != null &&
-    verticalGap >= diameterPx * config.VERTICAL_GAP_MIN_FRAC &&
-    verticalGap <= diameterPx * config.VERTICAL_GAP_MAX_FRAC;
-
-  const gate = {
-    cameraReady: !!cameraReady,
-    coinDetected: !!coinDetected,
-    fingerDetected: !!fingerDetected,
-    coinAboveFinger: !!coinAboveFinger,
-    horizontalAlignmentValid: !!horizontalAlignmentValid,
-    coinScaleValid: !!coinScaleValid,
-    verticalDistanceValid: !!verticalDistanceValid,
-  };
-
+export function buildCaptureGate(analysis, { cameraReady = false } = {}) {
+  const quality = evaluateMeasurementQuality(analysis, { cameraReady });
+  const g = quality.geometryGate || {};
   return {
-    ...gate,
-    ready: isFrameReadyForCapture(gate),
+    cameraReady: !!cameraReady,
+    coinDetected: !!g.coinDetected,
+    fingerDetected: !!g.fingerDetected,
+    coinAboveFinger: !!g.coinAboveFinger,
+    horizontalAlignmentValid: !!g.horizontalAlignmentValid,
+    coinScaleValid: !!g.coinScaleValid,
+    verticalDistanceValid: !!g.verticalDistanceValid,
+    /** Capture & approve use the same ready flag */
+    ready: !!quality.ready,
+    quality,
     debug: {
-      ...gate,
-      horizontalDifference: Number.isFinite(horizontalDifference) ? Math.round(horizontalDifference) : null,
-      verticalGap: verticalGap != null ? Math.round(verticalGap) : null,
-      diameterPx: Math.round(diameterPx),
-      sizeRatio: sizeRatio != null ? Math.round(sizeRatio * 100) / 100 : null,
+      ...g,
+      confidence: quality.confidence,
+      blockers: quality.blockers,
+      metrics: quality.metrics,
     },
   };
 }
@@ -198,9 +154,8 @@ export function handleDetectionForCapture({
   captureLocked,
   holdTracker,
   now = performance.now(),
-  config = CAPTURE_CONFIG,
 }) {
-  const gate = buildCaptureGate(analysis, { cameraReady }, config);
+  const gate = buildCaptureGate(analysis, { cameraReady });
   if (!holdTracker) {
     return {
       gate,
@@ -208,10 +163,11 @@ export function handleDetectionForCapture({
       progress: 0,
       warmupComplete: false,
       blockedBy: "missingHoldTracker",
+      quality: gate.quality,
     };
   }
   const hold = holdTracker.evaluate({
-    ready: gate.ready,
+    ready: gate.ready, // quality.ready — same as post-capture approval
     captureLocked,
     now,
   });
@@ -220,8 +176,11 @@ export function handleDetectionForCapture({
     shouldCapture: hold.shouldCapture,
     progress: hold.progress,
     warmupComplete: hold.warmupComplete,
-    blockedBy: hold.blockedBy || (gate.ready ? null : firstFalseKey(gate)),
+    blockedBy:
+      hold.blockedBy ||
+      (gate.ready ? null : gate.quality?.blockers?.[0] || firstFalseKey(gate)),
     validDuration: hold.validDuration || 0,
+    quality: gate.quality,
   };
 }
 
@@ -238,7 +197,7 @@ function firstFalseKey(gate) {
   for (const k of keys) {
     if (gate[k] !== true) return k;
   }
-  return null;
+  return "quality";
 }
 
 export function deriveLiveState(gate, { warmupComplete = true } = {}) {
@@ -257,6 +216,9 @@ export function hintForState(state, gate, failReason, { warmupComplete = true } 
   if (!warmupComplete) return "מקמי את המטבע ואת האצבע בתוך המסגרות";
   if (state === CaptureState.HOLD_STILL || state === CaptureState.COUNTING_DOWN) {
     return "מעולה — הישארי במקום";
+  }
+  if (gate?.quality?.blockers?.length) {
+    return getInstructionFromBlockers(gate.quality.blockers);
   }
   if (!gate) return "מקמי את המטבע למעלה ואת האצבע ישירות מתחתיו";
   if (!gate.coinDetected) return "מקמי את המטבע באזור העליון";

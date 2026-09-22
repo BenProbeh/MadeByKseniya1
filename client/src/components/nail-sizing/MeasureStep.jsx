@@ -16,26 +16,31 @@ import {
   handleDetectionForCapture,
   hintForState,
   isLiveCaptureState,
+  evaluateMeasurementQuality,
+  getInstructionFromBlockers,
 } from "../../lib/nailSizing/captureMachine.js";
 
 function useDebugCapture() {
   return useMemo(() => {
     try {
-      return new URLSearchParams(window.location.search).get("debugCapture") === "1";
+      const q = new URLSearchParams(window.location.search);
+      return q.get("debugCapture") === "1" || q.get("nailSizingDebug") === "1";
     } catch {
       return false;
     }
   }, []);
 }
 
-function buildDraftFromAnalysis(result, coinId, outerMm, dataUrl) {
+function buildDraftFromAnalysis(result, coinId, outerMm, dataUrl, quality) {
   const diameterPx = result.coin?.outerDiameterPx || result.coin?.diameterPx;
   const pxPerMm = pixelsPerMillimeter(diameterPx, outerMm);
   const widthMm = widthPxToMm(result.nail?.widthPx, pxPerMm);
+  const confidence = quality?.confidence ?? result.confidence ?? 0;
   return {
     widthMm,
     size: widthMmToSize(widthMm),
-    confidence: result.confidence,
+    confidence,
+    confidenceLevel: confidence >= CONFIDENCE_AUTO_OK ? "high" : "low",
     coinId,
     captureQuality: {
       brightness: result.brightness,
@@ -44,6 +49,7 @@ function buildDraftFromAnalysis(result, coinId, outerMm, dataUrl) {
       nailScore: result.nail?.score,
       outerDiameterPx: diameterPx,
       calibrationMm: outerMm,
+      metrics: quality?.metrics,
     },
     previewDataUrl: dataUrl,
     detection: { coin: result.coin, nail: result.nail },
@@ -91,6 +97,8 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
   const [failReason, setFailReason] = useState("");
   const [draft, setDraft] = useState(null);
   const [manualMm, setManualMm] = useState("");
+  const [liveQuality, setLiveQuality] = useState(null);
+  const [guideHint, setGuideHint] = useState("");
 
   const coin = findCoinById(coinId);
   const outerMm =
@@ -134,6 +142,8 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
     setFlash(false);
     setFailReason("");
     setManualMm("");
+    setGuideHint("");
+    setLiveQuality(null);
     setState(status === "ready" ? CaptureState.SEARCHING : CaptureState.INITIALIZING);
   }, [finger.key, setState, status]);
 
@@ -186,8 +196,21 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
   }, []);
 
   const captureCurrentFrame = useCallback(
-    async (liveResult) => {
+    async (liveResult, preQuality) => {
       const runId = runIdRef.current;
+
+      const pre =
+        preQuality ||
+        evaluateMeasurementQuality(liveResult, { cameraReady: true });
+      if (!pre.ready) {
+        captureLockRef.current = false;
+        holdTrackerRef.current.resetAlignment();
+        setAlignmentProgress(0);
+        setGuideHint(getInstructionFromBlockers(pre.blockers));
+        setState(CaptureState.ALIGNING);
+        return;
+      }
+
       setState(CaptureState.CAPTURING);
       setFlash(true);
       flashTimerRef.current = window.setTimeout(() => setFlash(false), CAPTURE_CONFIG.CAPTURE_FLASH_MS);
@@ -199,24 +222,37 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
           throw new Error("CAPTURE_FAILED");
         }
 
-        // Freeze first — checkmark only after real image exists
-        setFrozenUrl(captured.dataUrl);
-
-        // Measure from frozen frame (does not block showing success)
         const measured =
           captured.imageData != null
             ? analyzeFrame(captured.imageData, { coinDiameterMm: outerMm, coinMeta: coin })
             : liveResult;
+
+        const finalQuality = evaluateMeasurementQuality(measured, { cameraReady: true });
+
+        // Same quality gate as live — reject silently back to camera (no low-confidence review)
+        if (!finalQuality.ready || measured?.nail?.widthPx == null) {
+          captureLockRef.current = false;
+          holdTrackerRef.current.resetAlignment();
+          setAlignmentProgress(0);
+          setFrozenUrl(null);
+          setDraft(null);
+          setGuideHint(getInstructionFromBlockers(finalQuality.blockers));
+          setState(CaptureState.ALIGNING);
+          return;
+        }
+
+        setFrozenUrl(captured.dataUrl);
         const draftCandidate = buildDraftFromAnalysis(
-          measured || liveResult || {},
+          measured,
           coinId,
           outerMm,
-          captured.dataUrl
+          captured.dataUrl,
+          finalQuality
         );
         setDraft(draftCandidate);
-        setManualMm(draftCandidate.widthMm != null ? String(draftCandidate.widthMm) : "");
-        setAnalysis(measured || liveResult);
-        drawOverlay(measured || liveResult, video);
+        setManualMm(String(draftCandidate.widthMm));
+        setAnalysis(measured);
+        drawOverlay(measured, video);
 
         setState(CaptureState.SUCCESS);
         try {
@@ -232,16 +268,11 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
       } catch {
         setFrozenUrl(null);
         setDraft(null);
-        setFailReason("הצילום נכשל — מנסים שוב");
-        setState(CaptureState.FAILED);
+        setGuideHint("הצילום נכשל — מנסים שוב");
+        setState(CaptureState.ALIGNING);
         captureLockRef.current = false;
         holdTrackerRef.current.resetAlignment();
         setAlignmentProgress(0);
-        failTimerRef.current = window.setTimeout(() => {
-          if (runId !== runIdRef.current) return;
-          setFailReason("");
-          setState(CaptureState.ALIGNING);
-        }, CAPTURE_CONFIG.FAILED_HOLD_MS);
       }
     },
     [coin, coinId, outerMm, videoRef, setState, drawOverlay]
@@ -283,8 +314,16 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
           holdTracker: holdTrackerRef.current,
         });
         setGate(decision.gate);
+        setLiveQuality(decision.quality || null);
         setAlignmentProgress(decision.progress || 0);
         setWarmupComplete(!!decision.warmupComplete);
+        if (!decision.warmupComplete) {
+          setGuideHint("");
+        } else if (!decision.gate.ready && decision.quality?.blockers?.length) {
+          setGuideHint(getInstructionFromBlockers(decision.quality.blockers));
+        } else if (decision.gate.ready) {
+          setGuideHint("");
+        }
 
         const next = deriveLiveState(decision.gate, { warmupComplete: decision.warmupComplete });
         if (isLiveCaptureState(captureStateRef.current) && next !== captureStateRef.current) {
@@ -293,26 +332,28 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
           );
         }
 
-        if (debugCapture) {
+        if (debugCapture && decision.quality) {
+          const q = decision.quality;
+          const t = q.thresholds;
           // eslint-disable-next-line no-console
           console.table({
-            warmupComplete: decision.warmupComplete,
-            cameraReady: decision.gate.cameraReady,
-            coinDetected: decision.gate.coinDetected,
-            fingerDetected: decision.gate.fingerDetected,
-            coinAboveFinger: decision.gate.coinAboveFinger,
-            horizontalAlignmentValid: decision.gate.horizontalAlignmentValid,
-            coinScaleValid: decision.gate.coinScaleValid,
-            verticalDistanceValid: decision.gate.verticalDistanceValid,
-            alignmentProgress: decision.progress,
-            captureLocked: captureLockRef.current,
-            blockedBy: decision.blockedBy,
+            ready: q.ready,
+            overall: `${q.confidence.toFixed(2)} / ${t.overallConfidence}`,
+            coin: `${q.metrics.coinConfidence.toFixed(2)} / ${t.coinConfidence}`,
+            finger: `${q.metrics.fingerConfidence.toFixed(2)} / ${t.fingerConfidence}`,
+            nail: `${q.metrics.nailConfidence.toFixed(2)} / ${t.nailConfidence}`,
+            alignment: `${q.metrics.alignmentScore.toFixed(2)} / ${t.alignmentScore}`,
+            sharpness: `${q.metrics.sharpnessScore.toFixed(2)} / ${t.sharpnessScore}`,
+            lighting: `${q.metrics.lightingScore.toFixed(2)} / ${t.lightingScore}`,
+            blocker: q.blockers[0] || "—",
+            hold: decision.progress,
+            warmup: decision.warmupComplete,
           });
         }
 
         if (decision.shouldCapture) {
           captureLockRef.current = true;
-          void captureCurrentFrame(result);
+          void captureCurrentFrame(result, decision.quality);
           return;
         }
       }
@@ -348,6 +389,8 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
     setFrozenUrl(null);
     setFlash(false);
     setFailReason("");
+    setGuideHint("");
+    setLiveQuality(null);
     setAlignmentProgress(0);
     setWarmupComplete(false);
     setGate(null);
@@ -358,7 +401,9 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
 
   function confirmDraft(overrideMm) {
     if (!draft) return;
-    const widthMm = overrideMm != null ? Number(overrideMm) : draft.widthMm;
+    if (draft.confidence < CONFIDENCE_AUTO_OK) return;
+    if (draft.widthMm == null && (overrideMm == null || overrideMm === "")) return;
+    const widthMm = overrideMm != null && overrideMm !== "" ? Number(overrideMm) : draft.widthMm;
     if (!widthMm || Number.isNaN(widthMm)) return;
     const size = widthMmToSize(widthMm);
     const manual = overrideMm != null && Number(overrideMm) !== draft.widthMm;
@@ -366,8 +411,10 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
       ...draft,
       widthMm,
       size,
-      manualOverride: manual || draft.confidence < CONFIDENCE_AUTO_OK,
-      status: draft.confidence < CONFIDENCE_AUTO_OK && !manual ? "needs_retake" : "confirmed",
+      confidence: draft.confidence,
+      confidenceLevel: "high",
+      manualOverride: manual,
+      status: "confirmed",
       updatedAt: new Date().toISOString(),
     });
   }
@@ -380,8 +427,10 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
   const fingerGuideState = holding ? "ok" : gate?.fingerDetected ? "warn" : "idle";
   const ringState = holding ? "ok" : gate?.coinDetected || gate?.fingerDetected ? "warn" : "idle";
   const progress = holding ? alignmentProgress : 0;
-  const hint = hintForState(captureState, gate, failReason, { warmupComplete });
-  const showSuccessCheck = captureState === CaptureState.SUCCESS && !!frozenUrl;
+  const baseHint = hintForState(captureState, gate, failReason, { warmupComplete });
+  const hint = guideHint || baseHint;
+  const showSuccessCheck =
+    captureState === CaptureState.SUCCESS && !!frozenUrl && draft?.confidence >= CONFIDENCE_AUTO_OK;
 
   return (
     <div className="space-y-5">
@@ -457,28 +506,38 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
           </div>
         )}
 
-        {debugCapture && live && gate && (
-          <div className="absolute top-2 left-2 z-[7] rounded-lg bg-black/80 text-[10px] leading-tight p-2 font-mono space-y-0.5 pointer-events-none">
-            <div className={warmupComplete ? "text-green-400" : "text-red-400"}>
-              warmup: {warmupComplete ? "true" : "false"}
-            </div>
-            {[
-              ["camera", gate.cameraReady],
-              ["coin", gate.coinDetected],
-              ["finger", gate.fingerDetected],
-              ["above", gate.coinAboveFinger],
-              ["aligned", gate.horizontalAlignmentValid],
-              ["scale", gate.coinScaleValid],
-              ["gap", gate.verticalDistanceValid],
-            ].map(([label, ok]) => (
-              <div key={label} className={ok ? "text-green-400" : "text-red-400"}>
-                {label}: {ok ? "true" : "false"}
-              </div>
-            ))}
-            <div className="text-white/80">hold: {Math.round(alignmentProgress * 100)}%</div>
-            <div className={captureLockRef.current ? "text-amber-300" : "text-white/80"}>
-              locked: {captureLockRef.current ? "true" : "false"}
-            </div>
+        {debugCapture && live && (liveQuality || gate) && (
+          <div className="absolute top-2 left-2 z-[7] rounded-lg bg-black/80 text-[10px] leading-tight p-2 font-mono space-y-0.5 pointer-events-none max-w-[55%]">
+            {liveQuality ? (
+              <>
+                <div className={liveQuality.ready ? "text-green-400" : "text-red-400"}>
+                  ready: {String(liveQuality.ready)}
+                </div>
+                <div className="text-white/80">
+                  overall: {liveQuality.confidence.toFixed(2)} / {liveQuality.thresholds.overallConfidence}
+                </div>
+                <div className="text-white/80">
+                  coin: {liveQuality.metrics.coinConfidence.toFixed(2)} / {liveQuality.thresholds.coinConfidence}
+                </div>
+                <div className="text-white/80">
+                  finger: {liveQuality.metrics.fingerConfidence.toFixed(2)} / {liveQuality.thresholds.fingerConfidence}
+                </div>
+                <div className="text-white/80">
+                  nail: {liveQuality.metrics.nailConfidence.toFixed(2)} / {liveQuality.thresholds.nailConfidence}
+                </div>
+                <div className="text-white/80">
+                  alignment: {liveQuality.metrics.alignmentScore.toFixed(2)} / {liveQuality.thresholds.alignmentScore}
+                </div>
+                <div className="text-white/80">
+                  sharpness: {liveQuality.metrics.sharpnessScore.toFixed(2)} / {liveQuality.thresholds.sharpnessScore}
+                </div>
+                <div className="text-white/80">
+                  lighting: {liveQuality.metrics.lightingScore.toFixed(2)} / {liveQuality.thresholds.lightingScore}
+                </div>
+                <div className="text-amber-300">blocker: {liveQuality.blockers[0] || "—"}</div>
+                <div className="text-white/80">hold: {Math.round(alignmentProgress * 100)}%</div>
+              </>
+            ) : null}
           </div>
         )}
 
@@ -518,7 +577,7 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
                 if (!gate?.ready || !warmupComplete || captureLockRef.current) return;
                 captureLockRef.current = true;
                 holdTrackerRef.current.resetAlignment();
-                void captureCurrentFrame(analysis);
+                void captureCurrentFrame(analysis, liveQuality || gate?.quality);
               }}
             >
               צילום ידני
@@ -545,23 +604,28 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
             </div>
             <div>
               <p className="text-xs text-white/40 mb-1">ביטחון</p>
-              <p className="text-sm text-white/70">{confidenceLabelHe(draft?.confidence)}</p>
+              <p className="text-sm text-emerald-300/90">
+                {draft?.confidence >= CONFIDENCE_AUTO_OK ? "גבוהה" : confidenceLabelHe(draft?.confidence)}
+              </p>
             </div>
           </div>
 
-          <label className="block text-sm text-white/60">
-            תיקון ידני (מ״מ)
-            <input
-              type="number"
-              inputMode="decimal"
-              step="0.1"
-              min="5"
-              max="20"
-              value={manualMm}
-              onChange={(e) => setManualMm(e.target.value)}
-              className="mt-2 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
-            />
-          </label>
+          <details className="text-sm text-white/50">
+            <summary className="cursor-pointer select-none text-white/60">תיקון ידני (אופציונלי)</summary>
+            <label className="block mt-2 text-sm text-white/60">
+              רוחב במ״מ
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.1"
+                min="5"
+                max="20"
+                value={manualMm}
+                onChange={(e) => setManualMm(e.target.value)}
+                className="mt-2 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
+              />
+            </label>
+          </details>
 
           <div className="flex flex-wrap gap-3 justify-between">
             <button type="button" className="btn-ghost" onClick={restartLive}>
@@ -571,7 +635,7 @@ export default function MeasureStep({ camera, coinId, finger, existing, onConfir
               type="button"
               className="btn-violet"
               onClick={() => confirmDraft(manualMm)}
-              disabled={!manualMm}
+              disabled={!draft || draft.confidence < CONFIDENCE_AUTO_OK || draft.widthMm == null}
             >
               אישור האצבע
             </button>
