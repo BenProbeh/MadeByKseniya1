@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
 
 export default function Register() {
   const { register, authenticated, loading: authLoading } = useAuth();
@@ -111,32 +112,35 @@ export default function Register() {
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60 pe-24"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60 pe-12"
               required
               minLength={8}
             />
-            <button
-              type="button"
-              className="absolute inset-y-0 left-3 text-xs text-violet-200/80"
-              onClick={() => setShowPassword((v) => !v)}
-            >
-              {showPassword ? "הסתרה" : "הצגה"}
-            </button>
+            <PasswordVisibilityToggle
+              visible={showPassword}
+              onToggle={() => setShowPassword((v) => !v)}
+            />
           </div>
         </label>
 
         <label className="block space-y-2 text-sm text-white/70">
           <span>אימות סיסמה</span>
-          <input
-            type={showPassword ? "text" : "password"}
-            name="confirm-password"
-            autoComplete="new-password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
-            required
-            minLength={8}
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"}
+              name="confirm-password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60 pe-12"
+              required
+              minLength={8}
+            />
+            <PasswordVisibilityToggle
+              visible={showPassword}
+              onToggle={() => setShowPassword((v) => !v)}
+            />
+          </div>
         </label>
 
         <label className="flex items-center gap-3 text-sm text-white/65 cursor-pointer select-none">
