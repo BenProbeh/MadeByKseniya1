@@ -53,7 +53,7 @@ export default function Login() {
             <img
               src="/logo.png"
               alt="MadeByKseniya"
-              className="block w-[min(88%,360px)] sm:w-[min(90%,380px)] md:w-[min(92%,400px)] max-w-full h-auto object-contain drop-shadow-[0_0_18px_rgba(176,38,255,0.7)]"
+              className="w-56 md:w-[16.8rem] h-auto object-contain drop-shadow-[0_0_10px_rgba(176,38,255,0.65)]"
             />
           </div>
           <p className="font-serif text-sm text-white/60 mt-4">להתחברות:</p>
