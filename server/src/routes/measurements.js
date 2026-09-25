@@ -1,6 +1,7 @@
 import { Router } from "express";
 import db from "../db.js";
 import crypto from "node:crypto";
+import { optionalAuth } from "../middleware/authMiddleware.js";
 
 const router = Router();
 
@@ -14,7 +15,27 @@ function isValidPhone(phone) {
   return /^0\d{8,9}$/.test(digits);
 }
 
-router.get("/profile", (req, res) => {
+router.get("/profile", optionalAuth, (req, res) => {
+  // Authenticated: prefer user-linked profile
+  if (req.user) {
+    const profile = db
+      .prepare(
+        `SELECT id, phone, coin_id, created_at, updated_at, is_active, user_id
+         FROM measurement_profiles WHERE user_id = ? AND is_active = 1
+         ORDER BY updated_at DESC LIMIT 1`
+      )
+      .get(req.user.id);
+    if (profile) {
+      const fingers = db
+        .prepare(
+          `SELECT hand_id, finger_id, width_mm, size, confidence, coin_id, manual_override, status, created_at, photo_quality_score
+           FROM finger_measurements WHERE profile_id = ? ORDER BY hand_id, finger_id`
+        )
+        .all(profile.id);
+      return res.json({ ...profile, fingers });
+    }
+  }
+
   const phone = normalizePhone(req.query.phone);
   if (!isValidPhone(phone)) {
     return res.status(400).json({ error: "valid phone is required" });
@@ -22,7 +43,7 @@ router.get("/profile", (req, res) => {
 
   const profile = db
     .prepare(
-      `SELECT id, phone, coin_id, created_at, updated_at, is_active
+      `SELECT id, phone, coin_id, created_at, updated_at, is_active, user_id
        FROM measurement_profiles WHERE phone = ? AND is_active = 1
        ORDER BY updated_at DESC LIMIT 1`
     )
@@ -30,9 +51,15 @@ router.get("/profile", (req, res) => {
 
   if (!profile) return res.json(null);
 
+  // Never expose another user's linked profile via phone lookup if user_id set
+  // and requester is a different authenticated user
+  if (profile.user_id && req.user && profile.user_id !== req.user.id) {
+    return res.json(null);
+  }
+
   const fingers = db
     .prepare(
-      `SELECT hand_id, finger_id, width_mm, size, confidence, coin_id, manual_override, status, created_at
+      `SELECT hand_id, finger_id, width_mm, size, confidence, coin_id, manual_override, status, created_at, photo_quality_score
        FROM finger_measurements WHERE profile_id = ? ORDER BY hand_id, finger_id`
     )
     .all(profile.id);
@@ -40,10 +67,16 @@ router.get("/profile", (req, res) => {
   res.json({ ...profile, fingers });
 });
 
-router.post("/profile", (req, res) => {
+router.post("/profile", optionalAuth, (req, res) => {
   const { phone, coinId, measurements, consentStoreImages = false } = req.body || {};
   const normalized = normalizePhone(phone);
-  if (!isValidPhone(normalized)) {
+  const userId = req.user?.id || null;
+
+  // Authed users may save without phone; phone still preferred when provided
+  if (!userId && !isValidPhone(normalized)) {
+    return res.status(400).json({ error: "valid phone is required" });
+  }
+  if (normalized && !isValidPhone(normalized) && !userId) {
     return res.status(400).json({ error: "valid phone is required" });
   }
   if (!measurements || typeof measurements !== "object") {
@@ -55,27 +88,42 @@ router.post("/profile", (req, res) => {
     return res.status(400).json({ error: "measurements cannot be empty" });
   }
 
+  const phoneValue = isValidPhone(normalized) ? normalized : userId ? `user-${userId}` : "";
+
   try {
     db.exec("BEGIN");
 
-    // deactivate previous active profiles for this phone
-    db.prepare(`UPDATE measurement_profiles SET is_active = 0 WHERE phone = ?`).run(normalized);
+    if (userId) {
+      db.prepare(`UPDATE measurement_profiles SET is_active = 0 WHERE user_id = ?`).run(userId);
+    }
+    if (isValidPhone(normalized)) {
+      db.prepare(`UPDATE measurement_profiles SET is_active = 0 WHERE phone = ?`).run(normalized);
+    }
 
     const insertProfile = db.prepare(
-      `INSERT INTO measurement_profiles (phone, coin_id, consent_store_images, is_active)
-       VALUES (?, ?, ?, 1)`
+      `INSERT INTO measurement_profiles (phone, coin_id, consent_store_images, is_active, user_id)
+       VALUES (?, ?, ?, 1, ?)`
     );
-    const result = insertProfile.run(normalized, coinId ?? null, consentStoreImages ? 1 : 0);
+    const result = insertProfile.run(
+      phoneValue,
+      coinId ?? null,
+      consentStoreImages ? 1 : 0,
+      userId
+    );
     const profileId = result.lastInsertRowid;
 
     const insertFinger = db.prepare(
       `INSERT INTO finger_measurements
-        (profile_id, hand_id, finger_id, width_mm, size, confidence, coin_id, manual_override, status, capture_quality_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (profile_id, hand_id, finger_id, width_mm, size, confidence, coin_id, manual_override, status, capture_quality_json, photo_quality_score)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
 
     for (const m of entries) {
       if (!m?.handId || !m?.fingerId) continue;
+      const qualityScore =
+        m.photoQualityScore ??
+        m.captureQuality?.score ??
+        null;
       insertFinger.run(
         profileId,
         m.handId,
@@ -86,7 +134,8 @@ router.post("/profile", (req, res) => {
         m.coinId ?? coinId ?? null,
         m.manualOverride ? 1 : 0,
         m.status ?? "confirmed",
-        m.captureQuality ? JSON.stringify(m.captureQuality) : null
+        m.captureQuality ? JSON.stringify(m.captureQuality) : null,
+        qualityScore
       );
     }
 
@@ -95,13 +144,14 @@ router.post("/profile", (req, res) => {
     db.prepare(
       `INSERT INTO measurement_links (token, profile_id, phone, expires_at)
        VALUES (?, ?, ?, ?)`
-    ).run(token, profileId, normalized, expiresAt);
+    ).run(token, profileId, phoneValue, expiresAt);
 
     db.exec("COMMIT");
 
     res.status(201).json({
       id: profileId,
-      phone: normalized,
+      phone: phoneValue,
+      userId,
       linkToken: token,
       expiresAt,
     });
@@ -131,8 +181,6 @@ router.get("/link/:token", (req, res) => {
     return res.status(410).json({ error: "expired" });
   }
 
-  // Do not expose full profile to anonymous link consumers without extra checks.
-  // Return only enough to open the sizing flow bound to this phone hash-less phone.
   res.json({
     token: link.token,
     phoneHint: link.phone.slice(0, 3) + "****" + link.phone.slice(-2),

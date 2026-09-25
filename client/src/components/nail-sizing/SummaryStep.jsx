@@ -1,6 +1,7 @@
 import { ALL_FINGERS } from "../../lib/nailSizing/constants.js";
 import { getQualityLevel } from "../../lib/nailSizing/photoQuality.js";
 import { NAIL_SIZING_COPY as C } from "../../lib/nailSizing/copy.js";
+import { useAuth } from "../../context/AuthContext.jsx";
 
 export default function SummaryStep({
   measurements,
@@ -13,9 +14,11 @@ export default function SummaryStep({
   saved,
   onBack,
 }) {
+  const { authenticated } = useAuth();
   const selected = new Set(selectedFingerKeys?.length ? selectedFingerKeys : ALL_FINGERS.map((f) => f.key));
   const selectedList = ALL_FINGERS.filter((f) => selected.has(f.key));
   const missing = selectedList.filter((f) => measurements[f.key]?.status !== "confirmed");
+  const canSave = missing.length === 0 && (authenticated || phone.trim()) && !saving;
 
   return (
     <div className="space-y-6">
@@ -76,6 +79,9 @@ export default function SummaryStep({
       <div className="glass-panel p-5 space-y-4">
         <label className="block text-sm text-white/60">
           {C.summary.phoneLabel}
+          {authenticated && (
+            <span className="text-white/35"> (אופציונלי — החשבון כבר מחובר)</span>
+          )}
           <input
             type="tel"
             inputMode="numeric"
@@ -101,7 +107,7 @@ export default function SummaryStep({
         <button
           type="button"
           className="btn-violet"
-          disabled={missing.length > 0 || !phone.trim() || saving}
+          disabled={!canSave}
           onClick={onSave}
         >
           {saving ? C.summary.saving : C.summary.save}

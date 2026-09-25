@@ -1,0 +1,122 @@
+import { useState } from "react";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext.jsx";
+
+export default function Login() {
+  const { login, authenticated, loading: authLoading } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from || "/";
+
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <p className="font-serif text-white/60 text-sm">רגע אחד…</p>
+      </div>
+    );
+  }
+
+  if (authenticated) {
+    return <Navigate to={from === "/login" || from === "/register" ? "/" : from} replace />;
+  }
+
+  async function onSubmit(e) {
+    e.preventDefault();
+    if (submitting) return;
+    setError("");
+    setSubmitting(true);
+    try {
+      await login({ username, password, rememberMe });
+      navigate(from === "/login" || from === "/register" ? "/" : from, { replace: true });
+    } catch (err) {
+      setError(err?.response?.data?.error || "שם המשתמש או הסיסמה אינם נכונים");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="max-w-md mx-auto px-6 py-16 space-y-8">
+      <div className="text-center space-y-3">
+        <span className="section-eyebrow justify-center">Welcome back</span>
+        <h1 className="font-serif font-medium text-3xl md:text-5xl text-white">
+          טוב לראות <span className="violet-text">אותך שוב</span>
+        </h1>
+        <p className="font-serif text-white/60 text-sm md:text-base">
+          התחברי כדי להמשיך לפרופיל, למידות ולהזמנות שלך.
+        </p>
+      </div>
+
+      <form onSubmit={onSubmit} className="glass-panel p-6 md:p-8 space-y-5" noValidate>
+        <label className="block space-y-2 text-sm text-white/70">
+          <span>שם משתמש</span>
+          <input
+            type="text"
+            name="username"
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
+            required
+          />
+        </label>
+
+        <label className="block space-y-2 text-sm text-white/70">
+          <span>סיסמה</span>
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"}
+              name="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60 pe-24"
+              required
+            />
+            <button
+              type="button"
+              className="absolute inset-y-0 left-3 text-xs text-violet-200/80"
+              onClick={() => setShowPassword((v) => !v)}
+            >
+              {showPassword ? "הסתרה" : "הצגה"}
+            </button>
+          </div>
+        </label>
+
+        <label className="flex items-center gap-3 text-sm text-white/65 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={rememberMe}
+            onChange={(e) => setRememberMe(e.target.checked)}
+            className="rounded border-white/30"
+          />
+          <span>זכרי אותי</span>
+        </label>
+
+        {error && (
+          <p className="text-sm text-red-300 text-center" role="alert" aria-live="assertive">
+            {error}
+          </p>
+        )}
+
+        <button type="submit" className="btn-violet w-full" disabled={submitting}>
+          {submitting ? "מתחברת…" : "התחברות"}
+        </button>
+      </form>
+
+      <p className="text-center text-sm text-white/55">
+        עדיין אין לך חשבון?{" "}
+        <Link to="/register" className="text-violet-200 hover:text-violet-100">
+          הרשמי כאן
+        </Link>
+      </p>
+    </div>
+  );
+}

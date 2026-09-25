@@ -1,9 +1,11 @@
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import fs from "node:fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const db = new DatabaseSync(path.join(__dirname, "..", "salon.db"));
+const dbPath = path.join(__dirname, "..", "salon.db");
+const db = new DatabaseSync(dbPath);
 
 db.exec("PRAGMA journal_mode = WAL");
 db.exec("PRAGMA foreign_keys = ON");
@@ -69,6 +71,76 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_measurement_profiles_phone ON measurement_profiles(phone);
   CREATE INDEX IF NOT EXISTS idx_finger_measurements_profile ON finger_measurements(profile_id);
   CREATE INDEX IF NOT EXISTS idx_measurement_links_token ON measurement_links(token);
+`);
+
+/** Safe additive column migration — never drops data. */
+function ensureColumn(table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (cols.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    avatar_url TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_login_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS user_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    remember_me INTEGER NOT NULL DEFAULT 0,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_used_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    order_number TEXT NOT NULL UNIQUE,
+    total_amount INTEGER NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'ILS',
+    status TEXT NOT NULL,
+    title_he TEXT,
+    image_url TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS shipments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    carrier TEXT,
+    tracking_number TEXT,
+    tracking_url TEXT,
+    status TEXT NOT NULL,
+    shipped_at TEXT,
+    delivered_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+  CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token_hash);
+  CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
+  CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
+  CREATE INDEX IF NOT EXISTS idx_shipments_order ON shipments(order_id);
+`);
+
+ensureColumn("measurement_profiles", "user_id", "INTEGER");
+ensureColumn("finger_measurements", "photo_quality_score", "INTEGER");
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_measurement_profiles_user
+    ON measurement_profiles(user_id);
 `);
 
 const seedCount = db.prepare("SELECT COUNT(*) AS c FROM services").get().c;
@@ -143,4 +215,9 @@ if (seedCount === 0) {
   db.exec("COMMIT");
 }
 
+/** Ensure avatar upload directory exists for local/dev storage. */
+const uploadsRoot = path.join(__dirname, "..", "uploads", "avatars");
+fs.mkdirSync(uploadsRoot, { recursive: true });
+
+export { uploadsRoot, dbPath };
 export default db;

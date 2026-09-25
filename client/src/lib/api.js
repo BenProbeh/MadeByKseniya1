@@ -4,7 +4,26 @@ import { MOCK_SERVICES, mockAvailability, mockCreateAppointment, mockUpdateAppoi
 // In dev, Vite proxies "/api" to the local server (see vite.config.js).
 // In production there is no such proxy, so the deployed backend's URL must
 // be supplied via VITE_API_URL (e.g. https://your-backend.up.railway.app/api).
-const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || "/api" });
+const apiBase = import.meta.env.VITE_API_URL || "/api";
+
+const api = axios.create({
+  baseURL: apiBase,
+  withCredentials: true,
+});
+
+/** Resolve /uploads/... paths against the API origin when frontend is on another host. */
+export function resolveMediaUrl(url) {
+  if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith("/uploads/")) {
+    if (apiBase.startsWith("http")) {
+      const origin = apiBase.replace(/\/api\/?$/, "");
+      return `${origin}${url}`;
+    }
+    return url;
+  }
+  return url;
+}
 
 // Only for the write endpoints: fall back to a mock result solely when
 // there's genuinely no backend to talk to (network failure, or a 404 because

@@ -8,12 +8,21 @@
   },
   "scripts": {
     "dev": "node --no-warnings --watch src/index.js",
-    "start": "node --no-warnings src/index.js"
+    "start": "node --no-warnings src/index.js",
+    "test": "node --test src/**/*.test.js"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.7.0",
+    "file-type": "^16.5.4",
+    "multer": "^2.4.0",
     "openai": "^4.67.3"
+  },
+  "devDependencies": {
+    "node-mocks-http": "^1.18.1"
   }
 }

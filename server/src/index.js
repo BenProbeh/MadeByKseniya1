@@ -1,24 +1,9 @@
-import "dotenv/config";
-import express from "express";
-import cors from "cors";
-import servicesRouter from "./routes/services.js";
-import appointmentsRouter from "./routes/appointments.js";
-import chatRouter from "./routes/chat.js";
-import measurementsRouter from "./routes/measurements.js";
+import { createApp } from "./app.js";
 
-const app = express();
-
-app.use(cors());
-app.use(express.json({ limit: "1mb" }));
-
-app.use("/api/services", servicesRouter);
-app.use("/api/appointments", appointmentsRouter);
-app.use("/api/chat", chatRouter);
-app.use("/api/measurements", measurementsRouter);
-
-app.get("/api/health", (req, res) => res.json({ ok: true }));
-
+const app = createApp();
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`made by kseniya API running on http://localhost:${PORT}`);
 });
+
+export default app;

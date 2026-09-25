@@ -3,3 +3,4 @@ dist/
 .env
 server/salon.db
 server/salon.db-*
+server/uploads/
