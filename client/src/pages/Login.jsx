@@ -48,12 +48,12 @@ export default function Login() {
       <h1 className="sr-only">התחברות ל-MadeByKseniya</h1>
 
       <form onSubmit={onSubmit} className="glass-panel p-6 md:p-8 space-y-5 overflow-visible" noValidate>
-        <div className="flex flex-col items-center text-center -mx-2 sm:-mx-3 md:-mx-4 mb-1 overflow-visible">
-          <div className="w-full flex justify-center px-1 py-2 overflow-visible">
+        <div className="flex flex-col items-center text-center mb-1">
+          <div className="w-full flex justify-center px-1 py-3 overflow-visible">
             <img
               src="/logo.png"
               alt="MadeByKseniya"
-              className="block w-[min(90vw,100%)] max-w-[360px] sm:max-w-[380px] md:max-w-[400px] h-auto object-contain mx-auto origin-center scale-[1.08] md:scale-[1.12] drop-shadow-[0_0_22px_rgba(176,38,255,0.75)]"
+              className="block w-[min(88%,360px)] sm:w-[min(90%,380px)] md:w-[min(92%,400px)] max-w-full h-auto object-contain drop-shadow-[0_0_18px_rgba(176,38,255,0.7)]"
             />
           </div>
           <p className="font-serif text-sm text-white/60 mt-4">להתחברות:</p>
