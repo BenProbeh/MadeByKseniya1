@@ -44,21 +44,19 @@ export default function Login() {
   }
 
   return (
-    <div className="max-w-md mx-auto px-6 py-12 md:py-16">
+    <div className="max-w-md mx-auto px-6 py-12 md:py-16 space-y-6">
       <h1 className="sr-only">התחברות ל-MadeByKseniya</h1>
 
-      <form onSubmit={onSubmit} className="glass-panel p-6 md:p-8 space-y-5 overflow-visible" noValidate>
-        <div className="flex flex-col items-center text-center mb-1">
-          <div className="w-full flex justify-center px-1 py-3 overflow-visible">
-            <img
-              src="/logo.png"
-              alt="MadeByKseniya"
-              className="w-56 md:w-[16.8rem] h-auto object-contain drop-shadow-[0_0_10px_rgba(176,38,255,0.65)]"
-            />
-          </div>
-          <p className="font-serif text-sm text-white/60 mt-4">להתחברות:</p>
-        </div>
+      <div className="flex flex-col items-center text-center overflow-visible">
+        <img
+          src="/logo.png"
+          alt="MadeByKseniya"
+          className="w-56 md:w-[16.8rem] h-auto object-contain drop-shadow-[0_0_10px_rgba(176,38,255,0.65)]"
+        />
+        <p className="font-serif text-sm text-white/60 mt-4">להתחברות:</p>
+      </div>
 
+      <form onSubmit={onSubmit} className="glass-panel p-6 md:p-8 space-y-5" noValidate>
         <label className="block space-y-2 text-sm text-white/70">
           <span>שם משתמש</span>
           <input
