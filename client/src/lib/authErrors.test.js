@@ -11,12 +11,26 @@ describe("authErrors", () => {
         },
       },
     };
-    expect(getApiErrorMessage(err)).toBe("שם המשתמש הזה כבר תפוס");
+    expect(getApiErrorMessage(err)).toBe("שם המשתמש הזה כבר בשימוש, נסי לבחור שם אחר.");
   });
 
   it("never returns an object for rendering", () => {
     const err = { response: { data: { error: { code: "X" } } } };
     expect(typeof getApiErrorMessage(err)).toBe("string");
+  });
+
+  it("hides Vercel plain-text 404 pages", () => {
+    const err = {
+      response: {
+        status: 404,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+        data: "The page could not be found\n\nNOT_FOUND\n",
+      },
+      config: { baseURL: "/api", url: "/auth/register" },
+    };
+    expect(getApiErrorMessage(err, "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע.")).toBe(
+      "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע."
+    );
   });
 
   it("assertUser rejects missing id", () => {

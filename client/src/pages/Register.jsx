@@ -49,7 +49,7 @@ export default function Register() {
 
     setError("");
     if (password !== confirmPassword) {
-      setError("אימות הסיסמה אינו תואם.");
+      setError("יש לבדוק את הפרטים שמילאת ולנסות שוב.");
       return;
     }
 
@@ -70,7 +70,7 @@ export default function Register() {
       setConfirmPassword("");
       navigate(from, { replace: true });
     } catch (err) {
-      setError(getApiErrorMessage(err, "לא הצלחנו ליצור את החשבון. נסי שוב."));
+      setError(getApiErrorMessage(err, "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע."));
     } finally {
       setSubmitting(false);
     }

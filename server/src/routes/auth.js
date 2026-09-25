@@ -42,13 +42,18 @@ function fail(res, status, code, message) {
 router.post("/register", authLimiter, (req, res) => {
   const checked = validateRegisterInput(req.body || {});
   if (!checked.ok) {
-    return fail(res, 400, "VALIDATION_ERROR", checked.errors[0] || "יש לבדוק את הפרטים שהוזנו");
+    return fail(
+      res,
+      400,
+      "VALIDATION_ERROR",
+      checked.errors[0] || "יש לבדוק את הפרטים שמילאת ולנסות שוב."
+    );
   }
 
   const { firstName, lastName, username, password, rememberMe } = checked.data;
 
   if (findUserByUsername(username)) {
-    return fail(res, 409, "USERNAME_TAKEN", "שם המשתמש הזה כבר תפוס");
+    return fail(res, 409, "USERNAME_TAKEN", "שם המשתמש הזה כבר בשימוש, נסי לבחור שם אחר.");
   }
 
   let userId = null;
@@ -86,7 +91,7 @@ router.post("/register", authLimiter, (req, res) => {
         /* ignore */
       }
     }
-    return fail(res, 500, "REGISTRATION_FAILED", "לא הצלחנו ליצור את החשבון כרגע. נסי שוב.");
+    return fail(res, 500, "REGISTRATION_FAILED", "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע.");
   }
 });
 

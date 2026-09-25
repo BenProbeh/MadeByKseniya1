@@ -125,7 +125,7 @@ describe("auth + profile API", () => {
     assert.equal(res.status, 409);
     assert.equal(res.json.success, false);
     assert.equal(res.json.error?.code, "USERNAME_TAKEN");
-    assert.match(res.json.error?.message || "", /תפוס/);
+    assert.match(res.json.error?.message || "", /בשימוש|תפוס/);
     assert.ok(!res.json.user);
   });
 

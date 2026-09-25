@@ -69,10 +69,23 @@ It also includes a SPA rewrite so client-side routes (`/booking`, `/services`, .
 3. Railway assigns a public URL, e.g. `https://madebykseniya-production.up.railway.app`.
 
 ### 3. Connect them
-The client reads its API base URL from `VITE_API_URL` at build time (`client/src/lib/api.js`), falling back to the local dev proxy (`/api`) when unset. In the **Vercel** project settings, add:
+
+**Preferred (same-origin proxy):** in the Vercel project settings, add:
+
+```
+API_ORIGIN = https://<your-railway-domain>
+```
+
+(no trailing slash, no `/api` suffix). Redeploy. The browser keeps calling `/api/*` on the Vercel domain; `api/[[...path]].js` forwards to Railway.
+
+**Alternative:** set build-time
+
 ```
 VITE_API_URL = https://<your-railway-domain>/api
 ```
-Then redeploy the frontend. Until this is set, the site will load but API calls (services, booking, chat) will fail.
+
+and configure CORS + `SameSite=None` cookies on Railway (see `server/DEPLOY_AUTH.md`).
+
+Until `API_ORIGIN` (or `VITE_API_URL`) is set, auth/register will not reach the Express server.
 # MadeByKseniya
 # MadeByKseniya1
