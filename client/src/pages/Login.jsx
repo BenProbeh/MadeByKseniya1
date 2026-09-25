@@ -44,14 +44,14 @@ export default function Login() {
 
   return (
     <div className="max-w-md mx-auto px-6 py-16 space-y-8">
-      <div className="text-center space-y-3">
-        <span className="section-eyebrow justify-center">Welcome back</span>
-        <h1 className="font-serif font-medium text-3xl md:text-5xl text-white">
-          טוב לראות <span className="violet-text">אותך שוב</span>
-        </h1>
-        <p className="font-serif text-white/60 text-sm md:text-base">
-          התחברי כדי להמשיך לפרופיל, למידות ולהזמנות שלך.
-        </p>
+      <h1 className="sr-only">התחברות ל-MadeByKseniya</h1>
+      <div className="text-center flex flex-col items-center">
+        <img
+          src="/logo.png"
+          alt="MadeByKseniya"
+          className="w-40 md:w-48 h-auto object-contain drop-shadow-[0_0_10px_rgba(176,38,255,0.65)]"
+        />
+        <p className="font-serif text-sm text-white/60 mt-5">להתחברות:</p>
       </div>
 
       <form onSubmit={onSubmit} className="glass-panel p-6 md:p-8 space-y-5" noValidate>
