@@ -59,7 +59,7 @@ export default function Login() {
 
       <div className="flex flex-col items-center text-center overflow-visible">
         <img
-          src="/logo.png"
+          src="/madebykseniya-logo-clean.png"
           alt="MadeByKseniya"
           className="w-56 md:w-[16.8rem] h-auto object-contain drop-shadow-[0_0_10px_rgba(176,38,255,0.65)]"
         />
