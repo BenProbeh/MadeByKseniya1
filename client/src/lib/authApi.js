@@ -1,12 +1,13 @@
 import api, { resolveMediaUrl } from "./api.js";
+import { assertUser } from "./authErrors.js";
 
 function mapUser(raw) {
-  if (!raw) return null;
+  if (!raw || raw.id == null) return null;
   return {
     id: raw.id,
-    username: raw.username,
-    firstName: raw.firstName,
-    lastName: raw.lastName,
+    username: raw.username || "",
+    firstName: raw.firstName || "",
+    lastName: raw.lastName || "",
     avatarUrl: resolveMediaUrl(raw.avatarUrl),
     createdAt: raw.createdAt,
     lastLoginAt: raw.lastLoginAt,
@@ -16,7 +17,7 @@ function mapUser(raw) {
 export async function fetchCurrentUser() {
   try {
     const { data } = await api.get("/auth/me");
-    return mapUser(data.user);
+    return mapUser(data?.user);
   } catch (err) {
     if (err?.response?.status === 401) return null;
     throw err;
@@ -24,13 +25,20 @@ export async function fetchCurrentUser() {
 }
 
 export async function loginRequest({ username, password, rememberMe }) {
-  const { data } = await api.post("/auth/login", { username, password, rememberMe });
-  return mapUser(data.user);
+  const { data } = await api.post("/auth/login", { username, password, rememberMe: Boolean(rememberMe) });
+  return assertUser(mapUser(data?.user));
 }
 
 export async function registerRequest(payload) {
-  const { data } = await api.post("/auth/register", payload);
-  return mapUser(data.user);
+  const { data } = await api.post("/auth/register", {
+    username: payload.username,
+    password: payload.password,
+    confirmPassword: payload.confirmPassword,
+    firstName: payload.firstName,
+    lastName: payload.lastName,
+    rememberMe: Boolean(payload.rememberMe),
+  });
+  return assertUser(mapUser(data?.user));
 }
 
 export async function logoutRequest() {

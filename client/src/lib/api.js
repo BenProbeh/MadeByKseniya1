@@ -9,6 +9,7 @@ const apiBase = import.meta.env.VITE_API_URL || "/api";
 const api = axios.create({
   baseURL: apiBase,
   withCredentials: true,
+  timeout: 20000,
 });
 
 /** Resolve /uploads/... paths against the API origin when frontend is on another host. */

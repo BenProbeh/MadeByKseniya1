@@ -22,8 +22,12 @@ function AuthBoot({ children }) {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center px-6 bg-oled-950">
-        <div className="glass-panel px-8 py-6 text-center space-y-2">
-          <span className="section-eyebrow justify-center">MadeByKseniya</span>
+        <div className="glass-panel px-8 py-6 text-center space-y-3">
+          <img
+            src="/logo.png"
+            alt="MadeByKseniya"
+            className="h-20 w-auto mx-auto object-contain drop-shadow-[0_0_12px_rgba(176,38,255,0.55)]"
+          />
           <p className="font-serif text-white/70 text-sm">רגע אחד, בודקים את החיבור…</p>
         </div>
       </div>

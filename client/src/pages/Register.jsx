@@ -1,11 +1,21 @@
 import { useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
+import { getApiErrorMessage } from "../lib/authErrors.js";
+
+function safeInternalPath(path) {
+  if (typeof path !== "string") return "/";
+  if (!path.startsWith("/") || path.startsWith("//")) return "/";
+  if (path === "/login" || path === "/register") return "/";
+  return path;
+}
 
 export default function Register() {
   const { register, authenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = safeInternalPath(location.state?.from);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -19,32 +29,48 @@ export default function Register() {
 
   if (authLoading) {
     return (
-      <div className="min-h-[50vh] flex items-center justify-center">
-        <p className="font-serif text-white/60 text-sm">רגע אחד…</p>
+      <div className="min-h-[50vh] flex items-center justify-center px-6">
+        <div className="glass-panel px-8 py-6 text-center space-y-2">
+          <img src="/logo.png" alt="" className="h-16 w-auto mx-auto object-contain opacity-90" />
+          <p className="font-serif text-white/60 text-sm">רגע אחד…</p>
+        </div>
       </div>
     );
   }
 
-  if (authenticated) {
-    return <Navigate to="/" replace />;
+  if (authenticated && !submitting) {
+    return <Navigate to={from} replace />;
   }
 
   async function onSubmit(e) {
     e.preventDefault();
+    e.stopPropagation();
     if (submitting) return;
+
     setError("");
     if (password !== confirmPassword) {
       setError("אימות הסיסמה אינו תואם.");
       return;
     }
+
     setSubmitting(true);
     try {
-      await register({ firstName, lastName, username, password, confirmPassword, rememberMe });
+      const user = await register({
+        firstName,
+        lastName,
+        username,
+        password,
+        confirmPassword,
+        rememberMe,
+      });
+      if (!user?.id) {
+        throw new Error("יצירת החשבון לא הושלמה");
+      }
       setPassword("");
       setConfirmPassword("");
-      navigate("/", { replace: true });
+      navigate(from, { replace: true });
     } catch (err) {
-      setError(err?.response?.data?.error || "לא הצלחנו ליצור את החשבון. נסי שוב.");
+      setError(getApiErrorMessage(err, "לא הצלחנו ליצור את החשבון. נסי שוב."));
     } finally {
       setSubmitting(false);
     }
@@ -153,14 +179,14 @@ export default function Register() {
           <span>זכרי אותי</span>
         </label>
 
-        {error && (
+        {error ? (
           <p className="text-sm text-red-300 text-center" role="alert" aria-live="assertive">
-            {error}
+            {String(error)}
           </p>
-        )}
+        ) : null}
 
         <button type="submit" className="btn-violet w-full" disabled={submitting}>
-          {submitting ? "יוצרים חשבון…" : "יצירת חשבון"}
+          {submitting ? "יוצרות לך חשבון…" : "יצירת חשבון"}
         </button>
       </form>
 

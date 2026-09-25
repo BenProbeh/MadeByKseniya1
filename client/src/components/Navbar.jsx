@@ -41,9 +41,11 @@ export default function Navbar() {
     navigate("/login", { replace: true });
   }
 
-  const greeting = authenticated
-    ? `שלום, ${user.firstName} ${user.lastName}`
-    : null;
+  const greeting = (() => {
+    if (!authenticated || !user) return null;
+    const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ");
+    return fullName ? `שלום, ${fullName}` : `שלום, ${user.username || ""}`;
+  })();
 
   return (
     <header

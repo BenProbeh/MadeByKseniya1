@@ -21,21 +21,37 @@ const authLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "יותר מדי ניסיונות. נסי שוב בעוד כמה דקות." },
+  message: {
+    success: false,
+    error: {
+      code: "RATE_LIMITED",
+      message: "יותר מדי ניסיונות. נסי שוב בעוד כמה דקות.",
+    },
+  },
 });
+
+function fail(res, status, code, message) {
+  return res.status(status).json({
+    success: false,
+    error: { code, message },
+    // Back-compat string for older clients
+    errorMessage: message,
+  });
+}
 
 router.post("/register", authLimiter, (req, res) => {
   const checked = validateRegisterInput(req.body || {});
   if (!checked.ok) {
-    return res.status(400).json({ error: checked.errors[0], errors: checked.errors });
+    return fail(res, 400, "VALIDATION_ERROR", checked.errors[0] || "יש לבדוק את הפרטים שהוזנו");
   }
 
   const { firstName, lastName, username, password, rememberMe } = checked.data;
 
   if (findUserByUsername(username)) {
-    return res.status(409).json({ error: "שם המשתמש כבר תפוס. בחרי שם אחר." });
+    return fail(res, 409, "USERNAME_TAKEN", "שם המשתמש הזה כבר תפוס");
   }
 
+  let userId = null;
   try {
     const passwordHash = hashPassword(password);
     const info = db
@@ -45,9 +61,8 @@ router.post("/register", authLimiter, (req, res) => {
       )
       .run(username, passwordHash, firstName, lastName);
 
-    const userId = Number(info.lastInsertRowid);
+    userId = Number(info.lastInsertRowid);
 
-    // Prevent session fixation — always mint a fresh session after register
     const oldToken = req.cookies?.[SESSION_COOKIE];
     if (oldToken) destroySessionByToken(oldToken);
 
@@ -55,10 +70,23 @@ router.post("/register", authLimiter, (req, res) => {
     res.cookie(SESSION_COOKIE, session.token, cookieOptions(session.rememberMe, session.maxAgeMs));
 
     const user = publicUser(findUserByUsername(username));
-    return res.status(201).json({ user });
+    if (!user) {
+      throw new Error("user missing after insert");
+    }
+
+    return res.status(201).json({ success: true, user });
   } catch (err) {
     console.error("register failed", err?.message);
-    return res.status(500).json({ error: "לא הצלחנו ליצור את החשבון. נסי שוב." });
+    // Best-effort cleanup if user row was created but session/response failed
+    if (userId) {
+      try {
+        db.prepare(`DELETE FROM user_sessions WHERE user_id = ?`).run(userId);
+        db.prepare(`DELETE FROM users WHERE id = ?`).run(userId);
+      } catch {
+        /* ignore */
+      }
+    }
+    return fail(res, 500, "REGISTRATION_FAILED", "לא הצלחנו ליצור את החשבון כרגע. נסי שוב.");
   }
 });
 
@@ -68,13 +96,13 @@ router.post("/login", authLimiter, (req, res) => {
   const rememberMe = Boolean(req.body?.rememberMe);
 
   if (!username.trim() || !password) {
-    return res.status(400).json({ error: "שם המשתמש או הסיסמה אינם נכונים" });
+    return fail(res, 400, "INVALID_CREDENTIALS", "שם המשתמש או הסיסמה אינם נכונים");
   }
 
   const row = findUserByUsername(username);
   const ok = row && verifyPassword(password, row.password_hash);
   if (!ok) {
-    return res.status(401).json({ error: "שם המשתמש או הסיסמה אינם נכונים" });
+    return fail(res, 401, "INVALID_CREDENTIALS", "שם המשתמש או הסיסמה אינם נכונים");
   }
 
   try {
@@ -88,10 +116,11 @@ router.post("/login", authLimiter, (req, res) => {
     const session = createSession(row.id, rememberMe);
     res.cookie(SESSION_COOKIE, session.token, cookieOptions(session.rememberMe, session.maxAgeMs));
 
-    return res.json({ user: publicUser(findUserByUsername(row.username)) });
+    const user = publicUser(findUserByUsername(row.username));
+    return res.json({ success: true, user });
   } catch (err) {
     console.error("login failed", err?.message);
-    return res.status(500).json({ error: "לא הצלחנו להתחבר. נסי שוב." });
+    return fail(res, 500, "LOGIN_FAILED", "לא הצלחנו להתחבר. נסי שוב.");
   }
 });
 
@@ -99,11 +128,11 @@ router.post("/logout", optionalAuth, (req, res) => {
   const token = req.cookies?.[SESSION_COOKIE];
   if (token) destroySessionByToken(token);
   res.clearCookie(SESSION_COOKIE, cookieOptions(false, null));
-  return res.json({ ok: true });
+  return res.json({ success: true, ok: true });
 });
 
 router.get("/me", requireAuth, (req, res) => {
-  return res.json({ user: req.user });
+  return res.json({ success: true, user: req.user });
 });
 
 export default router;

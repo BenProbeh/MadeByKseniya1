@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { sendChatMessage } from "../lib/api.js";
+import { getApiErrorMessage } from "../lib/authErrors.js";
 
 const WELCOME = {
   role: "assistant",
@@ -38,8 +39,7 @@ export default function ChatWidget() {
       const { reply } = await sendChatMessage(apiMessages);
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch (err) {
-      const msg = err?.response?.data?.error || "משהו השתבש, נסי שוב בעוד רגע.";
-      setError(msg);
+      setError(getApiErrorMessage(err, "משהו השתבש, נסי שוב בעוד רגע."));
     } finally {
       setLoading(false);
     }

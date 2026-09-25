@@ -86,6 +86,7 @@ describe("auth + profile API", () => {
       },
     });
     assert.equal(res.status, 201);
+    assert.equal(res.json.success, true);
     assert.equal(res.json.user.username, username);
     assert.equal(res.json.user.firstName, "קסניה");
     assert.ok(!res.json.user.password_hash);
@@ -122,6 +123,10 @@ describe("auth + profile API", () => {
       },
     });
     assert.equal(res.status, 409);
+    assert.equal(res.json.success, false);
+    assert.equal(res.json.error?.code, "USERNAME_TAKEN");
+    assert.match(res.json.error?.message || "", /תפוס/);
+    assert.ok(!res.json.user);
   });
 
   it("rejects weak password and mismatched confirm", async () => {
@@ -200,7 +205,8 @@ describe("auth + profile API", () => {
       body: { username: "nobody_here_xyz", password: "wrong-password" },
     });
     assert.equal(res.status, 401);
-    assert.match(res.json.error, /שם המשתמש או הסיסמה/);
+    assert.equal(res.json.error?.message || res.json.errorMessage, "שם המשתמש או הסיסמה אינם נכונים");
+    assert.match(res.json.error?.message || res.json.errorMessage || "", /שם המשתמש או הסיסמה/);
   });
 
   it("protects profile and scopes measurements to user", async () => {

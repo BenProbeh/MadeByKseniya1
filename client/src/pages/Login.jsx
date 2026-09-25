@@ -2,12 +2,20 @@ import { useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
+import { getApiErrorMessage } from "../lib/authErrors.js";
 
 export default function Login() {
   const { login, authenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from || "/";
+  const from =
+    typeof location.state?.from === "string" &&
+    location.state.from.startsWith("/") &&
+    !location.state.from.startsWith("//") &&
+    location.state.from !== "/login" &&
+    location.state.from !== "/register"
+      ? location.state.from
+      : "/";
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -25,19 +33,21 @@ export default function Login() {
   }
 
   if (authenticated) {
-    return <Navigate to={from === "/login" || from === "/register" ? "/" : from} replace />;
+    return <Navigate to={from} replace />;
   }
 
   async function onSubmit(e) {
     e.preventDefault();
+    e.stopPropagation();
     if (submitting) return;
     setError("");
     setSubmitting(true);
     try {
-      await login({ username, password, rememberMe });
-      navigate(from === "/login" || from === "/register" ? "/" : from, { replace: true });
+      const user = await login({ username, password, rememberMe });
+      if (!user?.id) throw new Error("ההתחברות לא הושלמה");
+      navigate(from, { replace: true });
     } catch (err) {
-      setError(err?.response?.data?.error || "שם המשתמש או הסיסמה אינם נכונים");
+      setError(getApiErrorMessage(err, "שם המשתמש או הסיסמה אינם נכונים"));
     } finally {
       setSubmitting(false);
     }
@@ -99,11 +109,11 @@ export default function Login() {
           <span>זכרי אותי</span>
         </label>
 
-        {error && (
+        {error ? (
           <p className="text-sm text-red-300 text-center" role="alert" aria-live="assertive">
-            {error}
+            {String(error)}
           </p>
-        )}
+        ) : null}
 
         <button type="submit" className="btn-violet w-full" disabled={submitting}>
           {submitting ? "מתחברת…" : "התחברות"}

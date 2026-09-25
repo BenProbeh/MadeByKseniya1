@@ -11,43 +11,55 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
   const refreshUser = useCallback(async () => {
     try {
       const next = await fetchCurrentUser();
       setUser(next);
+      setAuthError(null);
       return next;
-    } catch {
+    } catch (err) {
       setUser(null);
+      setAuthError(err);
       return null;
     }
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    let active = true;
     (async () => {
       try {
         const next = await fetchCurrentUser();
-        if (!cancelled) setUser(next);
-      } catch {
-        if (!cancelled) setUser(null);
+        if (!active) return;
+        setUser(next);
+        setAuthError(null);
+      } catch (err) {
+        if (!active) return;
+        setUser(null);
+        setAuthError(err);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (active) setLoading(false);
       }
     })();
     return () => {
-      cancelled = true;
+      active = false;
     };
   }, []);
 
   const login = useCallback(async (payload) => {
+    setAuthError(null);
     const next = await loginRequest(payload);
     setUser(next);
     return next;
   }, []);
 
   const register = useCallback(async (payload) => {
+    setAuthError(null);
     const next = await registerRequest(payload);
+    if (!next?.id) {
+      throw new Error("השרת לא החזיר משתמש תקין");
+    }
     setUser(next);
     return next;
   }, []);
@@ -57,6 +69,7 @@ export function AuthProvider({ children }) {
       await logoutRequest();
     } finally {
       setUser(null);
+      setAuthError(null);
     }
   }, []);
 
@@ -68,7 +81,8 @@ export function AuthProvider({ children }) {
     () => ({
       user,
       loading,
-      authenticated: Boolean(user),
+      authError,
+      authenticated: Boolean(user?.id),
       login,
       register,
       logout,
@@ -76,7 +90,7 @@ export function AuthProvider({ children }) {
       updateUser,
       setUser,
     }),
-    [user, loading, login, register, logout, refreshUser, updateUser]
+    [user, loading, authError, login, register, logout, refreshUser, updateUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
