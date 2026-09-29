@@ -18,7 +18,8 @@ export function createApp() {
     .map((s) => s.trim())
     .filter(Boolean);
 
-  app.set("trust proxy", 1);
+  // Vercel proxy → Railway edge is two hops; set TRUST_PROXY=2 there so rate limits see the real client IP.
+  app.set("trust proxy", Number(process.env.TRUST_PROXY) || 1);
 
   app.use(
     cors({

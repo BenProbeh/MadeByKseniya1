@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/.env
+client
+api
+server/salon.db*
+server/uploads
+.git
+.cursor

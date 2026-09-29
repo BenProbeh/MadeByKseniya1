@@ -4,7 +4,11 @@ import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dbPath = path.join(__dirname, "..", "salon.db");
+// On Railway, a mounted volume keeps the database and uploads across redeploys.
+const dataDir =
+  process.env.DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, "..");
+fs.mkdirSync(dataDir, { recursive: true });
+const dbPath = path.join(dataDir, "salon.db");
 const db = new DatabaseSync(dbPath);
 
 db.exec("PRAGMA journal_mode = WAL");
@@ -216,7 +220,7 @@ if (seedCount === 0) {
 }
 
 /** Ensure avatar upload directory exists for local/dev storage. */
-const uploadsRoot = path.join(__dirname, "..", "uploads", "avatars");
+const uploadsRoot = path.join(dataDir, "uploads", "avatars");
 fs.mkdirSync(uploadsRoot, { recursive: true });
 
 export { uploadsRoot, dbPath };
