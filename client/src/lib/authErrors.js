@@ -28,7 +28,7 @@ export function getApiErrorMessage(err, fallback = "משהו השתבש. נסי 
     contentType.includes("text/plain")
   ) {
     return fallback === "משהו השתבש. נסי שוב."
-      ? "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע."
+      ? "לא הצלחתי ליצור את החשבון כרגע. נסי שוב בעוד רגע."
       : fallback;
   }
 
@@ -47,7 +47,7 @@ export function getApiErrorMessage(err, fallback = "משהו השתבש. נסי 
     return "יש לבדוק את הפרטים שמילאת ולנסות שוב.";
   }
   if (code === "API_UNCONFIGURED" || code === "API_PROXY_FAILED" || code === "REGISTRATION_FAILED") {
-    return "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע.";
+    return "לא הצלחתי ליצור את החשבון כרגע. נסי שוב בעוד רגע.";
   }
 
   const raw = data?.error ?? data?.errorMessage ?? data?.message ?? err?.message;
@@ -60,11 +60,11 @@ export function getApiErrorMessage(err, fallback = "משהו השתבש. נסי 
   if (!message) return fallback;
   if (looksLikeHtmlOrHttpNoise(message)) {
     return fallback === "משהו השתבש. נסי שוב."
-      ? "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע."
+      ? "לא הצלחתי ליצור את החשבון כרגע. נסי שוב בעוד רגע."
       : fallback;
   }
   if (message === "Network Error") {
-    return "לא הצלחנו להתחבר לשרת. בדקי את החיבור ונסי שוב.";
+    return "לא הצלחתי להתחבר לשרת. בדקי את החיבור ונסי שוב.";
   }
   return message;
 }

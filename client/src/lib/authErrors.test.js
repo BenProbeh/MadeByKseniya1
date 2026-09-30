@@ -28,8 +28,8 @@ describe("authErrors", () => {
       },
       config: { baseURL: "/api", url: "/auth/register" },
     };
-    expect(getApiErrorMessage(err, "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע.")).toBe(
-      "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע."
+    expect(getApiErrorMessage(err, "לא הצלחתי ליצור את החשבון כרגע. נסי שוב בעוד רגע.")).toBe(
+      "לא הצלחתי ליצור את החשבון כרגע. נסי שוב בעוד רגע."
     );
   });
 

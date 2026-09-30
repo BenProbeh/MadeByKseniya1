@@ -9,9 +9,15 @@ function mapUser(raw) {
     firstName: raw.firstName || "",
     lastName: raw.lastName || "",
     avatarUrl: resolveMediaUrl(raw.avatarUrl),
+    role: raw.role === "owner" || raw.role === "admin" ? raw.role : "customer",
     createdAt: raw.createdAt,
     lastLoginAt: raw.lastLoginAt,
   };
+}
+
+function mapAdminCustomer(raw) {
+  if (!raw || raw.id == null) return null;
+  return { ...raw, avatarUrl: resolveMediaUrl(raw.avatarUrl) };
 }
 
 export async function fetchCurrentUser() {
@@ -82,4 +88,32 @@ export async function uploadAvatarDataUrl(imageDataUrl) {
 export async function deleteAvatar() {
   const { data } = await api.delete("/profile/avatar");
   return mapUser(data.user);
+}
+
+export async function changePasswordRequest({ currentPassword, newPassword, confirmPassword }) {
+  const { data } = await api.post("/auth/change-password", { currentPassword, newPassword, confirmPassword });
+  return data;
+}
+
+export async function fetchAdminCustomers({ search = "", role = "", sort = "newest", page = 1, pageSize = 20 } = {}) {
+  const params = { sort, page, pageSize };
+  if (search) params.search = search;
+  if (role) params.role = role;
+  const { data } = await api.get("/admin/customers", { params });
+  return { ...data, customers: (data.customers || []).map(mapAdminCustomer) };
+}
+
+export async function fetchAdminCustomer(id) {
+  const { data } = await api.get(`/admin/customers/${encodeURIComponent(id)}`);
+  return { ...data, customer: mapAdminCustomer(data.customer) };
+}
+
+export async function fetchCustomerStats() {
+  const { data } = await api.get("/admin/customer-stats");
+  return data.stats;
+}
+
+export async function updateUserRole(id, role) {
+  const { data } = await api.patch(`/owner/users/${encodeURIComponent(id)}/role`, { role });
+  return { ...data, customer: mapAdminCustomer(data.customer) };
 }

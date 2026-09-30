@@ -33,7 +33,7 @@ function unsetApiMessage() {
     success: false,
     error: {
       code: "API_UNCONFIGURED",
-      message: "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע.",
+      message: "לא הצלחתי ליצור את החשבון כרגע. נסי שוב בעוד רגע.",
     },
   };
 }
@@ -152,7 +152,7 @@ export default async function handler(req, res) {
         success: false,
         error: {
           code: "API_PROXY_FAILED",
-          message: "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע.",
+          message: "לא הצלחתי ליצור את החשבון כרגע. נסי שוב בעוד רגע.",
         },
       })
     );

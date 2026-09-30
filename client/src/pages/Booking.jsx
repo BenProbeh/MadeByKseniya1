@@ -90,7 +90,7 @@ function BookingForm({ services, initialNotes, skipServiceSelect = false, packag
       });
       setConfirmed(appt);
     } catch (err) {
-      setError(err?.response?.data?.error || "לא הצלחנו לקבוע את התור, נסי שוב.");
+      setError(err?.response?.data?.error || "לא הצלחתי לקבוע את התור, נסי שוב.");
     } finally {
       setSubmitting(false);
     }
@@ -299,7 +299,7 @@ function ManageAppointments() {
       setResults(Array.isArray(data) ? data : []);
       setEditingId(null);
     } catch {
-      setError("לא הצלחנו להזיז את התור, נסי שוב מאוחר יותר.");
+      setError("לא הצלחתי להזיז את התור, נסי שוב מאוחר יותר.");
     } finally {
       setBusy(false);
     }
@@ -313,7 +313,7 @@ function ManageAppointments() {
       const data = await findAppointmentsByPhone(phone.trim());
       setResults(Array.isArray(data) ? data : []);
     } catch {
-      setError("לא הצלחנו לבטל את התור, נסי שוב מאוחר יותר.");
+      setError("לא הצלחתי לבטל את התור, נסי שוב מאוחר יותר.");
     } finally {
       setBusy(false);
     }
@@ -430,8 +430,8 @@ export default function Booking() {
         </h1>
         <p className="text-white/60">
           {skipServiceSelect
-            ? "בחרי תאריך ושעה פנויה — התור נשמר אצלנו אונליין."
-            : "בחרי שירות, תאריך ושעה פנויה — התור נשמר אצלנו אונליין."}
+            ? "בחרי תאריך ושעה פנויה — התור נשמר אצלי אונליין."
+            : "בחרי שירות, תאריך ושעה פנויה — התור נשמר אצלי אונליין."}
         </p>
       </div>
 

@@ -96,7 +96,7 @@ router.post(
         res,
         500,
         "REGISTRATION_FAILED",
-        "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע."
+        "לא הצלחתי ליצור את החשבון כרגע. נסי שוב בעוד רגע."
       );
     }
   })
@@ -136,7 +136,7 @@ router.post(
     } catch (err) {
       if (err?.code === "DB_UNAVAILABLE") return sendServiceUnavailable(res);
       console.error("login failed:", err?.code || "", err?.message);
-      return fail(res, 500, "LOGIN_FAILED", "לא הצלחנו להתחבר. נסי שוב.");
+      return fail(res, 500, "LOGIN_FAILED", "לא הצלחתי להתחבר. נסי שוב.");
     }
   })
 );

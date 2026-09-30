@@ -10,7 +10,7 @@ export default function ProtectedRoute({ children }) {
       <div className="min-h-[50vh] flex items-center justify-center px-6">
         <div className="glass-panel px-8 py-6 text-center space-y-2">
           <span className="section-eyebrow justify-center">MadeByKseniya</span>
-          <p className="font-serif text-white/70 text-sm">רגע אחד, בודקים את החיבור…</p>
+          <p className="font-serif text-white/70 text-sm">רגע אחד, אני בודקת את החיבור…</p>
         </div>
       </div>
     );

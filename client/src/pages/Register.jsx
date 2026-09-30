@@ -74,7 +74,7 @@ export default function Register() {
       setConfirmPassword("");
       navigate(from, { replace: true });
     } catch (err) {
-      setError(getApiErrorMessage(err, "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע."));
+      setError(getApiErrorMessage(err, "לא הצלחתי ליצור את החשבון כרגע. נסי שוב בעוד רגע."));
     } finally {
       setSubmitting(false);
     }
@@ -88,7 +88,7 @@ export default function Register() {
           בואי ניצור לך <span className="violet-text">פרופיל</span>
         </h1>
         <p className="font-serif text-white/60 text-sm md:text-base">
-          כאן נשמור את המידות, ההזמנות וכל מה שצריך לפעם הבאה.
+          כאן אשמור את המידות, ההזמנות וכל מה שצריך לפעם הבאה.
         </p>
       </div>
 

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import UserAvatar from "../components/UserAvatar.jsx";
+import ChangePasswordForm from "../components/ChangePasswordForm.jsx";
+import { MeasurementsSection, OrdersSection, ShipmentsSection } from "../components/profile/ProfileSections.jsx";
 import {
   deleteAvatar,
   fetchProfileMeasurements,
@@ -10,24 +12,8 @@ import {
   uploadAvatarDataUrl,
   uploadAvatarFile,
 } from "../lib/authApi.js";
-
-function formatMoney(agorot, currency = "ILS") {
-  const ils = (Number(agorot) || 0) / 100;
-  try {
-    return new Intl.NumberFormat("he-IL", { style: "currency", currency }).format(ils);
-  } catch {
-    return `${ils.toFixed(2)} ₪`;
-  }
-}
-
-function formatDate(iso) {
-  if (!iso) return "";
-  try {
-    return new Intl.DateTimeFormat("he-IL", { dateStyle: "medium" }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
-}
+import { formatDate } from "../lib/format.js";
+import { isStaff } from "../lib/roles.js";
 
 /** Isolated selfie capture — does not share stream with nail sizing. */
 function AvatarCameraModal({ open, onClose, onCaptured }) {
@@ -68,7 +54,7 @@ function AvatarCameraModal({ open, onClose, onCaptured }) {
         await videoRef.current.play();
       }
     } catch {
-      setError("לא הצלחנו לפתוח את המצלמה. אפשר לאשר גישה ולנסות שוב.");
+      setError("לא הצלחתי לפתוח את המצלמה. אפשר לאשר גישה ולנסות שוב.");
     } finally {
       setStarting(false);
     }
@@ -199,7 +185,7 @@ export default function Profile() {
       } catch {
         if (!cancelled) {
           setMeasurement(null);
-          setMeasError("לא הצלחנו לטעון את המידות.");
+          setMeasError("לא הצלחתי לטעון את המידות.");
         }
       }
       try {
@@ -208,7 +194,7 @@ export default function Profile() {
       } catch {
         if (!cancelled) {
           setOrders([]);
-          setOrdersError("לא הצלחנו לטעון רכישות.");
+          setOrdersError("לא הצלחתי לטעון רכישות.");
         }
       }
       try {
@@ -217,7 +203,7 @@ export default function Profile() {
       } catch {
         if (!cancelled) {
           setShipments([]);
-          setShipsError("לא הצלחנו לטעון משלוחים.");
+          setShipsError("לא הצלחתי לטעון משלוחים.");
         }
       }
     })();
@@ -238,7 +224,7 @@ export default function Profile() {
       updateUser(next);
       setAvatarOk("התמונה נשמרה.");
     } catch (err) {
-      setAvatarError(err?.response?.data?.error || "לא הצלחנו להעלות את התמונה.");
+      setAvatarError(err?.response?.data?.error || "לא הצלחתי להעלות את התמונה.");
     } finally {
       setAvatarBusy(false);
     }
@@ -253,7 +239,7 @@ export default function Profile() {
       updateUser(next);
       setAvatarOk("התמונה נשמרה.");
     } catch (err) {
-      setAvatarError(err?.response?.data?.error || "לא הצלחנו לשמור את התמונה.");
+      setAvatarError(err?.response?.data?.error || "לא הצלחתי לשמור את התמונה.");
     } finally {
       setAvatarBusy(false);
     }
@@ -267,7 +253,7 @@ export default function Profile() {
       updateUser(next);
       setAvatarOk("התמונה הוסרה.");
     } catch {
-      setAvatarError("לא הצלחנו למחוק את התמונה.");
+      setAvatarError("לא הצלחתי למחוק את התמונה.");
     } finally {
       setAvatarBusy(false);
     }
@@ -295,6 +281,13 @@ export default function Profile() {
             <p className="text-sm text-white/50">@{user?.username}</p>
             {user?.createdAt && (
               <p className="text-xs text-white/35">הצטרפת ב־{formatDate(user.createdAt)}</p>
+            )}
+            {isStaff(user) && (
+              <div className="pt-3 flex justify-center sm:justify-start">
+                <Link to="/admin/customers" className="btn-ghost px-5 py-2.5 text-sm">
+                  ניהול לקוחות
+                </Link>
+              </div>
             )}
           </div>
         </div>
@@ -344,121 +337,15 @@ export default function Profile() {
             {avatarOk}
           </p>
         )}
-      </section>
 
-      <section className="glass-panel p-6 space-y-4">
-        <div className="text-center space-y-1">
-          <h2 className="font-serif text-2xl md:text-3xl text-white">המידות שלי</h2>
-          <p className="font-serif text-white/60 text-sm">כאן נשמור את ההתאמה שלך לפעמים הבאות.</p>
+        <div className="border-t border-white/[0.08] pt-5">
+          <ChangePasswordForm />
         </div>
-        {measurement === undefined && (
-          <p className="text-sm text-white/45 text-center">טוענים מידות…</p>
-        )}
-        {measError && <p className="text-sm text-amber-200 text-center">{measError}</p>}
-        {measurement === null && (
-          <div className="text-center space-y-4 py-2">
-            <p className="font-serif text-white">עדיין לא שמרנו את המידות שלך</p>
-            <p className="font-serif text-sm text-white/55">
-              מדידה קצרה תעזור לנו להתאים לך את הסט בצורה מדויקת יותר.
-            </p>
-            <Link to="/nail-sizing" className="btn-violet inline-flex">
-              להתחלת מדידה
-            </Link>
-          </div>
-        )}
-        {measurement && (
-          <div className="grid md:grid-cols-2 gap-4">
-            {["right", "left"].map((hand) => {
-              const block = measurement.hands?.[hand];
-              if (!block?.fingers?.length) return null;
-              return (
-                <div key={hand} className="space-y-3 border border-white/[0.08] rounded-xl p-4">
-                  <h3 className="font-serif text-xl text-white">{block.labelHe}</h3>
-                  <ul className="space-y-2 text-sm text-white/75">
-                    {block.fingers.map((f) => (
-                      <li key={f.fingerId} className="flex justify-between gap-3">
-                        <span>{f.labelHe}</span>
-                        <span className="text-white/50">
-                          {f.size != null ? `מידה ${f.size}` : f.widthMm != null ? `${f.widthMm} מ״מ` : "—"}
-                          {f.photoQualityScore != null ? ` · ${f.photoQualityScore}/100` : ""}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-            <div className="md:col-span-2 flex justify-center pt-2">
-              <Link to="/nail-sizing" className="btn-text text-sm">
-                מדידה מחדש
-                <span className="btn-text-arrow">←</span>
-              </Link>
-            </div>
-          </div>
-        )}
       </section>
 
-      <section className="glass-panel p-6 space-y-4">
-        <h2 className="font-serif text-2xl md:text-3xl text-white text-center">הרכישות האחרונות שלי</h2>
-        {orders === undefined && <p className="text-sm text-white/45 text-center">טוענים רכישות…</p>}
-        {ordersError && <p className="text-sm text-amber-200 text-center">{ordersError}</p>}
-        {orders && orders.length === 0 && (
-          <p className="font-serif text-sm text-white/55 text-center">
-            עדיין אין כאן רכישות — הסט הראשון שלך מחכה לך.
-          </p>
-        )}
-        {orders && orders.length > 0 && (
-          <ul className="space-y-3">
-            {orders.map((o) => (
-              <li
-                key={o.id}
-                className="flex items-center justify-between gap-3 border-b border-white/[0.08] last:border-0 pb-3 last:pb-0"
-              >
-                <div className="min-w-0">
-                  <p className="text-white/90">{o.titleHe || o.orderNumber}</p>
-                  <p className="text-xs text-white/45">
-                    {formatDate(o.createdAt)} · {o.statusHe}
-                  </p>
-                </div>
-                <p className="font-serif text-violet-200 shrink-0">{formatMoney(o.totalAmount, o.currency)}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="glass-panel p-6 space-y-4">
-        <h2 className="font-serif text-2xl md:text-3xl text-white text-center">איפה ההזמנה שלי?</h2>
-        {shipments === undefined && <p className="text-sm text-white/45 text-center">טוענים משלוחים…</p>}
-        {shipsError && <p className="text-sm text-amber-200 text-center">{shipsError}</p>}
-        {shipments && shipments.length === 0 && (
-          <p className="font-serif text-sm text-white/55 text-center">אין כרגע משלוח פעיל.</p>
-        )}
-        {shipments && shipments.length > 0 && (
-          <ul className="space-y-4">
-            {shipments.map((s) => (
-              <li key={s.id} className="border border-white/[0.08] rounded-xl p-4 space-y-2">
-                <p className="font-serif text-white">הזמנה {s.orderNumber}</p>
-                <p className="text-sm text-violet-200">{s.statusHe}</p>
-                {s.trackingNumber && (
-                  <p className="text-xs text-white/45">
-                    מעקב: {s.trackingNumber}
-                    {s.trackingUrl && (
-                      <>
-                        {" · "}
-                        <a href={s.trackingUrl} className="text-violet-300" target="_blank" rel="noreferrer">
-                          קישור
-                        </a>
-                      </>
-                    )}
-                  </p>
-                )}
-                <p className="text-xs text-white/35">עודכן {formatDate(s.updatedAt)}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <MeasurementsSection measurement={measurement} error={measError} />
+      <OrdersSection orders={orders} error={ordersError} />
+      <ShipmentsSection shipments={shipments} error={shipsError} />
 
       <div className="flex justify-center">
         <button type="button" className="btn-text text-sm text-white/50" onClick={() => logout()}>

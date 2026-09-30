@@ -128,7 +128,7 @@ export default function Configurator() {
         className="max-w-3xl mx-auto px-6 pt-16 text-center"
       >
         <span className="section-eyebrow">Colours</span>
-        <h1 className="text-3xl md:text-5xl font-black mt-3">גלריית הגוונים שלנו</h1>
+        <h1 className="text-3xl md:text-5xl font-black mt-3">גלריית הגוונים שלי</h1>
         <p className="text-white/60 mt-4">
           עברי בין הגוונים, מצאי את המראה שמדבר אלייך, ואז עצבי את הסט המדויק שלך למטה.
         </p>
@@ -145,7 +145,7 @@ export default function Configurator() {
           <div className="text-center md:text-right space-y-2">
             <span className="section-eyebrow justify-center md:justify-start">Sizing</span>
             <p className="font-serif text-xl text-white">רוצה מדידה מדויקת יותר לסט?</p>
-            <p className="text-sm text-white/55">מדדי את הציפורניים עם מטבע ומצלמה — ונשמור את המידות לפעם הבאה.</p>
+            <p className="text-sm text-white/55">מדדי את הציפורניים עם מטבע ומצלמה — ואשמור את המידות לפעם הבאה.</p>
           </div>
           <Link to="/nail-sizing" className="btn-ghost whitespace-nowrap shrink-0">
             מדידת מידת הציפורניים

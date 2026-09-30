@@ -88,7 +88,7 @@ router.post("/avatar", requireAuth, (req, res) => {
       if (err.code === "LIMIT_FILE_SIZE") {
         return res.status(400).json({ error: "הקובץ גדול מדי. עד 5MB." });
       }
-      return res.status(400).json({ error: "לא הצלחנו לקבל את התמונה." });
+      return res.status(400).json({ error: "לא הצלחתי לקבל את התמונה." });
     }
     try {
       let buffer = req.file?.buffer || null;
@@ -134,7 +134,7 @@ router.post("/avatar", requireAuth, (req, res) => {
       }
       if (e.code === "DB_UNAVAILABLE") return sendServiceUnavailable(res);
       console.error("avatar upload failed", e?.message);
-      return res.status(500).json({ error: "לא הצלחנו לשמור את התמונה." });
+      return res.status(500).json({ error: "לא הצלחתי לשמור את התמונה." });
     }
   });
 });
@@ -157,7 +157,7 @@ router.delete(
     } catch (e) {
       if (e.code === "DB_UNAVAILABLE") return sendServiceUnavailable(res);
       console.error("avatar delete failed", e?.message);
-      return res.status(500).json({ error: "לא הצלחנו למחוק את התמונה." });
+      return res.status(500).json({ error: "לא הצלחתי למחוק את התמונה." });
     }
   })
 );

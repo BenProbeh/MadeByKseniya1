@@ -15,6 +15,9 @@ import NailSizing from "./pages/NailSizing.jsx";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import Profile from "./pages/Profile.jsx";
+import AdminCustomers from "./pages/AdminCustomers.jsx";
+import AdminCustomerProfile from "./pages/AdminCustomerProfile.jsx";
+import AdminRoute from "./components/AdminRoute.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 
 function AuthBoot({ children }) {
@@ -28,7 +31,7 @@ function AuthBoot({ children }) {
             alt="MadeByKseniya"
             className="h-20 w-auto mx-auto object-contain drop-shadow-[0_0_12px_rgba(176,38,255,0.55)]"
           />
-          <p className="font-serif text-white/70 text-sm">רגע אחד, בודקים את החיבור…</p>
+          <p className="font-serif text-white/70 text-sm">רגע אחד, אני בודקת את החיבור…</p>
         </div>
       </div>
     );
@@ -120,6 +123,22 @@ export default function App() {
                 <ProtectedRoute>
                   <Profile />
                 </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/customers"
+              element={
+                <AdminRoute>
+                  <AdminCustomers />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/customers/:id"
+              element={
+                <AdminRoute>
+                  <AdminCustomerProfile />
+                </AdminRoute>
               }
             />
           </Routes>
