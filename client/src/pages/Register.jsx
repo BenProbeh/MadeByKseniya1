@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
-import { getApiErrorMessage } from "../lib/authErrors.js";
+import { getApiErrorMessage, isLatinUsername, USERNAME_LATIN_MESSAGE } from "../lib/authErrors.js";
 
 function safeInternalPath(path) {
   if (typeof path !== "string") return "/";
@@ -48,6 +48,10 @@ export default function Register() {
     if (submitting) return;
 
     setError("");
+    if (!isLatinUsername(username)) {
+      setError(USERNAME_LATIN_MESSAGE);
+      return;
+    }
     if (password !== confirmPassword) {
       setError("יש לבדוק את הפרטים שמילאת ולנסות שוב.");
       return;
@@ -122,6 +126,9 @@ export default function Register() {
             type="text"
             name="username"
             autoComplete="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
@@ -136,6 +143,9 @@ export default function Register() {
               type={showPassword ? "text" : "password"}
               name="new-password"
               autoComplete="new-password"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60 pe-12"
@@ -156,6 +166,9 @@ export default function Register() {
               type={showPassword ? "text" : "password"}
               name="confirm-password"
               autoComplete="new-password"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60 pe-12"

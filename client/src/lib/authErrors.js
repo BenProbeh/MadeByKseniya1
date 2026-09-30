@@ -80,6 +80,14 @@ function looksLikeHtmlOrHttpNoise(text) {
   return false;
 }
 
+export const USERNAME_LATIN_MESSAGE =
+  "שם המשתמש נכתב באותיות באנגלית. כדאי לבדוק שהמקלדת באנגלית ולנסות שוב.";
+
+/** Usernames are ASCII only; a phone left on a Hebrew keyboard otherwise yields a confusing "wrong password". */
+export function isLatinUsername(value) {
+  return /^[\x21-\x7e]*$/.test(String(value || "").replace(/\s+/g, ""));
+}
+
 export function assertUser(user) {
   if (!user || user.id == null || !user.username) {
     const err = new Error("השרת לא החזיר משתמש תקין");

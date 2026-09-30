@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getApiErrorMessage, assertUser } from "./authErrors.js";
+import { getApiErrorMessage, assertUser, isLatinUsername } from "./authErrors.js";
 
 describe("authErrors", () => {
   it("reads nested error.message from API", () => {
@@ -31,6 +31,13 @@ describe("authErrors", () => {
     expect(getApiErrorMessage(err, "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע.")).toBe(
       "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע."
     );
+  });
+
+  it("isLatinUsername flags Hebrew-keyboard input but allows phone capitalization and spaces", () => {
+    expect(isLatinUsername("Kseniya_1 ")).toBe(true);
+    expect(isLatinUsername("")).toBe(true);
+    expect(isLatinUsername("קסניה")).toBe(false);
+    expect(isLatinUsername("kseniyaש")).toBe(false);
   });
 
   it("assertUser rejects missing id", () => {

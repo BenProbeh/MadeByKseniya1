@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
-import { getApiErrorMessage } from "../lib/authErrors.js";
+import { getApiErrorMessage, isLatinUsername, USERNAME_LATIN_MESSAGE } from "../lib/authErrors.js";
 
 export default function Login() {
   const { login, authenticated, loading: authLoading } = useAuth();
@@ -41,6 +41,10 @@ export default function Login() {
     e.stopPropagation();
     if (submitting) return;
     setError("");
+    if (!isLatinUsername(username)) {
+      setError(USERNAME_LATIN_MESSAGE);
+      return;
+    }
     setSubmitting(true);
     try {
       const user = await login({ username, password, rememberMe });
@@ -73,6 +77,9 @@ export default function Login() {
             type="text"
             name="username"
             autoComplete="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
@@ -87,6 +94,9 @@ export default function Login() {
               type={showPassword ? "text" : "password"}
               name="password"
               autoComplete="current-password"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60 pe-12"
