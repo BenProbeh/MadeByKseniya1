@@ -98,7 +98,7 @@ async function connectOnce() {
   try {
     await next.query("SELECT 1");
     const applied = await runMigrations(next);
-    await ensureOwner(next, config.ownerUserId);
+    await ensureOwner(next, config.ownerUserId, { bootstrapUsername: config.ownerBootstrapUsername });
     backend = next;
     status = "connected";
     console.log(

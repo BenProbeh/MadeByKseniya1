@@ -10,7 +10,8 @@ import authRouter from "./routes/auth.js";
 import profileRouter from "./routes/profile.js";
 import adminRouter from "./routes/admin.js";
 import ownerRouter from "./routes/owner.js";
-import { pingDb } from "./db.js";
+import db, { pingDb } from "./db.js";
+import { hasOwner } from "./roles.js";
 import { asyncRoute, sendServiceUnavailable } from "./http.js";
 import { loadAvatar } from "./storage/avatarStorage.js";
 
@@ -42,7 +43,10 @@ export function createApp() {
   app.get("/api/health", async (_req, res) => {
     res.set("Cache-Control", "no-store");
     const connected = await pingDb();
-    if (connected) return res.json({ ok: true, database: "connected" });
+    if (connected) {
+      const ownerAssigned = await hasOwner(db).catch(() => null);
+      return res.json({ ok: true, database: "connected", ownerAssigned });
+    }
     return res.status(503).json({ ok: false, database: "disconnected" });
   });
 

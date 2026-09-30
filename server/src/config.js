@@ -54,6 +54,10 @@ export const config = {
     const raw = read("OWNER_USER_ID");
     return /^\d+$/.test(raw) ? Number(raw) : null;
   },
+  /** Existing account made owner when no owner exists and OWNER_USER_ID is unset. Never creates a user. */
+  get ownerBootstrapUsername() {
+    return read("OWNER_USERNAME") || "benexample";
+  },
   get openaiApiKey() {
     return read("OPENAI_API_KEY");
   },
