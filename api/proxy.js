@@ -1,7 +1,9 @@
 /**
  * Vercel serverless reverse-proxy for the Railway Express API.
  *
- * Production frontend calls same-origin `/api/*`. This function forwards to
+ * Production frontend calls same-origin `/api/*`. vercel.json rewrites every
+ * `/api/<path>` to this function as `/api/proxy?__path=<path>` (file-based
+ * catch-all routes only match one segment outside Next.js), and it forwards to
  * `API_ORIGIN` (e.g. https://your-service.up.railway.app) so cookies stay
  * first-party on the Vercel domain and no VITE_API_URL rebuild is required.
  *
@@ -54,6 +56,18 @@ function pickForwardHeaders(req) {
   return out;
 }
 
+export function upstreamPath(rawUrl) {
+  const url = new URL(rawUrl || "/", "http://proxy.local");
+  const rewritten = url.searchParams.get("__path");
+  url.searchParams.delete("__path");
+  const pathname =
+    rewritten != null
+      ? `/api/${rewritten.replace(/^\/+/, "")}`
+      : url.pathname;
+  const query = url.searchParams.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
 function rewriteSetCookie(value) {
   // Drop Domain so the browser binds the cookie to the Vercel host.
   return String(value)
@@ -81,8 +95,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const incoming = req.url && req.url.startsWith("/") ? req.url : `/${req.url || ""}`;
-    const targetUrl = `${origin}${incoming}`;
+    const targetUrl = `${origin}${upstreamPath(req.url)}`;
     const method = req.method || "GET";
     const headers = pickForwardHeaders(req);
     const hasBody = !["GET", "HEAD"].includes(method.toUpperCase());

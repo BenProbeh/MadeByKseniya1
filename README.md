@@ -76,7 +76,7 @@ It also includes a SPA rewrite so client-side routes (`/booking`, `/services`, .
 API_ORIGIN = https://<your-railway-domain>
 ```
 
-(no trailing slash, no `/api` suffix). Redeploy. The browser keeps calling `/api/*` on the Vercel domain; `api/[[...path]].js` forwards to Railway.
+(no trailing slash, no `/api` suffix). Redeploy. The browser keeps calling `/api/*` on the Vercel domain; `vercel.json` rewrites them to `api/proxy.js`, which forwards to Railway.
 
 **Alternative (not recommended — iPhone Safari blocks the resulting third-party cookie):** set build-time
 

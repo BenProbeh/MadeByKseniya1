@@ -7,7 +7,7 @@
 - **Database** → Railway service `Postgres` (all users, sessions, avatars, measurements, appointments)
 
 The browser always calls **same-origin** `/api/*` on the Vercel domain.
-`api/[[...path]].js` proxies those requests to Railway so session cookies stay first-party
+`vercel.json` rewrites `/api/*` to `api/proxy.js`, which proxies those requests to Railway so session cookies stay first-party
 (required for login to persist on iPhone Safari).
 
 ## Auth mechanism

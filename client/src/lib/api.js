@@ -2,7 +2,7 @@ import axios from "axios";
 import { MOCK_SERVICES, mockAvailability, mockCreateAppointment, mockUpdateAppointment } from "./mockData.js";
 
 // Default "/api" is same-origin: Vite proxies it in dev, and on Vercel the
-// api/[[...path]].js function forwards it to the backend (first-party cookies,
+// api/proxy.js function forwards it to the backend (first-party cookies,
 // which iPhone Safari requires). VITE_API_URL is an optional override; it may be
 // given with or without the trailing "/api".
 export function normalizeApiBase(raw, { production = false } = {}) {
