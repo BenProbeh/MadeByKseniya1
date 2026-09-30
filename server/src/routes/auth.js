@@ -1,6 +1,6 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
-import db from "../db.js";
+import db, { transaction } from "../db.js";
 import {
   SESSION_COOKIE,
   cookieOptions,
@@ -13,6 +13,7 @@ import {
   verifyPassword,
 } from "../auth.js";
 import { optionalAuth, requireAuth } from "../middleware/authMiddleware.js";
+import { asyncRoute, sendServiceUnavailable } from "../http.js";
 
 const router = Router();
 
@@ -39,102 +40,114 @@ function fail(res, status, code, message) {
   });
 }
 
-router.post("/register", authLimiter, (req, res) => {
-  const checked = validateRegisterInput(req.body || {});
-  if (!checked.ok) {
-    return fail(
-      res,
-      400,
-      "VALIDATION_ERROR",
-      checked.errors[0] || "יש לבדוק את הפרטים שמילאת ולנסות שוב."
-    );
-  }
+const USERNAME_TAKEN_MESSAGE = "שם המשתמש הזה כבר בשימוש, נסי לבחור שם אחר.";
 
-  const { firstName, lastName, username, password, rememberMe } = checked.data;
-
-  if (findUserByUsername(username)) {
-    return fail(res, 409, "USERNAME_TAKEN", "שם המשתמש הזה כבר בשימוש, נסי לבחור שם אחר.");
-  }
-
-  let userId = null;
-  try {
-    const passwordHash = hashPassword(password);
-    const info = db
-      .prepare(
-        `INSERT INTO users (username, password_hash, first_name, last_name, last_login_at)
-         VALUES (?, ?, ?, ?, datetime('now'))`
-      )
-      .run(username, passwordHash, firstName, lastName);
-
-    userId = Number(info.lastInsertRowid);
-
-    const oldToken = req.cookies?.[SESSION_COOKIE];
-    if (oldToken) destroySessionByToken(oldToken);
-
-    const session = createSession(userId, rememberMe);
-    res.cookie(SESSION_COOKIE, session.token, cookieOptions(session.rememberMe, session.maxAgeMs));
-
-    const user = publicUser(findUserByUsername(username));
-    if (!user) {
-      throw new Error("user missing after insert");
+router.post(
+  "/register",
+  authLimiter,
+  asyncRoute(async (req, res) => {
+    const checked = validateRegisterInput(req.body || {});
+    if (!checked.ok) {
+      return fail(
+        res,
+        400,
+        "VALIDATION_ERROR",
+        checked.errors[0] || "יש לבדוק את הפרטים שמילאת ולנסות שוב."
+      );
     }
 
-    return res.status(201).json({ success: true, user });
-  } catch (err) {
-    console.error("register failed", err?.message);
-    // Best-effort cleanup if user row was created but session/response failed
-    if (userId) {
-      try {
-        db.prepare(`DELETE FROM user_sessions WHERE user_id = ?`).run(userId);
-        db.prepare(`DELETE FROM users WHERE id = ?`).run(userId);
-      } catch {
-        /* ignore */
+    const { firstName, lastName, username, password, rememberMe } = checked.data;
+
+    try {
+      if (await findUserByUsername(username)) {
+        return fail(res, 409, "USERNAME_TAKEN", USERNAME_TAKEN_MESSAGE);
       }
+
+      const passwordHash = await hashPassword(password);
+
+      // User row and session are created atomically: no orphan accounts without a session.
+      const { row, session } = await transaction(async (tx) => {
+        const inserted = await tx.query(
+          `INSERT INTO users (username, password_hash, first_name, last_name, last_login_at)
+           VALUES ($1, $2, $3, $4, now())
+           RETURNING *`,
+          [username, passwordHash, firstName, lastName]
+        );
+        const created = inserted.rows[0];
+        const newSession = await createSession(created.id, rememberMe, tx);
+        return { row: created, session: newSession };
+      });
+
+      const oldToken = req.cookies?.[SESSION_COOKIE];
+      if (oldToken) await destroySessionByToken(oldToken).catch(() => {});
+
+      res.cookie(SESSION_COOKIE, session.token, cookieOptions(session.rememberMe, session.maxAgeMs));
+      return res.status(201).json({ success: true, user: publicUser(row) });
+    } catch (err) {
+      if (err?.code === "23505") {
+        return fail(res, 409, "USERNAME_TAKEN", USERNAME_TAKEN_MESSAGE);
+      }
+      if (err?.code === "DB_UNAVAILABLE") return sendServiceUnavailable(res);
+      console.error("register failed:", err?.code || "", err?.message);
+      return fail(
+        res,
+        500,
+        "REGISTRATION_FAILED",
+        "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע."
+      );
     }
-    return fail(res, 500, "REGISTRATION_FAILED", "לא הצלחנו ליצור את החשבון כרגע. נסי שוב בעוד רגע.");
-  }
-});
+  })
+);
 
-router.post("/login", authLimiter, (req, res) => {
-  const username = String(req.body?.username || "");
-  const password = String(req.body?.password || "");
-  const rememberMe = Boolean(req.body?.rememberMe);
+router.post(
+  "/login",
+  authLimiter,
+  asyncRoute(async (req, res) => {
+    const username = String(req.body?.username || "");
+    const password = String(req.body?.password || "");
+    const rememberMe = Boolean(req.body?.rememberMe);
 
-  if (!username.trim() || !password) {
-    return fail(res, 400, "INVALID_CREDENTIALS", "שם המשתמש או הסיסמה אינם נכונים");
-  }
+    if (!username.trim() || !password) {
+      return fail(res, 400, "INVALID_CREDENTIALS", "שם המשתמש או הסיסמה אינם נכונים");
+    }
 
-  const row = findUserByUsername(username);
-  const ok = row && verifyPassword(password, row.password_hash);
-  if (!ok) {
-    return fail(res, 401, "INVALID_CREDENTIALS", "שם המשתמש או הסיסמה אינם נכונים");
-  }
+    try {
+      const row = await findUserByUsername(username);
+      const ok = row && (await verifyPassword(password, row.password_hash));
+      if (!ok) {
+        return fail(res, 401, "INVALID_CREDENTIALS", "שם המשתמש או הסיסמה אינם נכונים");
+      }
 
-  try {
-    const oldToken = req.cookies?.[SESSION_COOKIE];
-    if (oldToken) destroySessionByToken(oldToken);
+      const oldToken = req.cookies?.[SESSION_COOKIE];
+      if (oldToken) await destroySessionByToken(oldToken);
 
-    db.prepare(`UPDATE users SET last_login_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`).run(
-      row.id
-    );
+      const { rows } = await db.query(
+        `UPDATE users SET last_login_at = now(), updated_at = now() WHERE id = $1 RETURNING *`,
+        [row.id]
+      );
 
-    const session = createSession(row.id, rememberMe);
-    res.cookie(SESSION_COOKIE, session.token, cookieOptions(session.rememberMe, session.maxAgeMs));
+      const session = await createSession(row.id, rememberMe);
+      res.cookie(SESSION_COOKIE, session.token, cookieOptions(session.rememberMe, session.maxAgeMs));
 
-    const user = publicUser(findUserByUsername(row.username));
-    return res.json({ success: true, user });
-  } catch (err) {
-    console.error("login failed", err?.message);
-    return fail(res, 500, "LOGIN_FAILED", "לא הצלחנו להתחבר. נסי שוב.");
-  }
-});
+      return res.json({ success: true, user: publicUser(rows[0]) });
+    } catch (err) {
+      if (err?.code === "DB_UNAVAILABLE") return sendServiceUnavailable(res);
+      console.error("login failed:", err?.code || "", err?.message);
+      return fail(res, 500, "LOGIN_FAILED", "לא הצלחנו להתחבר. נסי שוב.");
+    }
+  })
+);
 
-router.post("/logout", optionalAuth, (req, res) => {
-  const token = req.cookies?.[SESSION_COOKIE];
-  if (token) destroySessionByToken(token);
-  res.clearCookie(SESSION_COOKIE, cookieOptions(false, null));
-  return res.json({ success: true, ok: true });
-});
+router.post(
+  "/logout",
+  optionalAuth,
+  asyncRoute(async (req, res) => {
+    const token = req.cookies?.[SESSION_COOKIE];
+    if (token) await destroySessionByToken(token).catch(() => {});
+    res.clearCookie(SESSION_COOKIE, cookieOptions(false, null));
+    return res.json({ success: true, ok: true });
+  })
+);
 
 router.get("/me", requireAuth, (req, res) => {
   return res.json({ success: true, user: req.user });

@@ -1,11 +1,15 @@
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import db from "./db.js";
+import { config } from "./config.js";
 
 export const SESSION_COOKIE = "mbk_session";
 export const BCRYPT_ROUNDS = 12;
 export const REMEMBER_DAYS = 30;
 export const SESSION_HOURS = 12;
+
+const PURGE_INTERVAL_MS = 10 * 60 * 1000;
+let lastPurgeAt = 0;
 
 export function normalizeUsername(raw) {
   return String(raw || "")
@@ -15,12 +19,12 @@ export function normalizeUsername(raw) {
 }
 
 export function hashPassword(password) {
-  return bcrypt.hashSync(String(password), BCRYPT_ROUNDS);
+  return bcrypt.hash(String(password), BCRYPT_ROUNDS);
 }
 
-export function verifyPassword(password, passwordHash) {
+export async function verifyPassword(password, passwordHash) {
   if (!passwordHash) return false;
-  return bcrypt.compareSync(String(password), passwordHash);
+  return bcrypt.compare(String(password), passwordHash);
 }
 
 export function hashToken(token) {
@@ -44,77 +48,74 @@ export function publicUser(row) {
   };
 }
 
-export function findUserByUsername(username) {
+export async function findUserByUsername(username, executor = db) {
   const u = normalizeUsername(username);
   if (!u) return null;
-  return db.prepare(`SELECT * FROM users WHERE username = ?`).get(u) || null;
+  const { rows } = await executor.query(`SELECT * FROM users WHERE username = $1`, [u]);
+  return rows[0] || null;
 }
 
-export function findUserById(id) {
-  return db.prepare(`SELECT * FROM users WHERE id = ?`).get(id) || null;
+export async function findUserById(id, executor = db) {
+  const { rows } = await executor.query(`SELECT * FROM users WHERE id = $1`, [id]);
+  return rows[0] || null;
 }
 
-export function purgeExpiredSessions() {
-  db.prepare(`DELETE FROM user_sessions WHERE expires_at < datetime('now')`).run();
-}
-
-export function createSession(userId, rememberMe) {
-  purgeExpiredSessions();
-  const token = createSessionToken();
-  const tokenHash = hashToken(token);
+async function purgeExpiredSessions() {
   const now = Date.now();
+  if (now - lastPurgeAt < PURGE_INTERVAL_MS) return;
+  lastPurgeAt = now;
+  await db.query(`DELETE FROM user_sessions WHERE expires_at < now()`);
+}
+
+export async function createSession(userId, rememberMe, executor = db) {
+  const token = createSessionToken();
   const expiresMs = rememberMe
     ? REMEMBER_DAYS * 24 * 60 * 60 * 1000
     : SESSION_HOURS * 60 * 60 * 1000;
-  const expiresAt = new Date(now + expiresMs).toISOString();
+  const expiresAt = new Date(Date.now() + expiresMs);
 
-  db.prepare(
+  await executor.query(
     `INSERT INTO user_sessions (user_id, token_hash, remember_me, expires_at, last_used_at)
-     VALUES (?, ?, ?, ?, datetime('now'))`
-  ).run(userId, tokenHash, rememberMe ? 1 : 0, expiresAt);
+     VALUES ($1, $2, $3, $4, now())`,
+    [userId, hashToken(token), rememberMe ? 1 : 0, expiresAt]
+  );
 
-  return { token, expiresAt, rememberMe: Boolean(rememberMe), maxAgeMs: rememberMe ? expiresMs : null };
+  return {
+    token,
+    expiresAt: expiresAt.toISOString(),
+    rememberMe: Boolean(rememberMe),
+    maxAgeMs: rememberMe ? expiresMs : null,
+  };
 }
 
-export function destroySessionByToken(token) {
+export async function destroySessionByToken(token) {
   if (!token) return;
-  db.prepare(`DELETE FROM user_sessions WHERE token_hash = ?`).run(hashToken(token));
+  await db.query(`DELETE FROM user_sessions WHERE token_hash = $1`, [hashToken(token)]);
 }
 
-export function destroyAllSessionsForUser(userId) {
-  db.prepare(`DELETE FROM user_sessions WHERE user_id = ?`).run(userId);
+export async function destroyAllSessionsForUser(userId) {
+  await db.query(`DELETE FROM user_sessions WHERE user_id = $1`, [userId]);
 }
 
-export function getSessionUser(token) {
+export async function getSessionUser(token) {
   if (!token) return null;
-  purgeExpiredSessions();
-  const tokenHash = hashToken(token);
-  const row = db
-    .prepare(
-      `SELECT s.id AS session_id, s.expires_at, s.remember_me, u.*
-       FROM user_sessions s
-       JOIN users u ON u.id = s.user_id
-       WHERE s.token_hash = ?`
-    )
-    .get(tokenHash);
-  if (!row) return null;
-  if (new Date(row.expires_at).getTime() < Date.now()) {
-    db.prepare(`DELETE FROM user_sessions WHERE id = ?`).run(row.session_id);
-    return null;
-  }
-  db.prepare(`UPDATE user_sessions SET last_used_at = datetime('now') WHERE id = ?`).run(row.session_id);
-  return row;
+  await purgeExpiredSessions();
+  const { rows } = await db.query(
+    `UPDATE user_sessions s
+        SET last_used_at = now()
+       FROM users u
+      WHERE s.token_hash = $1
+        AND s.expires_at > now()
+        AND u.id = s.user_id
+     RETURNING s.id AS session_id, s.expires_at, s.remember_me, u.*`,
+    [hashToken(token)]
+  );
+  return rows[0] || null;
 }
 
 export function cookieOptions(rememberMe, maxAgeMs) {
-  const isProd = process.env.NODE_ENV === "production";
-  // Cross-origin (Vercel → Railway) needs SameSite=None + Secure in production.
-  const sameSite = process.env.COOKIE_SAMESITE || (isProd ? "none" : "lax");
-  const secure =
-    process.env.COOKIE_SECURE === "1" ||
-    process.env.COOKIE_SECURE === "true" ||
-    isProd ||
-    sameSite === "none";
+  const sameSite = config.cookieSameSite;
+  const secure = config.isProduction || sameSite === "none";
 
   const opts = {
     httpOnly: true,

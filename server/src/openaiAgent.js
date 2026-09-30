@@ -6,18 +6,17 @@ import {
   findAppointmentsByPhone,
   updateAppointment,
 } from "./appointmentsService.js";
-
-const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
+import { config } from "./config.js";
 
 function getClient() {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!config.openaiApiKey) {
     throw new Error("MISSING_API_KEY");
   }
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return new OpenAI({ apiKey: config.openaiApiKey });
 }
 
-function buildSystemPrompt() {
-  const services = listServices();
+async function buildSystemPrompt() {
+  const services = await listServices();
   const catalog = services
     .map(
       (s) =>
@@ -135,11 +134,11 @@ function executeTool(name, args) {
 
 export async function runChat(messages) {
   const client = getClient();
-  const conversation = [{ role: "system", content: buildSystemPrompt() }, ...messages];
+  const conversation = [{ role: "system", content: await buildSystemPrompt() }, ...messages];
 
   for (let round = 0; round < 4; round++) {
     const response = await client.chat.completions.create({
-      model: MODEL,
+      model: config.openaiModel,
       messages: conversation,
       tools,
     });
@@ -155,7 +154,7 @@ export async function runChat(messages) {
       let result;
       try {
         const args = JSON.parse(call.function.arguments || "{}");
-        result = executeTool(call.function.name, args);
+        result = await executeTool(call.function.name, args);
       } catch (err) {
         result = { error: err.message };
       }

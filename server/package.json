@@ -20,9 +20,11 @@
     "express-rate-limit": "^8.7.0",
     "file-type": "^16.5.4",
     "multer": "^2.4.0",
-    "openai": "^4.67.3"
+    "openai": "^4.67.3",
+    "pg": "^8.23.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "node-mocks-http": "^1.18.1"
   }
 }

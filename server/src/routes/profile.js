@@ -1,9 +1,10 @@
 import { Router } from "express";
 import multer from "multer";
 import FileType from "file-type";
-import db from "../db.js";
+import db, { transaction } from "../db.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
 import { findUserById, publicUser } from "../auth.js";
+import { asyncRoute, sendServiceUnavailable } from "../http.js";
 import {
   deleteAvatarByUrl,
   getMaxAvatarBytes,
@@ -72,109 +73,131 @@ function mapMeasurementProfile(profile, fingers) {
   };
 }
 
-router.get("/", requireAuth, (req, res) => {
-  const row = findUserById(req.user.id);
-  return res.json({ user: publicUser(row) });
-});
+router.get(
+  "/",
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    const row = await findUserById(req.user.id);
+    return res.json({ user: publicUser(row) });
+  })
+);
 
-router.patch("/", requireAuth, (req, res) => {
-  const firstName = String(req.body?.firstName ?? "").trim();
-  const lastName = String(req.body?.lastName ?? "").trim();
-  if (firstName && firstName.length < 2) {
-    return res.status(400).json({ error: "שם פרטי קצר מדי." });
-  }
-  if (lastName && lastName.length < 2) {
-    return res.status(400).json({ error: "שם משפחה קצר מדי." });
-  }
-  if (firstName.length > 60 || lastName.length > 60) {
-    return res.status(400).json({ error: "השם ארוך מדי." });
-  }
+router.patch(
+  "/",
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    const firstName = String(req.body?.firstName ?? "").trim();
+    const lastName = String(req.body?.lastName ?? "").trim();
+    if (firstName && firstName.length < 2) {
+      return res.status(400).json({ error: "שם פרטי קצר מדי." });
+    }
+    if (lastName && lastName.length < 2) {
+      return res.status(400).json({ error: "שם משפחה קצר מדי." });
+    }
+    if (firstName.length > 60 || lastName.length > 60) {
+      return res.status(400).json({ error: "השם ארוך מדי." });
+    }
 
-  const current = findUserById(req.user.id);
-  db.prepare(
-    `UPDATE users SET first_name = ?, last_name = ?, updated_at = datetime('now') WHERE id = ?`
-  ).run(firstName || current.first_name, lastName || current.last_name, req.user.id);
+    const { rows } = await db.query(
+      `UPDATE users
+          SET first_name = COALESCE(NULLIF($1, ''), first_name),
+              last_name = COALESCE(NULLIF($2, ''), last_name),
+              updated_at = now()
+        WHERE id = $3
+       RETURNING *`,
+      [firstName, lastName, req.user.id]
+    );
 
-  return res.json({ user: publicUser(findUserById(req.user.id)) });
-});
+    return res.json({ user: publicUser(rows[0]) });
+  })
+);
 
-router.get("/measurements", requireAuth, (req, res) => {
-  const profile = db
-    .prepare(
+router.get(
+  "/measurements",
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    const { rows: profiles } = await db.query(
       `SELECT id, phone, coin_id, created_at, updated_at, user_id
        FROM measurement_profiles
-       WHERE user_id = ? AND is_active = 1
-       ORDER BY updated_at DESC LIMIT 1`
-    )
-    .get(req.user.id);
+       WHERE user_id = $1 AND is_active = 1
+       ORDER BY updated_at DESC, id DESC LIMIT 1`,
+      [req.user.id]
+    );
+    const profile = profiles[0];
 
-  if (!profile) {
-    return res.json({ measurement: null });
-  }
+    if (!profile) {
+      return res.json({ measurement: null });
+    }
 
-  const fingers = db
-    .prepare(
+    const { rows: fingers } = await db.query(
       `SELECT hand_id, finger_id, width_mm, size, confidence, coin_id, status,
               photo_quality_score, created_at
-       FROM finger_measurements WHERE profile_id = ? ORDER BY hand_id, finger_id`
-    )
-    .all(profile.id);
+       FROM finger_measurements WHERE profile_id = $1 ORDER BY hand_id, finger_id`,
+      [profile.id]
+    );
 
-  return res.json({ measurement: mapMeasurementProfile(profile, fingers) });
-});
+    return res.json({ measurement: mapMeasurementProfile(profile, fingers) });
+  })
+);
 
-router.get("/orders", requireAuth, (req, res) => {
-  const rows = db
-    .prepare(
+router.get(
+  "/orders",
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    const { rows } = await db.query(
       `SELECT id, order_number, total_amount, currency, status, title_he, image_url, created_at, updated_at
-       FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`
-    )
-    .all(req.user.id);
+       FROM orders WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`,
+      [req.user.id]
+    );
 
-  const orders = rows.map((o) => ({
-    id: o.id,
-    orderNumber: o.order_number,
-    totalAmount: o.total_amount,
-    currency: o.currency,
-    status: o.status,
-    statusHe: ORDER_STATUS_HE[o.status] || o.status,
-    titleHe: o.title_he,
-    imageUrl: o.image_url,
-    createdAt: o.created_at,
-    updatedAt: o.updated_at,
-  }));
+    const orders = rows.map((o) => ({
+      id: o.id,
+      orderNumber: o.order_number,
+      totalAmount: o.total_amount,
+      currency: o.currency,
+      status: o.status,
+      statusHe: ORDER_STATUS_HE[o.status] || o.status,
+      titleHe: o.title_he,
+      imageUrl: o.image_url,
+      createdAt: o.created_at,
+      updatedAt: o.updated_at,
+    }));
 
-  return res.json({ orders });
-});
+    return res.json({ orders });
+  })
+);
 
-router.get("/shipments", requireAuth, (req, res) => {
-  const rows = db
-    .prepare(
+router.get(
+  "/shipments",
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    const { rows } = await db.query(
       `SELECT s.id, s.order_id, s.carrier, s.tracking_number, s.tracking_url, s.status,
               s.shipped_at, s.delivered_at, s.updated_at, o.order_number
        FROM shipments s
        JOIN orders o ON o.id = s.order_id
-       WHERE o.user_id = ?
-       ORDER BY s.updated_at DESC LIMIT 50`
-    )
-    .all(req.user.id);
+       WHERE o.user_id = $1
+       ORDER BY s.updated_at DESC LIMIT 50`,
+      [req.user.id]
+    );
 
-  const shipments = rows.map((s) => ({
-    id: s.id,
-    orderId: s.order_id,
-    orderNumber: s.order_number,
-    carrier: s.carrier,
-    trackingNumber: s.tracking_number,
-    trackingUrl: s.tracking_url,
-    status: s.status,
-    statusHe: SHIPMENT_STATUS_HE[s.status] || s.status,
-    shippedAt: s.shipped_at,
-    deliveredAt: s.delivered_at,
-    updatedAt: s.updated_at,
-  }));
+    const shipments = rows.map((s) => ({
+      id: s.id,
+      orderId: s.order_id,
+      orderNumber: s.order_number,
+      carrier: s.carrier,
+      trackingNumber: s.tracking_number,
+      trackingUrl: s.tracking_url,
+      status: s.status,
+      statusHe: SHIPMENT_STATUS_HE[s.status] || s.status,
+      shippedAt: s.shipped_at,
+      deliveredAt: s.delivered_at,
+      updatedAt: s.updated_at,
+    }));
 
-  return res.json({ shipments });
-});
+    return res.json({ shipments });
+  })
+);
 
 router.post("/avatar", requireAuth, (req, res) => {
   upload.single("avatar")(req, res, async (err) => {
@@ -186,7 +209,6 @@ router.post("/avatar", requireAuth, (req, res) => {
     }
     try {
       let buffer = req.file?.buffer || null;
-      let mime = req.file?.mimetype || null;
 
       // Also accept data URL from camera capture
       if (!buffer && req.body?.imageDataUrl) {
@@ -194,7 +216,6 @@ router.post("/avatar", requireAuth, (req, res) => {
         if (!m) {
           return res.status(400).json({ error: "פורמט תמונה לא תקין." });
         }
-        mime = m[1].toLowerCase();
         buffer = Buffer.from(m[2], "base64");
       }
 
@@ -207,19 +228,20 @@ router.post("/avatar", requireAuth, (req, res) => {
         return res.status(400).json({ error: "סוג הקובץ אינו נתמך. אפשר JPEG, PNG או WebP." });
       }
 
-      const previous = findUserById(req.user.id);
-      const saved = await saveAvatarBuffer(buffer, detected.mime);
+      const row = await transaction(async (tx) => {
+        const previous = await findUserById(req.user.id, tx);
+        const saved = await saveAvatarBuffer(buffer, detected.mime, req.user.id, tx);
+        const { rows } = await tx.query(
+          `UPDATE users SET avatar_url = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+          [saved.publicUrl, req.user.id]
+        );
+        if (previous?.avatar_url && previous.avatar_url !== saved.publicUrl) {
+          await deleteAvatarByUrl(previous.avatar_url, tx);
+        }
+        return rows[0];
+      });
 
-      db.prepare(`UPDATE users SET avatar_url = ?, updated_at = datetime('now') WHERE id = ?`).run(
-        saved.publicUrl,
-        req.user.id
-      );
-
-      if (previous?.avatar_url && previous.avatar_url !== saved.publicUrl) {
-        await deleteAvatarByUrl(previous.avatar_url);
-      }
-
-      return res.json({ user: publicUser(findUserById(req.user.id)) });
+      return res.json({ user: publicUser(row) });
     } catch (e) {
       if (e.code === "TOO_LARGE") {
         return res.status(400).json({ error: "הקובץ גדול מדי. עד 5MB." });
@@ -227,22 +249,34 @@ router.post("/avatar", requireAuth, (req, res) => {
       if (e.code === "UNSUPPORTED_MIME") {
         return res.status(400).json({ error: "סוג הקובץ אינו נתמך." });
       }
+      if (e.code === "DB_UNAVAILABLE") return sendServiceUnavailable(res);
       console.error("avatar upload failed", e?.message);
       return res.status(500).json({ error: "לא הצלחנו לשמור את התמונה." });
     }
   });
 });
 
-router.delete("/avatar", requireAuth, async (req, res) => {
-  try {
-    const previous = findUserById(req.user.id);
-    db.prepare(`UPDATE users SET avatar_url = NULL, updated_at = datetime('now') WHERE id = ?`).run(req.user.id);
-    await deleteAvatarByUrl(previous?.avatar_url);
-    return res.json({ user: publicUser(findUserById(req.user.id)) });
-  } catch (e) {
-    console.error("avatar delete failed", e?.message);
-    return res.status(500).json({ error: "לא הצלחנו למחוק את התמונה." });
-  }
-});
+router.delete(
+  "/avatar",
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    try {
+      const row = await transaction(async (tx) => {
+        const previous = await findUserById(req.user.id, tx);
+        const { rows } = await tx.query(
+          `UPDATE users SET avatar_url = NULL, updated_at = now() WHERE id = $1 RETURNING *`,
+          [req.user.id]
+        );
+        await deleteAvatarByUrl(previous?.avatar_url, tx);
+        return rows[0];
+      });
+      return res.json({ user: publicUser(row) });
+    } catch (e) {
+      if (e.code === "DB_UNAVAILABLE") return sendServiceUnavailable(res);
+      console.error("avatar delete failed", e?.message);
+      return res.status(500).json({ error: "לא הצלחנו למחוק את התמונה." });
+    }
+  })
+);
 
 export default router;

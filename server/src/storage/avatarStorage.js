@@ -1,18 +1,16 @@
 /**
- * Avatar storage abstraction — local filesystem for now.
- * Swap implementation later for S3 / Cloudinary / Blob without rewriting profile routes.
- *
- * Production note: Railway ephemeral disk does NOT persist uploads across deploys.
- * Set AVATAR_STORAGE=local for now; wire cloud storage before relying on production avatars.
+ * Avatar storage — images live in PostgreSQL (user_avatars) so they survive
+ * redeploys on hosts with ephemeral disks. Served from /api/uploads/avatars/:name
+ * so the same URL works directly and through the Vercel /api proxy.
  */
 
-import fs from "node:fs/promises";
-import path from "node:path";
 import crypto from "node:crypto";
-import { uploadsRoot } from "../db.js";
+import db from "../db.js";
 
 const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_BYTES = 5 * 1024 * 1024;
+const PUBLIC_PREFIX = "/api/uploads/avatars/";
+const NAME_RE = /^([a-f0-9]{32})\.(jpg|png|webp)$/;
 
 export function getAllowedMimeTypes() {
   return [...ALLOWED];
@@ -22,7 +20,7 @@ export function getMaxAvatarBytes() {
   return MAX_BYTES;
 }
 
-export async function saveAvatarBuffer(buffer, mime) {
+export async function saveAvatarBuffer(buffer, mime, userId, executor = db) {
   if (!ALLOWED.has(mime)) {
     const err = new Error("סוג קובץ לא נתמך");
     err.code = "UNSUPPORTED_MIME";
@@ -40,35 +38,36 @@ export async function saveAvatarBuffer(buffer, mime) {
   }
 
   const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
-  const name = `${crypto.randomBytes(16).toString("hex")}.${ext}`;
-  // Prevent path traversal — only basename under uploadsRoot
-  const safeName = path.basename(name);
-  const fullPath = path.join(uploadsRoot, safeName);
-  if (!fullPath.startsWith(uploadsRoot)) {
-    const err = new Error("נתיב לא חוקי");
-    err.code = "BAD_PATH";
-    throw err;
-  }
+  const id = crypto.randomBytes(16).toString("hex");
 
-  await fs.mkdir(uploadsRoot, { recursive: true });
-  await fs.writeFile(fullPath, buffer);
+  await executor.query(`INSERT INTO user_avatars (id, user_id, mime, data) VALUES ($1, $2, $3, $4)`, [
+    id,
+    userId,
+    mime,
+    buffer,
+  ]);
 
-  return {
-    relativePath: `avatars/${safeName}`,
-    publicUrl: `/uploads/avatars/${safeName}`,
-    absolutePath: fullPath,
-  };
+  return { id, publicUrl: `${PUBLIC_PREFIX}${id}.${ext}` };
 }
 
-export async function deleteAvatarByUrl(avatarUrl) {
-  if (!avatarUrl || typeof avatarUrl !== "string") return;
-  const match = avatarUrl.match(/\/uploads\/avatars\/([a-zA-Z0-9._-]+)$/);
-  if (!match) return;
-  const fullPath = path.join(uploadsRoot, match[1]);
-  if (!fullPath.startsWith(uploadsRoot)) return;
-  try {
-    await fs.unlink(fullPath);
-  } catch {
-    /* already gone */
-  }
+function idFromUrl(avatarUrl) {
+  if (!avatarUrl || typeof avatarUrl !== "string") return null;
+  const name = avatarUrl.split("/").pop() || "";
+  const match = name.match(NAME_RE);
+  return match ? match[1] : null;
+}
+
+export async function deleteAvatarByUrl(avatarUrl, executor = db) {
+  const id = idFromUrl(avatarUrl);
+  if (!id) return;
+  await executor.query(`DELETE FROM user_avatars WHERE id = $1`, [id]);
+}
+
+/** Returns { mime, data } or null for a public file name like "<hex>.jpg". */
+export async function loadAvatar(name) {
+  const match = String(name || "").match(NAME_RE);
+  if (!match) return null;
+  const { rows } = await db.query(`SELECT mime, data FROM user_avatars WHERE id = $1`, [match[1]]);
+  if (!rows[0]) return null;
+  return { mime: rows[0].mime, data: Buffer.from(rows[0].data) };
 }

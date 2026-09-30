@@ -1,36 +1,33 @@
-import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import { config } from "./config.js";
 import servicesRouter from "./routes/services.js";
 import appointmentsRouter from "./routes/appointments.js";
 import chatRouter from "./routes/chat.js";
 import measurementsRouter from "./routes/measurements.js";
 import authRouter from "./routes/auth.js";
 import profileRouter from "./routes/profile.js";
-import { uploadsRoot } from "./db.js";
+import { pingDb } from "./db.js";
+import { asyncRoute, sendServiceUnavailable } from "./http.js";
+import { loadAvatar } from "./storage/avatarStorage.js";
+
+const LOCAL_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
 export function createApp() {
   const app = express();
-  const isProd = process.env.NODE_ENV === "production";
-  const allowedOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || "http://localhost:5173")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const isProd = config.isProduction;
+  const allowedOrigins = config.frontendOrigins.filter((o) => o !== "*");
 
   // Vercel proxy → Railway edge is two hops; set TRUST_PROXY=2 there so rate limits see the real client IP.
-  app.set("trust proxy", Number(process.env.TRUST_PROXY) || 1);
+  app.set("trust proxy", config.trustProxy);
 
   app.use(
     cors({
       origin(origin, cb) {
         if (!origin) return cb(null, true);
-        if (allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
-          return cb(null, true);
-        }
-        if (!isProd && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
-          return cb(null, true);
-        }
+        if (allowedOrigins.includes(origin)) return cb(null, true);
+        if (!isProd && LOCAL_ORIGIN_RE.test(origin)) return cb(null, true);
         return cb(null, false);
       },
       credentials: true,
@@ -39,7 +36,25 @@ export function createApp() {
 
   app.use(express.json({ limit: "2mb" }));
   app.use(cookieParser());
-  app.use("/uploads/avatars", express.static(uploadsRoot, { maxAge: "7d", fallthrough: true }));
+
+  app.get("/api/health", async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    const connected = await pingDb();
+    if (connected) return res.json({ ok: true, database: "connected" });
+    return res.status(503).json({ ok: false, database: "disconnected" });
+  });
+
+  app.get(
+    "/api/uploads/avatars/:name",
+    asyncRoute(async (req, res) => {
+      const avatar = await loadAvatar(req.params.name);
+      if (!avatar) return res.status(404).json({ error: "not found" });
+      res.set("Content-Type", avatar.mime);
+      res.set("Cache-Control", "public, max-age=604800, immutable");
+      res.set("X-Content-Type-Options", "nosniff");
+      return res.send(avatar.data);
+    })
+  );
 
   app.use("/api/auth", authRouter);
   app.use("/api/profile", profileRouter);
@@ -48,13 +63,18 @@ export function createApp() {
   app.use("/api/chat", chatRouter);
   app.use("/api/measurements", measurementsRouter);
 
-  app.get("/api/health", (_req, res) => res.json({ ok: true }));
+  app.use("/api", (_req, res) => {
+    res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "הנתיב לא נמצא." } });
+  });
 
   app.use((err, _req, res, _next) => {
     if (err?.type === "entity.too.large" || err?.status === 413) {
       return res.status(413).json({ error: "הבקשה גדולה מדי." });
     }
-    console.error("unhandled", err?.message);
+    if (err?.code === "DB_UNAVAILABLE") {
+      return sendServiceUnavailable(res);
+    }
+    console.error("unhandled", err?.code || "", err?.message);
     res.status(500).json({ error: "שגיאת שרת" });
   });
 

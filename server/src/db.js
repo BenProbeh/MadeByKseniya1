@@ -1,227 +1,173 @@
-import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import fs from "node:fs";
+import pg from "pg";
+import { config } from "./config.js";
+import { runMigrations } from "./migrations.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// On Railway, a mounted volume keeps the database and uploads across redeploys.
-const dataDir =
-  process.env.DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, "..");
-fs.mkdirSync(dataDir, { recursive: true });
-const dbPath = path.join(dataDir, "salon.db");
-const db = new DatabaseSync(dbPath);
 
-db.exec("PRAGMA journal_mode = WAL");
-db.exec("PRAGMA foreign_keys = ON");
+let backend = null;
+let status = "idle"; // idle | connecting | connected | disconnected
+let startPromise = null;
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS services (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name_he TEXT NOT NULL,
-    description_he TEXT NOT NULL,
-    price_ils INTEGER NOT NULL,
-    duration_min INTEGER NOT NULL,
-    category TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS appointments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    client_name TEXT NOT NULL,
-    phone TEXT NOT NULL,
-    email TEXT,
-    service_id INTEGER NOT NULL REFERENCES services(id),
-    date TEXT NOT NULL,
-    time TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'confirmed',
-    notes TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS measurement_profiles (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    phone TEXT NOT NULL,
-    coin_id TEXT,
-    consent_store_images INTEGER NOT NULL DEFAULT 0,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS finger_measurements (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    profile_id INTEGER NOT NULL REFERENCES measurement_profiles(id),
-    hand_id TEXT NOT NULL,
-    finger_id TEXT NOT NULL,
-    width_mm REAL,
-    size INTEGER,
-    confidence REAL,
-    coin_id TEXT,
-    manual_override INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'confirmed',
-    capture_quality_json TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS measurement_links (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    token TEXT NOT NULL UNIQUE,
-    profile_id INTEGER NOT NULL REFERENCES measurement_profiles(id),
-    phone TEXT NOT NULL,
-    expires_at TEXT,
-    revoked_at TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_measurement_profiles_phone ON measurement_profiles(phone);
-  CREATE INDEX IF NOT EXISTS idx_finger_measurements_profile ON finger_measurements(profile_id);
-  CREATE INDEX IF NOT EXISTS idx_measurement_links_token ON measurement_links(token);
-`);
-
-/** Safe additive column migration — never drops data. */
-function ensureColumn(table, column, definition) {
-  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
-  if (cols.some((c) => c.name === column)) return;
-  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+function dbUnavailableError() {
+  const err = new Error("database unavailable");
+  err.code = "DB_UNAVAILABLE";
+  return err;
 }
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    first_name TEXT NOT NULL,
-    last_name TEXT NOT NULL,
-    avatar_url TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    last_login_at TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS user_sessions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token_hash TEXT NOT NULL UNIQUE,
-    remember_me INTEGER NOT NULL DEFAULT 0,
-    expires_at TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    last_used_at TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    order_number TEXT NOT NULL UNIQUE,
-    total_amount INTEGER NOT NULL,
-    currency TEXT NOT NULL DEFAULT 'ILS',
-    status TEXT NOT NULL,
-    title_he TEXT,
-    image_url TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS shipments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-    carrier TEXT,
-    tracking_number TEXT,
-    tracking_url TEXT,
-    status TEXT NOT NULL,
-    shipped_at TEXT,
-    delivered_at TEXT,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-  CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token_hash);
-  CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
-  CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
-  CREATE INDEX IF NOT EXISTS idx_shipments_order ON shipments(order_id);
-`);
-
-ensureColumn("measurement_profiles", "user_id", "INTEGER");
-ensureColumn("finger_measurements", "photo_quality_score", "INTEGER");
-
-db.exec(`
-  CREATE INDEX IF NOT EXISTS idx_measurement_profiles_user
-    ON measurement_profiles(user_id);
-`);
-
-const seedCount = db.prepare("SELECT COUNT(*) AS c FROM services").get().c;
-
-if (seedCount === 0) {
-  const insert = db.prepare(`
-    INSERT INTO services (name_he, description_he, price_ils, duration_min, category)
-    VALUES (@name_he, @description_he, @price_ils, @duration_min, @category)
-  `);
-
-  const services = [
-    {
-      name_he: "מניקור ג'ל",
-      description_he: "ציפוי ג'ל עמיד לציפורניים טבעיות, כולל טיפוח קוטיקולה וגימור מבריק.",
-      price_ils: 120,
-      duration_min: 60,
-      category: "מניקור",
-    },
-    {
-      name_he: "בניה בתבנית (בניוגל)",
-      description_he: "הארכת ציפורניים בתבנית עם ג'ל בניה, אורך וצורה לבחירה.",
-      price_ils: 180,
-      duration_min: 90,
-      category: "בניה",
-    },
-    {
-      name_he: "בניה בטיפס",
-      description_he: "הארכת ציפורניים בטיפס קפסולה עם ציפוי ג'ל, תוצאה טבעית וחזקה.",
-      price_ils: 190,
-      duration_min: 90,
-      category: "בניה",
-    },
-    {
-      name_he: "מילוי בניה",
-      description_he: "מילוי חודשי לציפורניים בנויות, כולל תיקון וחיזוק.",
-      price_ils: 150,
-      duration_min: 75,
-      category: "בניה",
-    },
-    {
-      name_he: "פדיקור ספא",
-      description_he: "טיפול פדיקור מלא עם פילינג, עיסוי ולק ג'ל.",
-      price_ils: 160,
-      duration_min: 60,
-      category: "פדיקור",
-    },
-    {
-      name_he: "עיצובי אקססוריז וציפורני יוקרה",
-      description_he: "עיצוב אמנותי, חרסינה, אבנים ופרטים מיוחדים לפי בקשה.",
-      price_ils: 60,
-      duration_min: 30,
-      category: "עיצוב",
-    },
-    {
-      name_he: "לק ג'ל בלבד",
-      description_he: "החלפת לק ג'ל על ציפורניים טבעיות או בנויות קיימות.",
-      price_ils: 90,
-      duration_min: 45,
-      category: "מניקור",
-    },
-    {
-      name_he: "הסרת בניה מקצועית",
-      description_he: "פירוק והסרה עדינה של בניה קיימת ללא פגיעה בציפורן הטבעית.",
-      price_ils: 50,
-      duration_min: 30,
-      category: "טיפוח",
-    },
-  ];
-
-  db.exec("BEGIN");
-  for (const row of services) insert.run(row);
-  db.exec("COMMIT");
+function describeError(err) {
+  // Connection strings are never included in pg error messages; keep code + message only.
+  return [err?.code, err?.message].filter(Boolean).join(" ");
 }
 
-/** Ensure avatar upload directory exists for local/dev storage. */
-const uploadsRoot = path.join(dataDir, "uploads", "avatars");
-fs.mkdirSync(uploadsRoot, { recursive: true });
+function createPostgresBackend(connectionString) {
+  const pool = new pg.Pool({
+    connectionString,
+    ssl: config.databaseSsl ? { rejectUnauthorized: false } : undefined,
+    max: 10,
+    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 30_000,
+  });
+  pool.on("error", (err) => {
+    console.error("[db] idle client error:", describeError(err));
+  });
 
-export { uploadsRoot, dbPath };
-export default db;
+  const wrap = (runner) => ({
+    query: (text, params) => runner.query(text, params),
+    exec: (sql) => runner.query(sql),
+  });
+
+  return {
+    kind: "postgres",
+    ...wrap(pool),
+    async transaction(fn) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const result = await fn(wrap(client));
+        await client.query("COMMIT");
+        return result;
+      } catch (err) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+    close: () => pool.end(),
+  };
+}
+
+async function createEmbeddedBackend() {
+  // Development and tests only: real Postgres engine running in-process (not a file-based substitute).
+  const { PGlite } = await import("@electric-sql/pglite");
+  const dataDir = config.localDbDir || path.join(__dirname, "..", ".pgdata");
+  const db = new PGlite(dataDir === "memory://" ? undefined : dataDir);
+  await db.waitReady;
+
+  const wrap = (runner) => ({
+    query: async (text, params) => {
+      const res = await runner.query(text, params);
+      return { rows: res.rows, rowCount: res.affectedRows ?? res.rows.length };
+    },
+    exec: (sql) => runner.exec(sql),
+  });
+
+  return {
+    kind: "embedded-postgres",
+    ...wrap(db),
+    transaction: (fn) => db.transaction((tx) => fn(wrap(tx))),
+    close: () => db.close(),
+  };
+}
+
+async function createBackend() {
+  if (config.databaseUrl) return createPostgresBackend(config.databaseUrl);
+  if (config.isProduction) {
+    const err = new Error("DATABASE_URL is not set");
+    err.code = "DATABASE_URL_MISSING";
+    throw err;
+  }
+  return createEmbeddedBackend();
+}
+
+async function connectOnce() {
+  const next = await createBackend();
+  try {
+    await next.query("SELECT 1");
+    const applied = await runMigrations(next);
+    backend = next;
+    status = "connected";
+    console.log(
+      `[db] connected (${next.kind})${applied.length ? `; applied migrations: ${applied.join(", ")}` : ""}`
+    );
+  } catch (err) {
+    await next.close().catch(() => {});
+    throw err;
+  }
+}
+
+/**
+ * Connect and migrate in the background. Retries with backoff so a slow or
+ * temporarily unavailable database never crashes the HTTP server.
+ */
+export function startDb() {
+  if (startPromise) return startPromise;
+  status = "connecting";
+  startPromise = (async () => {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await connectOnce();
+        return;
+      } catch (err) {
+        status = "disconnected";
+        console.error(`[db] connection attempt ${attempt} failed: ${describeError(err)}`);
+        if (err?.code === "DATABASE_URL_MISSING") return;
+        await new Promise((r) => setTimeout(r, Math.min(30_000, 2_000 * attempt)));
+        status = "connecting";
+      }
+    }
+  })();
+  return startPromise;
+}
+
+async function getBackend() {
+  if (status === "connected" && backend) return backend;
+  if (!startPromise) startDb();
+  await Promise.race([startPromise, new Promise((r) => setTimeout(r, 8_000))]);
+  if (status === "connected" && backend) return backend;
+  throw dbUnavailableError();
+}
+
+export async function query(text, params = []) {
+  const b = await getBackend();
+  return b.query(text, params);
+}
+
+export async function transaction(fn) {
+  const b = await getBackend();
+  return b.transaction(fn);
+}
+
+/** True when PostgreSQL answers a trivial query right now. */
+export async function pingDb() {
+  if (status !== "connected" || !backend) return false;
+  try {
+    await backend.query("SELECT 1");
+    return true;
+  } catch (err) {
+    console.error("[db] health check failed:", describeError(err));
+    return false;
+  }
+}
+
+export async function closeDb() {
+  const b = backend;
+  backend = null;
+  startPromise = null;
+  status = "idle";
+  if (b) await b.close().catch(() => {});
+}
+
+export default { query, transaction };

@@ -1,63 +1,63 @@
-# Production deployment notes — MadeByKseniya auth & avatars
+# Production deployment notes — MadeByKseniya auth & database
 
 ## Architecture
 
 - **Frontend** → Vercel (static Vite build + serverless `/api` proxy)
-- **Backend** → Railway (Express + SQLite, long-running process)
+- **Backend** → Railway service `MadeByKseniya1` (Express, Dockerfile, auto-deploy from `main`)
+- **Database** → Railway service `Postgres` (all users, sessions, avatars, measurements, appointments)
 
 The browser always calls **same-origin** `/api/*` on the Vercel domain.
-`api/[[...path]].js` proxies those requests to Railway so session cookies stay first-party.
+`api/[[...path]].js` proxies those requests to Railway so session cookies stay first-party
+(required for login to persist on iPhone Safari).
 
-## Vercel environment variables (required for auth)
+## Auth mechanism
 
-In the Vercel project → **Settings → Environment Variables** (Production + Preview):
+Server-side sessions, no JWT:
 
-```
-API_ORIGIN=https://YOUR-SERVICE.up.railway.app
-```
+- Passwords: bcryptjs (12 rounds), only the hash is stored in `users.password_hash`.
+- Login/register create a random 32-byte token; only its SHA-256 hash is stored in `user_sessions`.
+- The raw token lives in the `mbk_session` cookie (`HttpOnly`, `Secure` in production, `SameSite=Lax`).
+- "Remember me" → persistent cookie + session valid 30 days; otherwise a browser-session cookie, 12 hours server-side.
 
-Rules:
+No signing secret is needed, so there is no `JWT_SECRET` / `SESSION_SECRET` variable.
 
-- No trailing slash
-- Do **not** append `/api` (paths like `/api/auth/register` are forwarded as-is)
-- No secrets in this value — it is only the public API origin
-- Redeploy the frontend after saving
+## Database & migrations
 
-Optional alternative (cross-origin, not preferred):
+- Connection: `process.env.DATABASE_URL` only (`server/src/db.js`, `pg` pool).
+- Migrations: `server/src/migrations.js`, applied automatically on startup, recorded in `schema_migrations`,
+  guarded by an advisory lock. Append new migrations; never edit shipped ones.
+- If `DATABASE_URL` is missing or Postgres is unreachable, the API stays up, retries, and returns JSON 503.
 
-```
-VITE_API_URL=https://YOUR-SERVICE.up.railway.app/api
-```
-
-If `VITE_API_URL` is set, the client talks to Railway directly (requires CORS + `SameSite=None` cookies). Prefer `API_ORIGIN` + the proxy.
-
-## Railway / API environment
+## Railway → service `MadeByKseniya1` → Variables
 
 ```
+DATABASE_URL=${{Postgres.DATABASE_URL}}
 NODE_ENV=production
 FRONTEND_URL=https://made-by-kseniya1.vercel.app
-CORS_ORIGINS=https://made-by-kseniya1.vercel.app
-COOKIE_SAMESITE=none
-COOKIE_SECURE=true
+TRUST_PROXY=2
 ```
 
-Cross-origin cookies (only when using `VITE_API_URL` without the proxy) require `SameSite=None` and `Secure`.
-With the Vercel proxy + `API_ORIGIN`, browser requests are same-site on Vercel; Railway still receives server-side proxy traffic.
+Optional: `OPENAI_API_KEY`, `OPENAI_MODEL` (AI chat). `PORT` is provided by Railway automatically.
+Only if the browser calls Railway directly via `VITE_API_URL`: `COOKIE_SAMESITE=none`.
 
-## Avatar storage
+Public URL: service → **Settings → Networking → Generate Domain** (gives `https://<name>.up.railway.app`).
 
-Local uploads are stored under `server/uploads/avatars/`.
+## Vercel → Settings → Environment Variables (Production + Preview)
 
-**Railway ephemeral disk does not persist files across redeploys.**
-Before relying on production avatars, plug a durable backend into
-`server/src/storage/avatarStorage.js` (S3, Cloudinary, Vercel Blob, etc.).
+```
+API_ORIGIN=https://<name>.up.railway.app
+```
 
-Do not commit secrets. Use env vars for cloud credentials when wired.
+- No trailing slash, no `/api`.
+- Leave `VITE_API_URL` unset.
+- Redeploy after saving (Deployments → latest → Redeploy).
 
 ## Verify after deploy
 
 ```
+curl -i https://<name>.up.railway.app/api/health
 curl -i https://made-by-kseniya1.vercel.app/api/health
 ```
 
-Expect JSON `{ "ok": true }` from Railway via the proxy — never Vercel plain-text `NOT_FOUND`.
+Both must return `{"ok":true,"database":"connected"}`. A 503 `{"ok":false,"database":"disconnected"}`
+means the API runs but cannot reach Postgres; a 503 `API_UNCONFIGURED` from Vercel means `API_ORIGIN` is missing.

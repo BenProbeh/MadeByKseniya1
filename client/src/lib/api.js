@@ -1,10 +1,19 @@
 import axios from "axios";
 import { MOCK_SERVICES, mockAvailability, mockCreateAppointment, mockUpdateAppointment } from "./mockData.js";
 
-// In dev, Vite proxies "/api" to the local server (see vite.config.js).
-// In production there is no such proxy, so the deployed backend's URL must
-// be supplied via VITE_API_URL (e.g. https://your-backend.up.railway.app/api).
-const apiBase = import.meta.env.VITE_API_URL || "/api";
+// Default "/api" is same-origin: Vite proxies it in dev, and on Vercel the
+// api/[[...path]].js function forwards it to the backend (first-party cookies,
+// which iPhone Safari requires). VITE_API_URL is an optional override; it may be
+// given with or without the trailing "/api".
+export function normalizeApiBase(raw, { production = false } = {}) {
+  const value = String(raw || "").trim().replace(/\/+$/, "");
+  if (!value) return "/api";
+  if (production && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(value)) return "/api";
+  return /\/api$/i.test(value) ? value : `${value}/api`;
+}
+
+const apiBase = normalizeApiBase(import.meta.env.VITE_API_URL, { production: import.meta.env.PROD });
+const apiOrigin = /^https?:\/\//i.test(apiBase) ? apiBase.replace(/\/api$/i, "") : "";
 
 const api = axios.create({
   baseURL: apiBase,
@@ -12,16 +21,12 @@ const api = axios.create({
   timeout: 20000,
 });
 
-/** Resolve /uploads/... paths against the API origin when frontend is on another host. */
+/** Resolve server media paths (/api/uploads/...) against the API origin. */
 export function resolveMediaUrl(url) {
   if (!url) return null;
   if (/^https?:\/\//i.test(url)) return url;
-  if (url.startsWith("/uploads/")) {
-    if (apiBase.startsWith("http")) {
-      const origin = apiBase.replace(/\/api\/?$/, "");
-      return `${origin}${url}`;
-    }
-    return url;
+  if (url.startsWith("/api/uploads/")) {
+    return `${apiOrigin}${url}`;
   }
   return url;
 }

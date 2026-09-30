@@ -4,3 +4,4 @@ dist/
 server/salon.db
 server/salon.db-*
 server/uploads/
+server/.pgdata/
