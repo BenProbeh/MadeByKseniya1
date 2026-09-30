@@ -49,6 +49,11 @@ export const config = {
     if (value === "lax" || value === "strict" || value === "none") return value;
     return "lax";
   },
+  /** users.id of the site owner (Railway variable). Only used to assign the owner when none exists yet. */
+  get ownerUserId() {
+    const raw = read("OWNER_USER_ID");
+    return /^\d+$/.test(raw) ? Number(raw) : null;
+  },
   get openaiApiKey() {
     return read("OPENAI_API_KEY");
   },

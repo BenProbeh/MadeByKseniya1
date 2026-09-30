@@ -6,14 +6,17 @@ import {
   cookieOptions,
   createSession,
   destroySessionByToken,
+  findUserById,
   findUserByUsername,
   hashPassword,
   publicUser,
+  validateNewPassword,
   validateRegisterInput,
   verifyPassword,
 } from "../auth.js";
 import { optionalAuth, requireAuth } from "../middleware/authMiddleware.js";
 import { asyncRoute, sendServiceUnavailable } from "../http.js";
+import { recordAudit } from "../roles.js";
 
 const router = Router();
 
@@ -146,6 +149,69 @@ router.post(
     if (token) await destroySessionByToken(token).catch(() => {});
     res.clearCookie(SESSION_COOKIE, cookieOptions(false, null));
     return res.json({ success: true, ok: true });
+  })
+);
+
+const passwordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `change-password:${req.user.id}`,
+  message: {
+    success: false,
+    error: {
+      code: "RATE_LIMITED",
+      message: "יותר מדי ניסיונות לשינוי סיסמה. אפשר לנסות שוב בעוד כמה דקות.",
+    },
+  },
+});
+
+router.post(
+  "/change-password",
+  requireAuth,
+  passwordLimiter,
+  asyncRoute(async (req, res) => {
+    const currentPassword = typeof req.body?.currentPassword === "string" ? req.body.currentPassword : "";
+    const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
+    const confirmPassword = typeof req.body?.confirmPassword === "string" ? req.body.confirmPassword : "";
+
+    if (!currentPassword) {
+      return fail(res, 400, "VALIDATION_ERROR", "יש להזין את הסיסמה הנוכחית.");
+    }
+    const problem = validateNewPassword(newPassword, confirmPassword);
+    if (problem) return fail(res, 400, "VALIDATION_ERROR", problem);
+    if (newPassword === currentPassword) {
+      return fail(res, 400, "VALIDATION_ERROR", "הסיסמה החדשה זהה לסיסמה הנוכחית.");
+    }
+
+    try {
+      const row = await findUserById(req.user.id);
+      if (!row || !(await verifyPassword(currentPassword, row.password_hash))) {
+        return fail(res, 400, "INVALID_CURRENT_PASSWORD", "הסיסמה הנוכחית שגויה.");
+      }
+
+      const passwordHash = await hashPassword(newPassword);
+      const rememberMe = Boolean(req.session?.rememberMe);
+
+      const session = await transaction(async (tx) => {
+        await tx.query(`UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`, [
+          passwordHash,
+          row.id,
+        ]);
+        await tx.query(`DELETE FROM user_sessions WHERE user_id = $1`, [row.id]);
+        const fresh = await createSession(row.id, rememberMe, tx);
+        await recordAudit(tx, { actorUserId: row.id, action: "password_changed", targetUserId: row.id });
+        return fresh;
+      });
+
+      res.cookie(SESSION_COOKIE, session.token, cookieOptions(session.rememberMe, session.maxAgeMs));
+      return res.json({ success: true, message: "הסיסמה עודכנה. שאר המכשירים שהיו מחוברים נותקו." });
+    } catch (err) {
+      if (err?.code === "DB_UNAVAILABLE") return sendServiceUnavailable(res);
+      console.error("change-password failed:", err?.code || "", err?.message);
+      return fail(res, 500, "CHANGE_PASSWORD_FAILED", "לא הצלחתי לעדכן את הסיסמה כרגע. אפשר לנסות שוב בעוד רגע.");
+    }
   })
 );
 

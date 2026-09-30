@@ -151,6 +151,51 @@ export const migrations = [
       WHERE NOT EXISTS (SELECT 1 FROM services);
     `,
   },
+  {
+    id: "003_roles_and_audit",
+    sql: `
+      ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'customer';
+      ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('owner', 'admin', 'customer'));
+      ALTER TABLE users ADD COLUMN role_updated_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN role_updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+
+      -- At most one owner, enforced by the database itself.
+      CREATE UNIQUE INDEX users_single_owner ON users (role) WHERE role = 'owner';
+      CREATE INDEX idx_users_created_at ON users (created_at);
+
+      -- The owner row can never be demoted or deleted through normal queries,
+      -- so the site can never end up without an owner.
+      CREATE OR REPLACE FUNCTION protect_owner_row() RETURNS trigger AS $$
+      BEGIN
+        IF TG_OP = 'DELETE' AND OLD.role = 'owner' THEN
+          RAISE EXCEPTION 'the site owner cannot be deleted' USING ERRCODE = 'P0001';
+        END IF;
+        IF TG_OP = 'UPDATE' AND OLD.role = 'owner' AND NEW.role IS DISTINCT FROM 'owner' THEN
+          RAISE EXCEPTION 'the site owner role cannot be changed' USING ERRCODE = 'P0001';
+        END IF;
+        IF TG_OP = 'DELETE' THEN
+          RETURN OLD;
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      CREATE TRIGGER users_protect_owner
+        BEFORE UPDATE OF role OR DELETE ON users
+        FOR EACH ROW EXECUTE FUNCTION protect_owner_row();
+
+      CREATE TABLE audit_log (
+        id SERIAL PRIMARY KEY,
+        actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        action TEXT NOT NULL,
+        target_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        details JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX idx_audit_log_target ON audit_log (target_user_id, created_at DESC);
+      CREATE INDEX idx_audit_log_created ON audit_log (created_at DESC);
+    `,
+  },
 ];
 
 const LOCK_KEY = 4815162342;

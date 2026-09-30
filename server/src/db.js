@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { config } from "./config.js";
 import { runMigrations } from "./migrations.js";
+import { ensureOwner } from "./roles.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -97,6 +98,7 @@ async function connectOnce() {
   try {
     await next.query("SELECT 1");
     const applied = await runMigrations(next);
+    await ensureOwner(next, config.ownerUserId);
     backend = next;
     status = "connected";
     console.log(

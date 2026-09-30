@@ -8,6 +8,8 @@ import chatRouter from "./routes/chat.js";
 import measurementsRouter from "./routes/measurements.js";
 import authRouter from "./routes/auth.js";
 import profileRouter from "./routes/profile.js";
+import adminRouter from "./routes/admin.js";
+import ownerRouter from "./routes/owner.js";
 import { pingDb } from "./db.js";
 import { asyncRoute, sendServiceUnavailable } from "./http.js";
 import { loadAvatar } from "./storage/avatarStorage.js";
@@ -56,8 +58,15 @@ export function createApp() {
     })
   );
 
+  app.use(["/api/auth", "/api/profile", "/api/admin", "/api/owner"], (_req, res, next) => {
+    res.set("Cache-Control", "no-store");
+    next();
+  });
+
   app.use("/api/auth", authRouter);
   app.use("/api/profile", profileRouter);
+  app.use("/api/admin", adminRouter);
+  app.use("/api/owner", ownerRouter);
   app.use("/api/services", servicesRouter);
   app.use("/api/appointments", appointmentsRouter);
   app.use("/api/chat", chatRouter);

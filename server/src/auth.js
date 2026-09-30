@@ -43,9 +43,18 @@ export function publicUser(row) {
     firstName: row.first_name,
     lastName: row.last_name,
     avatarUrl: row.avatar_url || null,
+    role: row.role || "customer",
     createdAt: row.created_at,
     lastLoginAt: row.last_login_at || null,
   };
+}
+
+export function validateNewPassword(newPassword, confirmPassword) {
+  const password = String(newPassword || "");
+  if (password.length < 8) return "הסיסמה החדשה חייבת להכיל לפחות 8 תווים.";
+  if (password.length > 128) return "הסיסמה החדשה ארוכה מדי.";
+  if (password !== String(confirmPassword || "")) return "אימות הסיסמה החדשה אינו תואם.";
+  return null;
 }
 
 export async function findUserByUsername(username, executor = db) {
