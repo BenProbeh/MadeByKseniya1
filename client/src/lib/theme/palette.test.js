@@ -27,26 +27,35 @@ import {
   writeThemeCache,
 } from "./runtime.js";
 
-/** Colours that can carry readable text as they are: the page must be exactly the chosen colour. */
-const EXACT = {
+const SAMPLES = {
   white: "#ffffff",
   blue: "#0000ff",
+  red: "#ff0000",
   green: "#00ff00",
   yellow: "#ffff00",
-  navy: "#1e3a8a",
-  darkRed: "#8b0000",
-  purple: "#6a0dad",
+  orange: "#ff8000",
+  pink: "#ff0080",
+  hotPink: "#ff69b4",
+  purple: "#8000ff",
+  violet: "#b026ff",
+  turquoise: "#40e0d0",
+  cyan: "#00ffff",
   neonGreen: "#39ff14",
   neonPink: "#ff10f0",
+  navy: "#1e3a8a",
+  darkRed: "#8b0000",
+  darkGreen: "#008000",
+  teal: "#008080",
+  gray: "#808080",
   lightBlue: "#87cefa",
   veryLight: "#e8f4ff",
-  orange: "#ff8800",
   darkViolet: "#2e1065",
 };
-/** Mid-tones that need a small lightness nudge; hue and colourfulness must survive. */
-const NUDGED = { red: "#ff0000", violet: "#b026ff", gray: "#808080", teal: "#008080", hotPink: "#ff00aa" };
-const LIGHT_PICKS = ["white", "yellow", "green", "neonGreen", "lightBlue", "veryLight", "orange"];
-const DARK_PICKS = ["blue", "navy", "darkRed", "purple", "darkViolet"];
+/** Light picks become calm light pages with dark text; the rest become deep pages with white text. */
+const LIGHT_PICKS = ["white", "green", "yellow", "orange", "pink", "hotPink", "turquoise", "cyan", "neonGreen", "lightBlue", "veryLight"];
+const DEEP_PICKS = ["blue", "red", "purple", "violet", "navy", "darkRed", "darkGreen", "teal", "darkViolet"];
+/** The highest page chroma any personal colour may reach (deep reds); vivid picks get far less than they asked. */
+const MAX_PAGE_CHROMA = 0.135;
 
 const channelsToRgb = (value) => value.split(" ").map(Number);
 const scaleOf = (palette) => Object.fromEntries(OLED_LEVELS.map((l) => [l, channelsToRgb(palette.vars[`--oled-${l}`])]));
@@ -80,50 +89,91 @@ function expectLayered(palette, label) {
   steps.forEach((d, i) => i && expect(d * sign, `${label} ${OLED_LEVELS[i]}`).toBeGreaterThanOrEqual(steps[i - 1] * sign));
 }
 
-describe("full-colour palette", () => {
-  for (const [name, hex] of Object.entries(EXACT)) {
-    it(`${name} (${hex}) fills the page with exactly that colour`, () => {
-      const palette = derivePalette(hex);
-      expectReadable(palette, name);
-      expectLayered(palette, name);
-      expect(palette.named.pageBackground).toBe(hex);
-      expect(palette.meta).toBe(hex);
-    });
-  }
+/** Page lightness sits in one of the two calm bands (with a little room for contrast nudges). */
+function expectCalmLightness(palette, label) {
+  const { L } = oklchOf(palette.named.pageBackground);
+  const deep = L >= 0.2 && L <= 0.52;
+  const light = L >= 0.75 && L <= 0.98;
+  expect(deep || light, `${label} L=${L.toFixed(3)}`).toBe(true);
+}
 
-  for (const [name, hex] of Object.entries(NUDGED)) {
-    it(`${name} (${hex}) keeps its hue and colour, only its lightness moves a little`, () => {
+describe("refined full-colour palette", () => {
+  for (const [name, hex] of Object.entries(SAMPLES)) {
+    it(`${name} (${hex}) gives a clear but calm page: readable, layered, same hue, softened chroma`, () => {
       const palette = derivePalette(hex);
       expectReadable(palette, name);
       expectLayered(palette, name);
+      expectCalmLightness(palette, name);
       const input = oklchOf(hex);
       const page = oklchOf(palette.named.pageBackground);
-      expect(Math.abs(page.L - input.L), name).toBeLessThanOrEqual(0.15);
-      if (input.C > 0.04) {
-        expect(hueDistance(page.h, input.h), name).toBeLessThanOrEqual(3);
-        expect(page.C, name).toBeGreaterThanOrEqual(input.C * 0.6);
-      }
+      expect(page.C, name).toBeLessThanOrEqual(MAX_PAGE_CHROMA);
+      if (input.C > 0.2) expect(page.C, name).toBeLessThanOrEqual(input.C * 0.6);
+      if (input.C > 0.06 && page.C > 0.03) expect(hueDistance(page.h, input.h), name).toBeLessThanOrEqual(14);
+      expect(palette.named.pageBackground, name).not.toBe(hex);
     });
   }
 
-  it("light colours get dark text (day mode), dark colours get white text (night mode)", () => {
+  it("the colour stays clearly visible: chromatic picks keep real colour, nothing collapses to black", () => {
+    for (const [name, hex] of Object.entries(SAMPLES)) {
+      const input = oklchOf(hex);
+      const page = oklchOf(derivePalette(hex).named.pageBackground);
+      expect(page.L, name).toBeGreaterThanOrEqual(0.24);
+      if (input.C >= 0.08 && !["purple", "violet"].includes(name)) expect(page.C, name).toBeGreaterThanOrEqual(0.05);
+    }
+  });
+
+  it("each family lands where it should: deep blue, bordeaux, soft green, cream/gold, apricot, soft pink", () => {
+    const at = (hex) => oklchOf(derivePalette(hex).named.pageBackground);
+    const blue = at("#0000ff");
+    expect(blue.L).toBeLessThan(0.45);
+    expect(hueDistance(blue.h, 264)).toBeLessThanOrEqual(4);
+    const red = at("#ff0000");
+    expect(red.L).toBeLessThan(0.46);
+    expect(red.h).toBeGreaterThanOrEqual(15);
+    expect(red.h).toBeLessThanOrEqual(28);
+    const green = at("#00ff00");
+    expect(green.L).toBeGreaterThan(0.8);
+    expect(green.C).toBeLessThanOrEqual(0.105);
+    const yellow = at("#ffff00");
+    expect(yellow.L).toBeGreaterThan(0.85);
+    expect(yellow.h).toBeGreaterThanOrEqual(85);
+    expect(yellow.h).toBeLessThanOrEqual(104);
+    expect(yellow.C).toBeGreaterThanOrEqual(0.06);
+    const orange = at("#ff8000");
+    expect(orange.L).toBeGreaterThan(0.75);
+    expect(hueDistance(orange.h, 53)).toBeLessThanOrEqual(6);
+    const pink = at("#ff0080");
+    expect(pink.L).toBeGreaterThan(0.75);
+    expect(pink.C).toBeLessThanOrEqual(0.1);
+  });
+
+  it("colours next to brand violet stay quiet so violet buttons and glow keep standing out", () => {
+    for (const hex of ["#b026ff", "#8000ff", "#9d4edd"]) {
+      expect(oklchOf(derivePalette(hex).named.pageBackground).C, hex).toBeLessThanOrEqual(0.075);
+    }
+  });
+
+  it("light picks get dark text (day mode), deep picks get white text (night mode)", () => {
     for (const name of LIGHT_PICKS) {
-      const palette = derivePalette(EXACT[name]);
+      const palette = derivePalette(SAMPLES[name]);
       expect(palette.mode, name).toBe("dark");
       expect(palette.vars["--theme-fg"], name).toBe("17 17 17");
       expect(palette.vars["--theme-scheme"], name).toBe("light");
     }
-    for (const name of DARK_PICKS) {
-      const palette = derivePalette(EXACT[name]);
+    for (const name of DEEP_PICKS) {
+      const palette = derivePalette(SAMPLES[name]);
       expect(palette.mode, name).toBe("light");
       expect(palette.vars["--theme-fg"], name).toBe("255 255 255");
       expect(palette.vars["--theme-scheme"], name).toBe("dark");
     }
   });
 
-  it("white is a real light mode: white page, near-black text, light grey cards", () => {
+  it("white is a real light mode on soft off-white: near-black text, light grey cards", () => {
     const palette = derivePalette("#ffffff");
-    expect(palette.named.pageBackground).toBe("#ffffff");
+    const page = oklchOf(palette.named.pageBackground);
+    expect(page.L).toBeGreaterThanOrEqual(0.96);
+    expect(page.L).toBeLessThan(0.99);
+    expect(page.C).toBeLessThan(0.005);
     expect(palette.named.textPrimary).toBe("#111111");
     const card = oklchOf(palette.named.elevatedSurface);
     expect(card.L).toBeGreaterThan(0.85);
@@ -138,7 +188,7 @@ describe("full-colour palette", () => {
   });
 
   it("surfaces share the page's hue", () => {
-    for (const [name, hex] of Object.entries({ ...EXACT, ...NUDGED })) {
+    for (const [name, hex] of Object.entries(SAMPLES)) {
       const page = oklchOf(derivePalette(hex).named.pageBackground);
       if (page.C < 0.05) continue;
       for (const [level, rgb] of Object.entries(scaleOf(derivePalette(hex)))) {
@@ -150,7 +200,7 @@ describe("full-colour palette", () => {
   });
 
   it("accent and status colours keep their hue and are readable on every surface", () => {
-    for (const hex of [...Object.values(EXACT), ...Object.values(NUDGED)]) {
+    for (const hex of Object.values(SAMPLES)) {
       const palette = derivePalette(hex);
       expect(palette.contrast.inks, hex).toBeGreaterThanOrEqual(4.5);
       for (const [name, original] of Object.entries(INK_DEFAULTS)) {
@@ -161,22 +211,21 @@ describe("full-colour palette", () => {
     }
   });
 
-  it("every colour on the wheel and 3000 random colours give a readable, full-colour palette", () => {
+  it("every colour on the wheel and 3000 random colours give a readable, calm, same-hue palette", () => {
     const inputs = [...randomHexes(3000)];
     for (let h = 0; h < 360; h += 3) {
       for (const [s, v] of [[1, 1], [0.25, 1], [1, 0.4], [0.6, 0.8], [1, 0.7]]) inputs.push(hsvToHex(h, s, v));
     }
-    let maxShift = 0;
     for (const hex of inputs) {
       const palette = derivePalette(hex);
       if (palette.mode === "default") continue;
       expectReadable(palette, hex);
+      expectCalmLightness(palette, hex);
       const input = oklchOf(hex);
       const page = oklchOf(palette.named.pageBackground);
-      maxShift = Math.max(maxShift, Math.abs(page.L - input.L));
-      if (input.C > 0.06 && page.C > 0.04) expect(hueDistance(page.h, input.h), hex).toBeLessThanOrEqual(4);
+      expect(page.C, hex).toBeLessThanOrEqual(MAX_PAGE_CHROMA);
+      if (input.C > 0.06 && page.C > 0.03) expect(hueDistance(page.h, input.h), hex).toBeLessThanOrEqual(14);
     }
-    expect(maxShift).toBeLessThanOrEqual(0.3);
   }, 60_000);
 
   it("rejects anything that isn't a hex colour", () => {
@@ -269,10 +318,10 @@ describe("applying, resetting and caching", () => {
     const meta = addMeta();
     const palette = derivePalette("#ffffff");
     applyPalette(palette);
-    expect(document.documentElement.style.getPropertyValue("--oled-950")).toBe("255 255 255");
+    expect(document.documentElement.style.getPropertyValue("--oled-950")).toBe(palette.vars["--oled-950"]);
     expect(document.documentElement.style.getPropertyValue("--theme-fg")).toBe("17 17 17");
     expect(document.documentElement.dataset.theme).toBe("custom");
-    expect(meta.getAttribute("content")).toBe("#ffffff");
+    expect(meta.getAttribute("content")).toBe(palette.meta);
 
     resetTheme();
     for (const name of THEME_VARS) expect(document.documentElement.style.getPropertyValue(name)).toBe("");

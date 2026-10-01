@@ -2,6 +2,7 @@ import {
   composite,
   contrastRatio,
   hexToRgb,
+  hueDistance,
   normalizeHex,
   oklchToRgb,
   relativeLuminance,
@@ -10,7 +11,7 @@ import {
 } from "./color.js";
 
 /** Bump when the derivation changes; cached palettes from another version are ignored and recomputed. */
-export const PALETTE_VERSION = 2;
+export const PALETTE_VERSION = 3;
 
 export const OLED_LEVELS = Object.freeze([950, 900, 850, 800, 700, 600]);
 
@@ -248,11 +249,70 @@ export const DEFAULT_THEME_VARS = DEFAULT_PALETTE.vars;
 const isBlackish = (rgb, C) => relativeLuminance(rgb) < 0.002 && C < 0.03;
 
 /**
+ * How a picked colour becomes the page colour (OKLCH). Every pick lands in one of two calm lightness bands:
+ * deep (white text) or light (dark text). Chroma is capped with a soft knee, so vivid picks lose most of their
+ * glare while already-muted picks barely change. Hue is always kept.
+ */
+export const REFINE = Object.freeze({
+  /** Picks at or above this lightness become light pages. Pinks and oranges switch earlier (soft pink, apricot). */
+  lightFrom: 0.78,
+  pinkLightFrom: 0.64,
+  warmLightFrom: 0.68,
+  deep: Object.freeze({ minL: 0.25, maxL: 0.47, maxC: 0.11, redMaxC: 0.13 }),
+  light: Object.freeze({ minL: 0.8, maxL: 0.94, maxC: 0.1, neutralMaxL: 0.97 }),
+  /** Near brand violet the page stays quieter so violet buttons and glow keep standing out. */
+  violetGuard: Object.freeze({ hue: 308, range: 18, deepMaxC: 0.07, lightMaxC: 0.045 }),
+  /**
+   * Darkened reds read brown and lightened yellows read lime at their exact hue; these small, bounded nudges
+   * (≤13°) keep them reading as deep red / bordeaux and cream / soft gold.
+   */
+  hueNudges: Object.freeze([
+    Object.freeze({ band: "deep", center: 30, width: 15, shift: -7 }),
+    Object.freeze({ band: "light", center: 110, width: 20, shift: -13 }),
+  ]),
+});
+
+const isPinkHue = (h) => h >= 320 || h <= 12;
+const isWarmHue = (h) => h >= 40 && h <= 80;
+const isRedHue = (h) => h >= 350 || h <= 40;
+const softCap = (C, max) => max * Math.tanh(C / max);
+
+function nudgeHue(h, band) {
+  let shift = 0;
+  for (const n of REFINE.hueNudges) {
+    if (n.band === band) shift += n.shift * Math.max(0, 1 - hueDistance(h, n.center) / n.width);
+  }
+  return (h + shift + 360) % 360;
+}
+
+export function refineBase({ L, C, h }) {
+  const lightFrom = isPinkHue(h) ? REFINE.pinkLightFrom : isWarmHue(h) ? REFINE.warmLightFrom : REFINE.lightFrom;
+  const light = L >= lightFrom;
+  const t = clamp(light ? (L - lightFrom) / (1 - lightFrom) : L / lightFrom, 0, 1);
+  const chromatic = C > 0.02;
+  const nearViolet = chromatic && hueDistance(h, REFINE.violetGuard.hue) < REFINE.violetGuard.range;
+  if (light) {
+    const maxL = chromatic ? REFINE.light.maxL : REFINE.light.neutralMaxL;
+    return {
+      L: REFINE.light.minL + t * (maxL - REFINE.light.minL),
+      C: softCap(C, nearViolet ? REFINE.violetGuard.lightMaxC : REFINE.light.maxC),
+      h: chromatic ? nudgeHue(h, "light") : h,
+    };
+  }
+  const deepMaxC = nearViolet ? REFINE.violetGuard.deepMaxC : isRedHue(h) ? REFINE.deep.redMaxC : REFINE.deep.maxC;
+  return {
+    L: REFINE.deep.minL + t * (REFINE.deep.maxL - REFINE.deep.minL),
+    C: softCap(C, deepMaxC),
+    h: chromatic ? nudgeHue(h, "deep") : h,
+  };
+}
+
+/**
  * One base colour in, a full-colour site palette out (or null for an invalid input → caller uses the default).
- * - page: the chosen colour itself; surfaces are lighter/darker steps of the same hue and chroma;
- * - text: dark on light colours, white on dark ones (whichever needs the page to move least);
- * - if a colour can't carry readable text as is, only its lightness moves (hue and chroma kept, gamut-mapped)
- *   by the smallest amount that passes;
+ * - page: the chosen colour refined (see REFINE): same hue, calmer chroma, a deep or light lightness band;
+ *   surfaces are lighter/darker steps of the same hue and chroma;
+ * - text: dark on light pages, white on deep ones (whichever needs the page to move least);
+ * - if the page still can't carry readable text, only its lightness moves by the smallest amount that passes;
  * - translucent text is made more solid, accents and status colours change lightness, until all checks pass;
  * - brand violet (buttons, glow, logo) is never touched.
  */
@@ -263,12 +323,15 @@ export function derivePalette(input) {
   const oklch = rgbToOklch(pick);
   if (isBlackish(pick, oklch.C)) return buildPalette(base, DEFAULT_PARTS);
 
-  const prefer = contrastRatio(DARK_TEXT, pick) > contrastRatio(LIGHT_TEXT, pick) ? "dark" : "light";
+  const target = refineBase(oklch);
+  const page = oklchToRgb(target.L, target.C, target.h);
+  const pageOklch = { ...rgbToOklch(page), h: target.h };
+  const prefer = contrastRatio(DARK_TEXT, page) > contrastRatio(LIGHT_TEXT, page) ? "dark" : "light";
   const modes = prefer === "dark" ? ["dark", "light"] : ["light", "dark"];
   let chosen = null;
   for (let step = 0; step <= 100 && !chosen; step += 1) {
     for (const mode of modes) {
-      chosen = candidate(pick, oklch, mode, step * 0.01);
+      chosen = candidate(page, pageOklch, mode, step * 0.01);
       if (chosen) break;
     }
   }

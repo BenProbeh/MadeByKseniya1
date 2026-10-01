@@ -9,7 +9,7 @@ import { createApp } from "./app.js";
 import db, { closeDb, startDb } from "./db.js";
 import { SESSION_COOKIE, hashPassword } from "./auth.js";
 import { normalizePhone } from "./phone.js";
-import { activeSmsProvider, sendSms, smsTestOutbox } from "./sms.js";
+import { activeSmsProvider, isSmsHealthy, resetSmsHealth, sendSms, smsTestOutbox } from "./sms.js";
 import {
   MAX_CODE_ATTEMPTS,
   generateResetCode,
@@ -420,7 +420,10 @@ describe("forgot password by SMS", () => {
     assert.equal(a.status, 503);
     assert.deepEqual(a.json, b.json);
     assert.equal(a.json.error.code, "SMS_UNAVAILABLE");
+    assert.equal(a.json.error.message, RESET_MESSAGES.smsUnavailable);
     assert.equal(smsFor(user.e164).length, 0);
+    const health = await request(srv, { method: "GET", path: "/api/health" });
+    assert.equal(health.json.sms, "off");
 
     process.env.NODE_ENV = "production";
     try {
@@ -474,6 +477,61 @@ describe("forgot password by SMS", () => {
       delete process.env.TWILIO_AUTH_TOKEN;
       delete process.env.TWILIO_FROM;
       process.env.SMS_PROVIDER = "memory";
+      resetSmsHealth();
+    }
+  });
+
+  it("a provider-level refusal pauses SMS for every number alike and is logged with a fix, never with the code", async () => {
+    const srv = await startServer();
+    const user = await createUser();
+    process.env.SMS_PROVIDER = "twilio";
+    process.env.TWILIO_ACCOUNT_SID = "ACtest123";
+    process.env.TWILIO_AUTH_TOKEN = "wrong-token";
+    process.env.TWILIO_FROM = "MadeByKsen";
+    const realFetch = globalThis.fetch;
+    const lines = [];
+    const original = { log: console.log, warn: console.warn, error: console.error };
+    for (const level of Object.keys(original)) console[level] = (...args) => lines.push(args.join(" "));
+    const sentBodies = [];
+    try {
+      globalThis.fetch = async (_url, init) => {
+        sentBodies.push(new URLSearchParams(init.body.toString()).get("Body"));
+        return new Response(JSON.stringify({ code: 20003, message: "Authenticate" }), { status: 401 });
+      };
+      const first = await requestCode(srv, user.phone);
+      assert.equal(first.status, 200);
+      assert.equal(first.json.message, RESET_MESSAGES.sent);
+      assert.equal(isSmsHealthy(), false);
+
+      const health = await request(srv, { method: "GET", path: "/api/health" });
+      assert.equal(health.json.sms, "paused");
+
+      const known = await requestCode(srv, user.phone);
+      const unknown = await requestCode(srv, freshPhone());
+      assert.equal(known.status, 503);
+      assert.deepEqual(known.json, unknown.json);
+      assert.equal(known.json.error.message, RESET_MESSAGES.smsUnavailable);
+      assert.ok(!known.raw.toLowerCase().includes("twilio"));
+
+      const code = sentBodies[0].match(/הוא (\d{6})/)[1];
+      const log = lines.join("\n");
+      assert.match(log, /20003: authentication failed/);
+      assert.ok(!log.includes(code), "the code was logged");
+      assert.ok(!log.includes(user.e164), "the full phone number was logged");
+      assert.ok(!log.includes("wrong-token"), "the token was logged");
+
+      resetSmsHealth();
+      globalThis.fetch = async () => new Response(JSON.stringify({ code: 21614, message: "not mobile" }), { status: 400 });
+      await assert.rejects(sendSms("+972501234567", "x"), /21614: the recipient number is not a mobile number/);
+      assert.equal(isSmsHealthy(), true, "one bad recipient doesn't pause SMS for everyone");
+    } finally {
+      Object.assign(console, original);
+      globalThis.fetch = realFetch;
+      delete process.env.TWILIO_ACCOUNT_SID;
+      delete process.env.TWILIO_AUTH_TOKEN;
+      delete process.env.TWILIO_FROM;
+      process.env.SMS_PROVIDER = "memory";
+      resetSmsHealth();
     }
   });
 });

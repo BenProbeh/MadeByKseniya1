@@ -13,7 +13,7 @@ import { normalizePhone } from "../lib/phone.js";
 const INPUT_CLASS =
   "w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60";
 const PHONE_INVALID = "מספר הטלפון לא נראה תקין. אפשר לכתוב נייד ישראלי, למשל 050-1234567.";
-const SENT_MESSAGE = "אם המספר קיים במערכת, אשלח אליו הודעה עם קוד להמשך.";
+const SENT_MESSAGE = "אם המספר קיים במערכת, אשלח אליו קוד להמשך.";
 
 /** Server message for the codes this page handles itself (503 would otherwise map to a generic text). */
 function resetError(err, fallback) {

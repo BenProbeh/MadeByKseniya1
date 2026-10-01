@@ -2,7 +2,7 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { SESSION_COOKIE, cookieOptions, hashToken, validateNewPassword } from "../auth.js";
 import { normalizePhone } from "../phone.js";
-import { isSmsConfigured } from "../sms.js";
+import { isSmsConfigured, isSmsHealthy } from "../sms.js";
 import { asyncRoute, sendServiceUnavailable } from "../http.js";
 import {
   MAX_CODE_ATTEMPTS,
@@ -20,8 +20,8 @@ import {
 } from "../passwordReset.js";
 
 export const RESET_MESSAGES = Object.freeze({
-  sent: "אם המספר קיים במערכת, אשלח אליו הודעה עם קוד להמשך.",
-  smsUnavailable: "שחזור סיסמה ב־SMS עדיין לא פעיל באתר. אפשר לכתוב לי ואעזור לך להיכנס לחשבון.",
+  sent: "אם המספר קיים במערכת, אשלח אליו קוד להמשך.",
+  smsUnavailable: "לא הצלחתי לשלוח את הקוד כרגע. נסי שוב בעוד כמה דקות.",
   invalidPhone: "מספר הטלפון לא נראה תקין. אפשר לכתוב נייד ישראלי, למשל 050-1234567.",
   codeFormat: "הקוד צריך להכיל 6 ספרות.",
   invalidCode: "הקוד לא נכון או שפג תוקפו. אפשר לבדוק ולנסות שוב, או לבקש קוד חדש.",
@@ -68,7 +68,9 @@ export function createPasswordResetRouter() {
     "/request",
     ipLimiter(10, 60 * 60 * 1000),
     asyncRoute(async (req, res) => {
-      if (!isSmsConfigured()) return fail(res, 503, "SMS_UNAVAILABLE", RESET_MESSAGES.smsUnavailable);
+      if (!isSmsConfigured() || !isSmsHealthy()) {
+        return fail(res, 503, "SMS_UNAVAILABLE", RESET_MESSAGES.smsUnavailable);
+      }
       const phone = phoneFrom(req.body);
       if (!phone.ok) return fail(res, 400, "VALIDATION_ERROR", RESET_MESSAGES.invalidPhone);
 

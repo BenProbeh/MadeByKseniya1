@@ -29,7 +29,7 @@
           var raw = localStorage.getItem(KEY);
           if (!raw) return;
           var d = JSON.parse(raw);
-          var ok = d && d.v === 2 && /^#[0-9a-f]{6}$/.test(d.c) && /^#[0-9a-f]{6}$/.test(d.m) && d.vars;
+          var ok = d && d.v === 3 && /^#[0-9a-f]{6}$/.test(d.c) && /^#[0-9a-f]{6}$/.test(d.m) && d.vars;
           for (var i = 0; ok && i < NAMES.length; i++) ok = safe(NAMES[i], d.vars[NAMES[i]]);
           if (!ok) {
             localStorage.removeItem(KEY);

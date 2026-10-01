@@ -14,6 +14,7 @@ import ownerRouter from "./routes/owner.js";
 import { adminContentRouter, publicContentRouter } from "./routes/content.js";
 import db, { pingDb } from "./db.js";
 import { hasOwner } from "./roles.js";
+import { smsStatus } from "./sms.js";
 import { asyncRoute, sendServiceUnavailable } from "./http.js";
 import { loadAvatar } from "./storage/avatarStorage.js";
 
@@ -47,7 +48,7 @@ export function createApp() {
     const connected = await pingDb();
     if (connected) {
       const ownerAssigned = await hasOwner(db).catch(() => null);
-      return res.json({ ok: true, database: "connected", ownerAssigned });
+      return res.json({ ok: true, database: "connected", ownerAssigned, sms: smsStatus() });
     }
     return res.status(503).json({ ok: false, database: "disconnected" });
   });
