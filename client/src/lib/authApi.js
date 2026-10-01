@@ -1,5 +1,7 @@
 import api, { resolveMediaUrl } from "./api.js";
 import { assertUser } from "./authErrors.js";
+import { normalizeHex } from "./theme/color.js";
+import { PALETTE_VERSION } from "./theme/palette.js";
 
 function mapUser(raw) {
   if (!raw || raw.id == null) return null;
@@ -12,6 +14,7 @@ function mapUser(raw) {
     role: raw.role === "owner" || raw.role === "admin" ? raw.role : "customer",
     phone: raw.phone || "",
     phoneVerified: Boolean(raw.phoneVerified),
+    themeColor: normalizeHex(raw.themeColor),
     createdAt: raw.createdAt,
     lastLoginAt: raw.lastLoginAt,
   };
@@ -100,6 +103,13 @@ export async function changePasswordRequest({ currentPassword, newPassword, conf
 
 export async function updatePhoneRequest(phone) {
   const { data } = await api.patch("/profile/phone", { phone });
+  return mapUser(data.user);
+}
+
+/** `color` is "#rrggbb" or null (site default). */
+export async function updateThemeRequest(color) {
+  const body = color ? { color, paletteVersion: PALETTE_VERSION } : { color: null };
+  const { data } = await api.patch("/profile/theme", body);
   return mapUser(data.user);
 }
 

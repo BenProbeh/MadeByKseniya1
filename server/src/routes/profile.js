@@ -8,6 +8,7 @@ import { findUserById, publicUser } from "../auth.js";
 import { asyncRoute, sendServiceUnavailable } from "../http.js";
 import { loadMeasurement, loadOrders, loadShipments } from "../profileData.js";
 import { normalizePhone } from "../phone.js";
+import { normalizeThemeColor, validPaletteVersion } from "../themeColor.js";
 import { recordAudit } from "../roles.js";
 import {
   deleteAvatarByUrl,
@@ -107,6 +108,50 @@ router.patch(
       }
       throw err;
     }
+  })
+);
+
+const themeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `profile-theme:${req.user.id}`,
+  message: { error: "יותר מדי שינויי צבע ברצף. אפשר לנסות שוב בעוד כמה דקות." },
+});
+
+/** The signed-in user's own site colour. `color: null` returns to the site default. */
+router.patch(
+  "/theme",
+  requireAuth,
+  themeLimiter,
+  asyncRoute(async (req, res) => {
+    const body = req.body;
+    const allowed = ["color", "paletteVersion"];
+    if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((k) => !allowed.includes(k))) {
+      return res.status(400).json({ code: "VALIDATION_ERROR", error: "אפשר לעדכן כאן רק את צבע האתר." });
+    }
+    if (!("color" in body)) {
+      return res.status(400).json({ code: "VALIDATION_ERROR", error: "חסר צבע." });
+    }
+
+    let color = null;
+    let version = null;
+    if (body.color !== null) {
+      color = normalizeThemeColor(body.color);
+      if (!color) return res.status(400).json({ code: "VALIDATION_ERROR", error: "הצבע שנשלח אינו תקין." });
+      version = body.paletteVersion ?? 1;
+      if (!validPaletteVersion(version)) {
+        return res.status(400).json({ code: "VALIDATION_ERROR", error: "גרסת הפלטה אינה נתמכת." });
+      }
+    }
+
+    const { rows } = await db.query(
+      `UPDATE users SET theme_color = $1, theme_palette_version = $2, updated_at = now()
+        WHERE id = $3 RETURNING *`,
+      [color, version, req.user.id]
+    );
+    return res.json({ user: publicUser(rows[0]) });
   })
 );
 

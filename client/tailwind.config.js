@@ -4,13 +4,14 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Surfaces follow the user's personal colour; the defaults live in :root (index.css).
         oled: {
-          950: "#000000",
-          900: "#07050c",
-          850: "#0f0916",
-          800: "#170f22",
-          700: "#251536",
-          600: "#371d4f",
+          950: "rgb(var(--oled-950) / <alpha-value>)",
+          900: "rgb(var(--oled-900) / <alpha-value>)",
+          850: "rgb(var(--oled-850) / <alpha-value>)",
+          800: "rgb(var(--oled-800) / <alpha-value>)",
+          700: "rgb(var(--oled-700) / <alpha-value>)",
+          600: "rgb(var(--oled-600) / <alpha-value>)",
         },
         violet: {
           100: "#f5e0ff",
@@ -20,6 +21,17 @@ export default {
           500: "#9500e6",
           600: "#7a00bf",
           700: "#5c0091",
+        },
+      },
+      // Dark ink on violet buttons/badges stays exactly as designed, whatever the background colour.
+      textColor: {
+        oled: {
+          950: "#000000",
+          900: "#07050c",
+          850: "#0f0916",
+          800: "#170f22",
+          700: "#251536",
+          600: "#371d4f",
         },
       },
       fontFamily: {

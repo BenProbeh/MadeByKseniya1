@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import UserAvatar from "../components/UserAvatar.jsx";
 import ChangePasswordForm from "../components/ChangePasswordForm.jsx";
 import PhoneForm from "../components/PhoneForm.jsx";
+import SiteColorSection from "../components/theme/SiteColorSection.jsx";
 import { MeasurementsSection, OrdersSection, ShipmentsSection } from "../components/profile/ProfileSections.jsx";
 import {
   deleteAvatar,
@@ -350,6 +351,8 @@ export default function Profile() {
           <ChangePasswordForm />
         </div>
       </section>
+
+      <SiteColorSection />
 
       <MeasurementsSection measurement={measurement} error={measError} />
       <OrdersSection orders={orders} error={ordersError} />

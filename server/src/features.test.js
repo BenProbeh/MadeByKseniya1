@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { createApp } from "./app.js";
 import db, { closeDb, startDb } from "./db.js";
-import { SESSION_COOKIE, hashPassword } from "./auth.js";
+import { SESSION_COOKIE, hashPassword, publicUser } from "./auth.js";
 import { ensureOwner } from "./roles.js";
 import { normalizePhone } from "./phone.js";
 import { computeCustomerScore, refreshCustomerScores, SCORE_WEIGHTS } from "./customerScore.js";
@@ -676,6 +676,80 @@ describe("phones, notifications, removal, ranking, content (PostgreSQL)", () => 
 
       const reuse = await request(server, { method: "POST", path: "/api/admin/content/pages", cookies: [owner.cookie], body: page() });
       assert.equal(reuse.status, 201);
+    });
+  });
+
+  describe("personal site colour", () => {
+    const me = async (cookie) => (await request(server, { path: "/api/auth/me", cookies: [cookie] })).json.user;
+    const setTheme = (cookie, body) => request(server, { method: "PATCH", path: "/api/profile/theme", cookies: [cookie], body });
+    const storedTheme = async (id) =>
+      (await db.query(`SELECT theme_color, theme_palette_version FROM users WHERE id = $1`, [id])).rows[0];
+
+    it("users start on the site default", async () => {
+      const user = await me(customer.cookie);
+      assert.equal(user.themeColor, null);
+      assert.equal(user.themePaletteVersion, null);
+    });
+
+    it("saves a normalised base colour and returns it after re-login", async () => {
+      const res = await setTheme(customer.cookie, { color: "#1E3A8A", paletteVersion: 1 });
+      assert.equal(res.status, 200, res.raw);
+      assert.equal(res.json.user.themeColor, "#1e3a8a");
+      assert.deepEqual(await storedTheme(customer.id), { theme_color: "#1e3a8a", theme_palette_version: 1 });
+
+      const again = await login(server, customer.username);
+      assert.equal(again.res.status, 200);
+      assert.equal(again.res.json.user.themeColor, "#1e3a8a");
+      assert.equal((await me(again.cookie)).themeColor, "#1e3a8a");
+    });
+
+    it("rejects anything that isn't a plain hex colour and keeps the saved value", async () => {
+      const bad = [
+        { color: "red" },
+        { color: "#12345" },
+        { color: "#1234567" },
+        { color: "#ggg000" },
+        { color: "rgb(0,0,255)" },
+        { color: "#fff;background:url(x)" },
+        { color: "url(javascript:alert(1))" },
+        { color: "#" + "a".repeat(500) },
+        { color: 123 },
+        { color: { r: 1 } },
+        { color: "#112233", paletteVersion: 0 },
+        { color: "#112233", paletteVersion: "1" },
+        { color: "#112233", css: "body{display:none}" },
+        { color: "#112233", userId: owner.id },
+        {},
+      ];
+      for (const body of bad) {
+        const res = await setTheme(customer.cookie, body);
+        assert.equal(res.status, 400, JSON.stringify(body));
+      }
+      assert.equal((await storedTheme(customer.id)).theme_color, "#1e3a8a");
+    });
+
+    it("each user only changes their own colour", async () => {
+      const res = await setTheme(owner.cookie, { color: "#7f1d1d", paletteVersion: 1 });
+      assert.equal(res.status, 200);
+      assert.equal((await me(owner.cookie)).themeColor, "#7f1d1d");
+      assert.equal((await me(customer.cookie)).themeColor, "#1e3a8a");
+      assert.equal((await me(admin.cookie)).themeColor, null);
+      assert.equal((await request(server, { method: "PATCH", path: "/api/profile/theme", body: { color: "#000000" } })).status, 401);
+    });
+
+    it("null returns to the default and clears the palette version", async () => {
+      const res = await setTheme(customer.cookie, { color: null });
+      assert.equal(res.status, 200);
+      assert.equal(res.json.user.themeColor, null);
+      assert.deepEqual(await storedTheme(customer.id), { theme_color: null, theme_palette_version: null });
+      assert.equal((await me(owner.cookie)).themeColor, "#7f1d1d");
+    });
+
+    it("the database refuses a malformed colour and the API never exposes one", async () => {
+      await assert.rejects(db.query(`UPDATE users SET theme_color = 'blue' WHERE id = $1`, [customer.id]));
+      await assert.rejects(db.query(`UPDATE users SET theme_color = '#FFFFFF' WHERE id = $1`, [customer.id]));
+      assert.equal(publicUser({ id: 1, theme_color: "url(x)", theme_palette_version: 1 }).themeColor, null);
+      assert.equal(publicUser({ id: 1, theme_color: "url(x)", theme_palette_version: 1 }).themePaletteVersion, null);
     });
   });
 });

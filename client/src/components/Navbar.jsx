@@ -49,7 +49,7 @@ export default function Navbar() {
     <header
       className={`fixed top-0 inset-x-0 z-40 transition-all duration-500 ease-editorial ${
         scrolled
-          ? "bg-oled-950/85 backdrop-blur-md border-b border-white/[0.08] pt-[calc(env(safe-area-inset-top)+0.875rem)] pb-3.5"
+          ? "bg-oled-950/85 backdrop-blur-md border-b border-[color:var(--theme-border)] pt-[calc(env(safe-area-inset-top)+0.875rem)] pb-3.5"
           : "bg-gradient-to-b from-oled-950/70 via-oled-950/10 to-transparent pt-[calc(env(safe-area-inset-top)+1.5rem)] pb-6"
       }`}
     >

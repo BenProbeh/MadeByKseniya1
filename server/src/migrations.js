@@ -316,6 +316,18 @@ export const migrations = [
       );
     `,
   },
+  {
+    id: "005_user_theme_color",
+    sql: `
+      -- Personal site colour: only the normalised base colour is stored (never CSS); NULL = site default.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS theme_color TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS theme_palette_version SMALLINT;
+      ALTER TABLE users ADD CONSTRAINT users_theme_color_format
+        CHECK (theme_color IS NULL OR theme_color ~ '^#[0-9a-f]{6}$');
+      ALTER TABLE users ADD CONSTRAINT users_theme_palette_version_range
+        CHECK (theme_palette_version IS NULL OR theme_palette_version BETWEEN 1 AND 100);
+    `,
+  },
 ];
 
 const LOCK_KEY = 4815162342;

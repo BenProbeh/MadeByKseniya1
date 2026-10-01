@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import db from "./db.js";
 import { config } from "./config.js";
 import { normalizePhone } from "./phone.js";
+import { storedThemeColor } from "./themeColor.js";
 
 export const SESSION_COOKIE = "mbk_session";
 export const BCRYPT_ROUNDS = 12;
@@ -47,6 +48,8 @@ export function publicUser(row) {
     role: row.role || "customer",
     phone: row.phone_display || null,
     phoneVerified: Boolean(row.phone_verified),
+    themeColor: storedThemeColor(row.theme_color),
+    themePaletteVersion: storedThemeColor(row.theme_color) ? row.theme_palette_version ?? null : null,
     createdAt: row.created_at,
     lastLoginAt: row.last_login_at || null,
   };
