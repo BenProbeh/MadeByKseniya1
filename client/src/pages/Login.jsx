@@ -12,10 +12,11 @@ export default function Login() {
     typeof location.state?.from === "string" &&
     location.state.from.startsWith("/") &&
     !location.state.from.startsWith("//") &&
+    location.state.from !== "/" &&
     location.state.from !== "/login" &&
     location.state.from !== "/register"
       ? location.state.from
-      : "/";
+      : "/services";
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

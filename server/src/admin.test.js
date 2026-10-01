@@ -68,6 +68,7 @@ async function register(server, overrides = {}) {
       confirmPassword: PASSWORD,
       firstName: overrides.firstName || "לקוחה",
       lastName: overrides.lastName || "בדיקה",
+      phone: overrides.phone || `053${String(counter).padStart(7, "0")}`,
       rememberMe: Boolean(overrides.rememberMe),
     },
   });

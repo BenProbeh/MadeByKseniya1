@@ -1,14 +1,12 @@
-import { Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Navbar from "./components/Navbar.jsx";
 import Footer from "./components/Footer.jsx";
 import ChatWidget from "./components/ChatWidget.jsx";
 import ScrollToTop from "./components/ScrollToTop.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
-import Home from "./pages/Home.jsx";
 import Services from "./pages/Services.jsx";
 import PackageDetail from "./pages/PackageDetail.jsx";
 import Gallery from "./pages/Gallery.jsx";
-import About from "./pages/About.jsx";
 import Booking from "./pages/Booking.jsx";
 import Configurator from "./pages/Configurator.jsx";
 import NailSizing from "./pages/NailSizing.jsx";
@@ -17,6 +15,10 @@ import Register from "./pages/Register.jsx";
 import Profile from "./pages/Profile.jsx";
 import AdminCustomers from "./pages/AdminCustomers.jsx";
 import AdminCustomerProfile from "./pages/AdminCustomerProfile.jsx";
+import AdminNotifications from "./pages/AdminNotifications.jsx";
+import AdminContent from "./pages/AdminContent.jsx";
+import AdminContentEditor from "./pages/AdminContentEditor.jsx";
+import ContentPage from "./pages/ContentPage.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 
@@ -41,7 +43,6 @@ function AuthBoot({ children }) {
 
 export default function App() {
   const { pathname } = useLocation();
-  const isHome = pathname === "/";
   const isAuthPage = pathname === "/login" || pathname === "/register";
 
   return (
@@ -49,18 +50,12 @@ export default function App() {
       <div className="min-h-screen flex flex-col">
         <ScrollToTop />
         {!isAuthPage && <Navbar />}
-        <main className={`flex-1 ${isHome || isAuthPage ? "" : "pt-24"} ${isAuthPage ? "pt-8" : ""}`}>
+        <main className={`flex-1 ${isAuthPage ? "pt-8" : "pt-24"}`}>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <Home />
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/" element={<Navigate to="/services" replace />} />
+            <Route path="/about" element={<Navigate to="/services" replace />} />
             <Route
               path="/services"
               element={
@@ -82,14 +77,6 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Gallery />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/about"
-              element={
-                <ProtectedRoute>
-                  <About />
                 </ProtectedRoute>
               }
             />
@@ -141,9 +128,50 @@ export default function App() {
                 </AdminRoute>
               }
             />
+            <Route
+              path="/admin/notifications"
+              element={
+                <AdminRoute>
+                  <AdminNotifications />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/content"
+              element={
+                <AdminRoute>
+                  <AdminContent />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/content/new"
+              element={
+                <AdminRoute>
+                  <AdminContentEditor />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/content/:id"
+              element={
+                <AdminRoute>
+                  <AdminContentEditor />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/:slug"
+              element={
+                <ProtectedRoute>
+                  <ContentPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="*" element={<Navigate to="/services" replace />} />
           </Routes>
         </main>
-        {!isHome && !isAuthPage && <Footer />}
+        {!isAuthPage && <Footer />}
         {!isAuthPage && <ChatWidget />}
       </div>
     </AuthBoot>

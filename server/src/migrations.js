@@ -196,6 +196,126 @@ export const migrations = [
       CREATE INDEX idx_audit_log_created ON audit_log (created_at DESC);
     `,
   },
+  {
+    id: "004_phone_notifications_removal_scores_content",
+    sql: `
+      -- Phone: nullable so existing accounts keep working; new sign-ups must provide one.
+      -- The partial unique index is the source of truth for "one account per phone" (also under races).
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_e164 TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_display TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE users ADD CONSTRAINT users_phone_e164_format
+        CHECK (phone_e164 IS NULL OR phone_e164 ~ '^\\+[1-9][0-9]{6,14}$');
+      CREATE UNIQUE INDEX IF NOT EXISTS users_phone_e164_key ON users (phone_e164) WHERE phone_e164 IS NOT NULL;
+
+      -- Soft delete: removed accounts keep their row, orders and phone reservation.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+
+      CREATE OR REPLACE FUNCTION protect_owner_row() RETURNS trigger AS $$
+      BEGIN
+        IF TG_OP = 'DELETE' AND OLD.role = 'owner' THEN
+          RAISE EXCEPTION 'the site owner cannot be deleted' USING ERRCODE = 'P0001';
+        END IF;
+        IF TG_OP = 'UPDATE' AND OLD.role = 'owner' AND NEW.role IS DISTINCT FROM 'owner' THEN
+          RAISE EXCEPTION 'the site owner role cannot be changed' USING ERRCODE = 'P0001';
+        END IF;
+        IF TG_OP = 'UPDATE' AND NEW.role = 'owner' AND NEW.deleted_at IS NOT NULL THEN
+          RAISE EXCEPTION 'the site owner cannot be removed' USING ERRCODE = 'P0001';
+        END IF;
+        IF TG_OP = 'DELETE' THEN
+          RETURN OLD;
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS users_protect_owner ON users;
+      CREATE TRIGGER users_protect_owner
+        BEFORE UPDATE OF role, deleted_at OR DELETE ON users
+        FOR EACH ROW EXECUTE FUNCTION protect_owner_row();
+
+      -- Structured booking data for the customer score (no text matching on notes).
+      ALTER TABLE services ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'other';
+      UPDATE services SET kind = CASE name_he
+          WHEN 'בניה בתבנית (בניוגל)' THEN 'build'
+          WHEN 'בניה בטיפס' THEN 'build'
+          WHEN 'מילוי בניה' THEN 'fill'
+          WHEN 'הסרת בניה מקצועית' THEN 'removal'
+          WHEN 'מניקור ג''ל' THEN 'manicure'
+          WHEN 'לק ג''ל בלבד' THEN 'manicure'
+          WHEN 'פדיקור ספא' THEN 'pedicure'
+          WHEN 'עיצובי אקססוריז וציפורני יוקרה' THEN 'design'
+          ELSE kind
+        END
+        WHERE kind = 'other';
+
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS phone_e164 TEXT;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS package_key TEXT;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS package_label TEXT;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS service_kind TEXT;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS price_ils INTEGER;
+      CREATE INDEX IF NOT EXISTS idx_appointments_user ON appointments (user_id);
+      CREATE INDEX IF NOT EXISTS idx_appointments_phone_e164 ON appointments (phone_e164);
+
+      -- Internal notifications shown to the owner and every admin.
+      CREATE TABLE IF NOT EXISTS admin_notifications (
+        id SERIAL PRIMARY KEY,
+        type TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'read')),
+        related_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        dedupe_key TEXT,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        read_at TIMESTAMPTZ,
+        read_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_admin_notifications_status ON admin_notifications (status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_admin_notifications_dedupe ON admin_notifications (dedupe_key, created_at DESC);
+
+      -- Cached internal customer score (staff only), refreshed on booking changes and periodically.
+      CREATE TABLE IF NOT EXISTS customer_scores (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 100),
+        tier TEXT NOT NULL CHECK (tier IN ('top', 'high', 'medium', 'low')),
+        breakdown JSONB NOT NULL DEFAULT '{}'::jsonb,
+        last_activity_at TIMESTAMPTZ,
+        computed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_customer_scores_score ON customer_scores (score DESC);
+
+      -- Staff-managed content pages rendered with the site's own components (no raw HTML).
+      CREATE TABLE IF NOT EXISTS content_pages (
+        id SERIAL PRIMARY KEY,
+        slug TEXT NOT NULL CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+        title TEXT NOT NULL,
+        subtitle TEXT NOT NULL DEFAULT '',
+        eyebrow TEXT NOT NULL DEFAULT '',
+        seo_title TEXT NOT NULL DEFAULT '',
+        seo_description TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        published_at TIMESTAMPTZ,
+        deleted_at TIMESTAMPTZ,
+        deleted_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS content_pages_slug_key ON content_pages (slug) WHERE deleted_at IS NULL;
+
+      CREATE TABLE IF NOT EXISTS content_page_sections (
+        id SERIAL PRIMARY KEY,
+        page_id INTEGER NOT NULL REFERENCES content_pages(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('heading', 'paragraph', 'list', 'image', 'cta', 'links')),
+        data JSONB NOT NULL DEFAULT '{}'::jsonb,
+        UNIQUE (page_id, position)
+      );
+    `,
+  },
 ];
 
 const LOCK_KEY = 4815162342;

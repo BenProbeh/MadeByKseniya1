@@ -1,6 +1,7 @@
 import { config, reportConfigProblems } from "./config.js";
 import { createApp } from "./app.js";
 import { closeDb, startDb } from "./db.js";
+import { backfillAppointmentPhones } from "./appointmentsService.js";
 
 reportConfigProblems();
 
@@ -9,7 +10,10 @@ const server = app.listen(config.port, "0.0.0.0", () => {
   console.log(`made by kseniya API listening on 0.0.0.0:${config.port}`);
 });
 
-startDb();
+startDb()
+  .then(() => backfillAppointmentPhones())
+  .then((n) => n && console.log(`[db] normalised ${n} booking phone numbers`))
+  .catch((err) => console.error("[db] booking phone backfill failed:", err?.code || "", err?.message));
 
 function shutdown(signal) {
   console.log(`${signal} received, shutting down`);

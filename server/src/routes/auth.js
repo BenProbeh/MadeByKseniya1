@@ -17,6 +17,7 @@ import {
 import { optionalAuth, requireAuth } from "../middleware/authMiddleware.js";
 import { asyncRoute, sendServiceUnavailable } from "../http.js";
 import { recordAudit } from "../roles.js";
+import { notifyDuplicatePhoneSignup } from "../notifications.js";
 
 const router = Router();
 
@@ -44,6 +45,30 @@ function fail(res, status, code, message) {
 }
 
 const USERNAME_TAKEN_MESSAGE = "שם המשתמש הזה כבר בשימוש, נסי לבחור שם אחר.";
+// Same wording whoever owns the number: never reveals whose account it is.
+const PHONE_UNAVAILABLE_MESSAGE =
+  "לא ניתן להשלים את ההרשמה עם מספר הטלפון הזה. אם כבר נרשמת בעבר, אפשר להתחבר לחשבון הקיים או לכתוב לי ואעזור.";
+
+function isPhoneConflict(err) {
+  return err?.code === "23505" && /users_phone_e164_key/.test(`${err.constraint || ""} ${err.message || ""}`);
+}
+
+async function rejectDuplicatePhone(res, data) {
+  try {
+    const existing = await db.query(`SELECT id FROM users WHERE phone_e164 = $1`, [data.phoneE164]);
+    await notifyDuplicatePhoneSignup(db, {
+      firstName: data.firstName,
+      lastName: data.lastName,
+      username: data.username,
+      phoneE164: data.phoneE164,
+      phoneDisplay: data.phoneDisplay,
+      existingUserId: existing.rows[0]?.id || null,
+    });
+  } catch (err) {
+    console.error("duplicate-phone notification failed:", err?.code || "", err?.message);
+  }
+  return fail(res, 409, "PHONE_UNAVAILABLE", PHONE_UNAVAILABLE_MESSAGE);
+}
 
 router.post(
   "/register",
@@ -59,22 +84,24 @@ router.post(
       );
     }
 
-    const { firstName, lastName, username, password, rememberMe } = checked.data;
+    const { firstName, lastName, username, phoneE164, phoneDisplay, password, rememberMe } = checked.data;
 
     try {
       if (await findUserByUsername(username)) {
         return fail(res, 409, "USERNAME_TAKEN", USERNAME_TAKEN_MESSAGE);
       }
+      const phoneTaken = await db.query(`SELECT 1 FROM users WHERE phone_e164 = $1`, [phoneE164]);
+      if (phoneTaken.rows.length) return rejectDuplicatePhone(res, checked.data);
 
       const passwordHash = await hashPassword(password);
 
       // User row and session are created atomically: no orphan accounts without a session.
       const { row, session } = await transaction(async (tx) => {
         const inserted = await tx.query(
-          `INSERT INTO users (username, password_hash, first_name, last_name, last_login_at)
-           VALUES ($1, $2, $3, $4, now())
+          `INSERT INTO users (username, password_hash, first_name, last_name, phone_e164, phone_display, last_login_at)
+           VALUES ($1, $2, $3, $4, $5, $6, now())
            RETURNING *`,
-          [username, passwordHash, firstName, lastName]
+          [username, passwordHash, firstName, lastName, phoneE164, phoneDisplay]
         );
         const created = inserted.rows[0];
         const newSession = await createSession(created.id, rememberMe, tx);
@@ -87,6 +114,7 @@ router.post(
       res.cookie(SESSION_COOKIE, session.token, cookieOptions(session.rememberMe, session.maxAgeMs));
       return res.status(201).json({ success: true, user: publicUser(row) });
     } catch (err) {
+      if (isPhoneConflict(err)) return rejectDuplicatePhone(res, checked.data);
       if (err?.code === "23505") {
         return fail(res, 409, "USERNAME_TAKEN", USERNAME_TAKEN_MESSAGE);
       }
@@ -116,7 +144,7 @@ router.post(
 
     try {
       const row = await findUserByUsername(username);
-      const ok = row && (await verifyPassword(password, row.password_hash));
+      const ok = row && !row.deleted_at && (await verifyPassword(password, row.password_hash));
       if (!ok) {
         return fail(res, 401, "INVALID_CREDENTIALS", "שם המשתמש או הסיסמה אינם נכונים");
       }

@@ -6,6 +6,7 @@ import {
   updateAppointment,
 } from "../appointmentsService.js";
 import { asyncRoute } from "../http.js";
+import { optionalAuth } from "../middleware/authMiddleware.js";
 
 const router = Router();
 
@@ -31,13 +32,24 @@ router.get(
 
 router.post(
   "/",
+  optionalAuth,
   asyncRoute(async (req, res) => {
-    const { clientName, phone, email, serviceId, date, time, notes } = req.body;
+    const { clientName, phone, email, serviceId, date, time, notes, packageKey } = req.body;
     if (!clientName || !phone || !serviceId || !date || !time) {
       return res.status(400).json({ error: "missing required fields" });
     }
     try {
-      const appt = await createAppointment({ clientName, phone, email, serviceId, date, time, notes });
+      const appt = await createAppointment({
+        clientName,
+        phone,
+        email,
+        serviceId,
+        date,
+        time,
+        notes,
+        userId: req.user?.id || null,
+        packageKey: typeof packageKey === "string" ? packageKey : null,
+      });
       res.status(201).json(appt);
     } catch (err) {
       if (err.message === "SLOT_TAKEN") {

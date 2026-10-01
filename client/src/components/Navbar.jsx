@@ -6,13 +6,11 @@ import UserAvatar from "./UserAvatar.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const links = [
-  { to: "/", label: "בית" },
   { to: "/services", label: "מסלולים" },
   { to: "/gallery", label: "גלריה" },
   { to: "/build-a-set", label: "עצבי סט" },
   { to: "/nail-sizing", label: "מדידה" },
   { to: "/profile", label: "פרופיל" },
-  { to: "/about", label: "אודות" },
 ];
 
 export default function Navbar() {
@@ -56,7 +54,7 @@ export default function Navbar() {
       }`}
     >
       <nav className="max-w-content mx-auto pl-[calc(env(safe-area-inset-left)+1.5rem)] pr-[calc(env(safe-area-inset-right)+1.5rem)] md:pl-[calc(env(safe-area-inset-left)+2.5rem)] md:pr-[calc(env(safe-area-inset-right)+2.5rem)] flex items-center justify-between gap-3">
-        <NavLink to="/" onClick={() => setOpen(false)} className="shrink-0">
+        <NavLink to="/services" onClick={() => setOpen(false)} className="shrink-0" aria-label="MadeByKseniya — מסלולים">
           <Logo className="h-[60px] w-auto md:h-[70px]" />
         </NavLink>
 
@@ -65,7 +63,6 @@ export default function Navbar() {
             <NavLink
               key={link.to}
               to={link.to}
-              end={link.to === "/"}
               className={({ isActive }) =>
                 `font-nav relative py-1 transition-colors duration-300 hover:text-violet-200 shrink-0 ${
                   isActive ? "text-violet-200" : ""
@@ -143,7 +140,6 @@ export default function Navbar() {
               <NavLink
                 key={link.to}
                 to={link.to}
-                end={link.to === "/"}
                 onClick={() => setOpen(false)}
                 className={({ isActive }) =>
                   `font-nav tracking-wide transition-colors ${isActive ? "text-violet-200" : "text-white/75"}`

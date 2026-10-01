@@ -10,6 +10,7 @@ import authRouter from "./routes/auth.js";
 import profileRouter from "./routes/profile.js";
 import adminRouter from "./routes/admin.js";
 import ownerRouter from "./routes/owner.js";
+import { adminContentRouter, publicContentRouter } from "./routes/content.js";
 import db, { pingDb } from "./db.js";
 import { hasOwner } from "./roles.js";
 import { asyncRoute, sendServiceUnavailable } from "./http.js";
@@ -62,14 +63,16 @@ export function createApp() {
     })
   );
 
-  app.use(["/api/auth", "/api/profile", "/api/admin", "/api/owner"], (_req, res, next) => {
+  app.use(["/api/auth", "/api/profile", "/api/admin", "/api/owner", "/api/content"], (_req, res, next) => {
     res.set("Cache-Control", "no-store");
     next();
   });
 
   app.use("/api/auth", authRouter);
   app.use("/api/profile", profileRouter);
+  app.use("/api/admin/content", adminContentRouter);
   app.use("/api/admin", adminRouter);
+  app.use("/api/content", publicContentRouter);
   app.use("/api/owner", ownerRouter);
   app.use("/api/services", servicesRouter);
   app.use("/api/appointments", appointmentsRouter);

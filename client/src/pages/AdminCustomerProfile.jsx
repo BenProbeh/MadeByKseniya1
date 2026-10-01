@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import UserAvatar from "../components/UserAvatar.jsx";
 import RoleBadge from "../components/admin/RoleBadge.jsx";
+import DialButton from "../components/admin/DialButton.jsx";
+import { ScoreBreakdown } from "../components/admin/CustomerScore.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import { MeasurementsSection, OrdersSection, ShipmentsSection } from "../components/profile/ProfileSections.jsx";
-import { fetchAdminCustomer, updateUserRole } from "../lib/authApi.js";
+import { fetchAdminCustomer, removeCustomer, restoreCustomer, updateUserRole } from "../lib/authApi.js";
 import { getApiErrorMessage } from "../lib/authErrors.js";
 import { formatDate, formatDateTime } from "../lib/format.js";
 import { isOwner } from "../lib/roles.js";
@@ -31,6 +33,7 @@ function Detail({ label, children }) {
 export default function AdminCustomerProfile() {
   const { id } = useParams();
   const { user, refreshUser } = useAuth();
+  const navigate = useNavigate();
 
   const [data, setData] = useState(null);
   const [status, setStatus] = useState("loading"); // loading | ready | notFound | error
@@ -40,6 +43,13 @@ export default function AdminCustomerProfile() {
   const [roleBusy, setRoleBusy] = useState(false);
   const [roleError, setRoleError] = useState("");
   const [roleOk, setRoleOk] = useState("");
+
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [removeAck, setRemoveAck] = useState(false);
+  const [removeBusy, setRemoveBusy] = useState(false);
+  const [removeError, setRemoveError] = useState("");
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState("");
 
   const load = useCallback(async () => {
     setStatus("loading");
@@ -92,6 +102,43 @@ export default function AdminCustomerProfile() {
     }
   }
 
+  const closeRemove = useCallback(() => {
+    if (removeBusy) return;
+    setRemoveOpen(false);
+    setRemoveAck(false);
+    setRemoveError("");
+  }, [removeBusy]);
+
+  async function confirmRemove() {
+    if (!removeAck || removeBusy) return;
+    setRemoveBusy(true);
+    setRemoveError("");
+    try {
+      await removeCustomer(data.customer.id);
+      navigate("/admin/customers", { replace: true });
+    } catch (err) {
+      setRemoveError(getApiErrorMessage(err, "לא הצלחתי להסיר את המשתמש. אפשר לנסות שוב."));
+      const code = err?.response?.status;
+      if (code === 401) await refreshUser();
+      setRemoveBusy(false);
+    }
+  }
+
+  async function onRestore() {
+    if (restoreBusy) return;
+    setRestoreBusy(true);
+    setRestoreMsg("");
+    try {
+      await restoreCustomer(data.customer.id);
+      await load();
+      setRestoreMsg("החשבון שוחזר. המשתמש יכול להתחבר שוב.");
+    } catch (err) {
+      setRestoreMsg(getApiErrorMessage(err, "לא הצלחתי לשחזר את החשבון."));
+    } finally {
+      setRestoreBusy(false);
+    }
+  }
+
   if (status === "loading" && !data) {
     return (
       <div className="max-w-3xl mx-auto px-6 py-16">
@@ -132,12 +179,33 @@ export default function AdminCustomerProfile() {
   const fullName = `${customer.firstName} ${customer.lastName}`.trim();
   const canManageRole = Boolean(permissions?.canManageRole) && isOwner(user) && customer.role !== "owner";
   const isSelf = customer.id === user?.id;
+  const removed = Boolean(customer.removedAt);
+  const canRemove = Boolean(permissions?.canRemove) && !isSelf && customer.role !== "owner";
+  const canRestore = Boolean(permissions?.canRestore) && isOwner(user);
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-16 space-y-8">
       <div className="flex justify-center">
         <BackLink />
       </div>
+
+      {removed && (
+        <div role="note" className="glass-panel border-white/20 px-5 py-4 text-center font-serif text-sm text-white/75 space-y-3">
+          <p>
+            החשבון הזה הוסר ב־{formatDateTime(customer.removedAt)}. הוא לא יכול להתחבר ולא מופיע ברשימת הלקוחות.
+          </p>
+          {canRestore && (
+            <button type="button" className="btn-violet" onClick={onRestore} disabled={restoreBusy}>
+              {restoreBusy ? "רגע אחד…" : "שחזור החשבון"}
+            </button>
+          )}
+        </div>
+      )}
+      {restoreMsg && (
+        <p className="text-sm text-violet-200 text-center" role="status" aria-live="polite">
+          {restoreMsg}
+        </p>
+      )}
 
       {!isSelf && (
         <div
@@ -160,12 +228,26 @@ export default function AdminCustomerProfile() {
             <p className="text-sm text-white/50">
               <span dir="ltr">@{customer.username}</span>
             </p>
+            {customer.phoneE164 && (
+              <div className="flex justify-center sm:justify-start">
+                <DialButton phoneE164={customer.phoneE164} phoneDisplay={customer.phone} name={fullName} />
+              </div>
+            )}
             <p className="text-xs text-white/35">הצטרפות ב־{formatDate(customer.createdAt)}</p>
           </div>
         </div>
 
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Detail label="טלפון">{customer.phone ? <span dir="ltr">{customer.phone}</span> : "לא נשמר"}</Detail>
+          <Detail label="טלפון">
+            {customer.phone ? (
+              <>
+                <span dir="ltr">{customer.phone}</span>
+                <span className="text-white/40"> · {customer.phoneVerified ? "מאומת" : "לא מאומת"}</span>
+              </>
+            ) : (
+              "לא נשמר"
+            )}
+          </Detail>
           <Detail label="הזמנות">{customer.ordersCount}</Detail>
           <Detail label="התחברות אחרונה">
             {customer.lastLoginAt ? formatDateTime(customer.lastLoginAt) : "—"}
@@ -195,6 +277,24 @@ export default function AdminCustomerProfile() {
             {roleOk}
           </p>
         )}
+
+        {canRemove && (
+          <div className="border-t border-white/[0.08] pt-5 flex justify-center sm:justify-start">
+            <button type="button" className="btn-text text-sm text-white/60" onClick={() => setRemoveOpen(true)}>
+              הסרת משתמש
+            </button>
+          </div>
+        )}
+      </section>
+
+      <section className="glass-panel p-6 md:p-8 space-y-4" aria-labelledby="score-title">
+        <div className="space-y-1">
+          <h2 id="score-title" className="font-serif text-2xl text-white">
+            דירוג פנימי
+          </h2>
+          <p className="text-xs text-white/45">גלוי לצוות בלבד. מחושב בשרת לפי פעילות עסקית.</p>
+        </div>
+        <ScoreBreakdown score={customer.score} />
       </section>
 
       <MeasurementsSection
@@ -227,6 +327,34 @@ export default function AdminCustomerProfile() {
         ) : (
           <p>{fullName} יחזור להיות לקוח רגיל ויאבד מיד את הגישה לאזור הניהול.</p>
         )}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={removeOpen}
+        title={`הסרת ${fullName}`}
+        confirmLabel="כן, הסר את המשתמש"
+        busy={removeBusy}
+        confirmDisabled={!removeAck}
+        error={removeError}
+        onConfirm={confirmRemove}
+        onCancel={closeRemove}
+      >
+        <p>
+          החשבון של <strong className="text-white">{fullName}</strong> יוסר מרשימת הלקוחות וכל ההתחברויות שלו
+          ינותקו מיד. לא תהיה אפשרות להתחבר אליו.
+        </p>
+        <p>התורים, ההזמנות והמידות נשמרים במערכת. מספר הטלפון נשאר שמור ולא ניתן להירשם איתו מחדש.</p>
+        <p>בעלת האתר יכולה לשחזר את החשבון בכל עת.</p>
+        <label className="flex items-center justify-center gap-2 pt-2 cursor-pointer select-none text-white/80">
+          <input
+            type="checkbox"
+            checked={removeAck}
+            onChange={(e) => setRemoveAck(e.target.checked)}
+            disabled={removeBusy}
+            className="rounded border-white/30"
+          />
+          <span>הבנתי, אני רוצה להסיר את המשתמש</span>
+        </label>
       </ConfirmDialog>
     </div>
   );

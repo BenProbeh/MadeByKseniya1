@@ -1,10 +1,15 @@
 import db from "./db.js";
+import { normalizePhone } from "./phone.js";
 
 export const STATS_TIMEZONE = "Asia/Jerusalem";
 
+export const SCORE_TIER_VALUES = Object.freeze(["top", "high", "medium", "low"]);
+export const LIST_SORTS = Object.freeze(["score", "newest", "oldest", "activity"]);
+
 const SUMMARY_SELECT = `
   SELECT u.id, u.username, u.first_name, u.last_name, u.avatar_url, u.role,
-         u.created_at, u.last_login_at, u.role_updated_at,
+         u.created_at, u.last_login_at, u.role_updated_at, u.deleted_at,
+         u.phone_e164, u.phone_display, u.phone_verified,
          GREATEST(u.last_login_at, sess.last_used_at) AS last_active_at,
          EXISTS (
            SELECT 1 FROM measurement_profiles mp WHERE mp.user_id = u.id AND mp.is_active = 1
@@ -14,11 +19,21 @@ const SUMMARY_SELECT = `
            SELECT mp.phone FROM measurement_profiles mp
            WHERE mp.user_id = u.id AND mp.phone !~ '^user-'
            ORDER BY mp.updated_at DESC, mp.id DESC LIMIT 1
-         ) AS phone
+         ) AS legacy_phone,
+         cs.score, cs.tier, cs.breakdown AS score_breakdown, cs.last_activity_at AS score_activity_at
   FROM users u
+  LEFT JOIN customer_scores cs ON cs.user_id = u.id
   LEFT JOIN LATERAL (
     SELECT max(s.last_used_at) AS last_used_at FROM user_sessions s WHERE s.user_id = u.id
   ) sess ON true`;
+
+/** Account phone first; older accounts fall back to the phone saved with their measurements. */
+function customerPhone(row) {
+  if (row.phone_e164) return { phone: row.phone_display || row.phone_e164, phoneE164: row.phone_e164 };
+  if (!row.legacy_phone) return { phone: null, phoneE164: null };
+  const parsed = normalizePhone(row.legacy_phone);
+  return parsed.ok ? { phone: parsed.display, phoneE164: parsed.e164 } : { phone: row.legacy_phone, phoneE164: null };
+}
 
 /** Fields an admin may see. Password hashes, session tokens and internal ids of other tables are never included. */
 function mapCustomer(row) {
@@ -29,13 +44,25 @@ function mapCustomer(row) {
     lastName: row.last_name,
     avatarUrl: row.avatar_url || null,
     role: row.role,
-    phone: row.phone || null,
+    ...customerPhone(row),
+    phoneVerified: Boolean(row.phone_verified),
     createdAt: row.created_at,
     lastLoginAt: row.last_login_at || null,
     lastActiveAt: row.last_active_at || null,
     roleUpdatedAt: row.role_updated_at || null,
+    removedAt: row.deleted_at || null,
     hasMeasurements: Boolean(row.has_measurements),
     ordersCount: Number(row.orders_count) || 0,
+    score:
+      row.score == null
+        ? null
+        : {
+            value: row.score,
+            tier: row.tier,
+            insufficientData: Boolean(row.score_breakdown?.insufficientData),
+            breakdown: row.score_breakdown?.parts || [],
+            lastActivityAt: row.score_activity_at || null,
+          },
   };
 }
 
@@ -43,9 +70,24 @@ function escapeLike(value) {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
-export async function listCustomers({ search = "", role = "", sort = "newest", page = 1, pageSize = 20 }) {
+const ORDER_BY = {
+  score: "cs.score DESC NULLS LAST, u.created_at DESC, u.id DESC",
+  newest: "u.created_at DESC, u.id DESC",
+  oldest: "u.created_at ASC, u.id ASC",
+  activity: "GREATEST(u.last_login_at, sess.last_used_at, cs.last_activity_at) DESC NULLS LAST, u.id DESC",
+};
+
+export async function listCustomers({
+  search = "",
+  role = "",
+  tier = "",
+  sort = "newest",
+  removed = false,
+  page = 1,
+  pageSize = 20,
+}) {
   const params = [];
-  const conditions = [];
+  const conditions = [removed ? "u.deleted_at IS NOT NULL" : "u.deleted_at IS NULL"];
 
   if (search) {
     params.push(`%${escapeLike(search)}%`);
@@ -62,6 +104,9 @@ export async function listCustomers({ search = "", role = "", sort = "newest", p
       clauses.push(
         `EXISTS (SELECT 1 FROM measurement_profiles mp WHERE mp.user_id = u.id AND mp.phone LIKE $${params.length})`
       );
+      // "050..." is stored as "+97250..." in E.164.
+      params.push(`%${digits.startsWith("0") ? `972${digits.slice(1)}` : digits}%`);
+      clauses.push(`u.phone_e164 LIKE $${params.length}`);
     }
     conditions.push(`(${clauses.join(" OR ")})`);
   }
@@ -70,27 +115,45 @@ export async function listCustomers({ search = "", role = "", sort = "newest", p
     params.push(role);
     conditions.push(`u.role = $${params.length}`);
   }
+  if (tier) {
+    params.push(tier);
+    conditions.push(`cs.tier = $${params.length}`);
+  }
 
-  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-  const direction = sort === "oldest" ? "ASC" : "DESC";
+  const where = `WHERE ${conditions.join(" AND ")}`;
 
-  const countResult = await db.query(`SELECT count(*)::int AS total FROM users u ${where}`, params);
+  const countResult = await db.query(
+    `SELECT count(*)::int AS total FROM users u LEFT JOIN customer_scores cs ON cs.user_id = u.id ${where}`,
+    params
+  );
   const total = countResult.rows[0].total;
 
   const pageParams = [...params, pageSize, (page - 1) * pageSize];
   const { rows } = await db.query(
     `${SUMMARY_SELECT} ${where}
-     ORDER BY u.created_at ${direction}, u.id ${direction}
+     ORDER BY ${ORDER_BY[sort] || ORDER_BY.newest}
      LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
     pageParams
   );
 
-  const roleCounts = await db.query(`SELECT role, count(*)::int AS n FROM users GROUP BY role`);
-  const totals = { all: 0, owner: 0, admin: 0, customer: 0 };
+  const roleCounts = await db.query(
+    `SELECT role, count(*)::int AS n FROM users WHERE deleted_at IS NULL GROUP BY role`
+  );
+  const totals = { all: 0, owner: 0, admin: 0, customer: 0, removed: 0 };
   for (const r of roleCounts.rows) {
     totals[r.role] = r.n;
     totals.all += r.n;
   }
+  const removedCount = await db.query(`SELECT count(*)::int AS n FROM users WHERE deleted_at IS NOT NULL`);
+  totals.removed = removedCount.rows[0].n;
+
+  const tierCounts = await db.query(
+    `SELECT cs.tier, count(*)::int AS n
+       FROM customer_scores cs JOIN users u ON u.id = cs.user_id
+      WHERE u.deleted_at IS NULL GROUP BY cs.tier`
+  );
+  const tiers = { top: 0, high: 0, medium: 0, low: 0 };
+  for (const r of tierCounts.rows) tiers[r.tier] = r.n;
 
   return {
     customers: rows.map(mapCustomer),
@@ -99,6 +162,7 @@ export async function listCustomers({ search = "", role = "", sort = "newest", p
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
     totals,
+    tiers,
   };
 }
 
@@ -138,11 +202,11 @@ export async function computeCustomerStats(nowOverride = null, executor = db) {
        FROM local_bounds
      )
      SELECT b.now_ts, b.week_start,
-            (SELECT count(*)::int FROM users WHERE created_at <= b.now_ts) AS total,
-            (SELECT count(*)::int FROM users WHERE created_at >= b.today_start AND created_at <= b.now_ts) AS today,
-            (SELECT count(*)::int FROM users WHERE created_at > b.now_ts - interval '7 days' AND created_at <= b.now_ts) AS last7,
-            (SELECT count(*)::int FROM users WHERE created_at >= b.week_start AND created_at <= b.now_ts) AS this_week,
-            (SELECT count(*)::int FROM users WHERE created_at >= b.prev_week_start AND created_at < b.week_start) AS prev_week,
+            (SELECT count(*)::int FROM users WHERE deleted_at IS NULL AND created_at <= b.now_ts) AS total,
+            (SELECT count(*)::int FROM users WHERE deleted_at IS NULL AND created_at >= b.today_start AND created_at <= b.now_ts) AS today,
+            (SELECT count(*)::int FROM users WHERE deleted_at IS NULL AND created_at > b.now_ts - interval '7 days' AND created_at <= b.now_ts) AS last7,
+            (SELECT count(*)::int FROM users WHERE deleted_at IS NULL AND created_at >= b.week_start AND created_at <= b.now_ts) AS this_week,
+            (SELECT count(*)::int FROM users WHERE deleted_at IS NULL AND created_at >= b.prev_week_start AND created_at < b.week_start) AS prev_week,
             to_char(b.week_local, 'YYYY-MM-DD') AS week_start_date,
             to_char(b.week_local - interval '7 days', 'YYYY-MM-DD') AS prev_week_start_date,
             to_char(b.week_local - interval '1 day', 'YYYY-MM-DD') AS prev_week_end_date
@@ -154,7 +218,7 @@ export async function computeCustomerStats(nowOverride = null, executor = db) {
   const busiest = await executor.query(
     `SELECT to_char((created_at AT TIME ZONE $1)::date, 'YYYY-MM-DD') AS day, count(*)::int AS n
      FROM users
-     WHERE created_at >= $2 AND created_at <= $3
+     WHERE deleted_at IS NULL AND created_at >= $2 AND created_at <= $3
      GROUP BY 1
      ORDER BY n DESC, day DESC
      LIMIT 1`,
@@ -163,7 +227,7 @@ export async function computeCustomerStats(nowOverride = null, executor = db) {
 
   const recent = await executor.query(
     `SELECT id, username, first_name, last_name, role, created_at
-     FROM users WHERE created_at <= $1
+     FROM users WHERE deleted_at IS NULL AND created_at <= $1
      ORDER BY created_at DESC, id DESC LIMIT 5`,
     [s.now_ts]
   );

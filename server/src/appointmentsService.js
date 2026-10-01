@@ -1,4 +1,7 @@
 import db from "./db.js";
+import { resolvePackageKey } from "./packageCatalog.js";
+import { toE164OrNull } from "./phone.js";
+import { refreshScoresForAppointment } from "./customerScore.js";
 
 // JS getDay(): 0=Sunday ... 6=Saturday
 const BUSINESS_HOURS = {
@@ -86,17 +89,48 @@ export async function isSlotFree(dateStr, time, serviceId) {
   return open && slots.includes(time);
 }
 
-export async function createAppointment({ clientName, phone, email, serviceId, date, time, notes }) {
+export async function createAppointment({ clientName, phone, email, serviceId, date, time, notes, userId, packageKey }) {
   if (!(await isSlotFree(date, time, serviceId))) {
     throw new Error("SLOT_TAKEN");
   }
+  // Kind and price come from the server catalog, never from the request body.
+  const pkg = packageKey ? resolvePackageKey(packageKey) : null;
   const { rows } = await db.query(
-    `INSERT INTO appointments (client_name, phone, email, service_id, date, time, notes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO appointments
+       (client_name, phone, email, service_id, date, time, notes, user_id, phone_e164, package_key, package_label, service_kind, price_ils)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      RETURNING *`,
-    [clientName, phone, email ?? null, Number(serviceId), date, time, notes ?? null]
+    [
+      clientName,
+      phone,
+      email ?? null,
+      Number(serviceId),
+      date,
+      time,
+      notes ?? null,
+      userId || null,
+      toE164OrNull(phone),
+      pkg?.key ?? null,
+      pkg?.label ?? null,
+      pkg?.kind ?? null,
+      pkg?.priceIls ?? null,
+    ]
   );
+  await refreshScoresForAppointment(db, rows[0]);
   return rows[0];
+}
+
+/** Fill phone_e164 for bookings made before phones were normalised. Rows that can't be parsed stay NULL. */
+export async function backfillAppointmentPhones(executor = db) {
+  const { rows } = await executor.query(`SELECT id, phone FROM appointments WHERE phone_e164 IS NULL LIMIT 5000`);
+  let updated = 0;
+  for (const row of rows) {
+    const e164 = toE164OrNull(row.phone);
+    if (!e164) continue;
+    await executor.query(`UPDATE appointments SET phone_e164 = $1 WHERE id = $2 AND phone_e164 IS NULL`, [e164, row.id]);
+    updated += 1;
+  }
+  return updated;
 }
 
 export async function findAppointmentsByPhone(phone) {
@@ -132,5 +166,6 @@ export async function updateAppointment(id, { date, time, status }) {
     `UPDATE appointments SET date = $1, time = $2, status = $3 WHERE id = $4 RETURNING *`,
     [newDate, newTime, status ?? appt.status, apptId]
   );
+  await refreshScoresForAppointment(db, updated.rows[0]);
   return updated.rows[0];
 }

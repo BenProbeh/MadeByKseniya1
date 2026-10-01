@@ -26,7 +26,7 @@ function isValidPhone(phone) {
   return /^0\d{8,9}$/.test(digits);
 }
 
-function BookingForm({ services, initialNotes, skipServiceSelect = false, packageLabel = "" }) {
+function BookingForm({ services, initialNotes, skipServiceSelect = false, packageLabel = "", packageKey = "" }) {
   const [serviceId, setServiceId] = useState("");
   const [date, setDate] = useState(null);
   const [slots, setSlots] = useState([]);
@@ -87,6 +87,7 @@ function BookingForm({ services, initialNotes, skipServiceSelect = false, packag
         date: format(date, "yyyy-MM-dd"),
         time,
         notes: form.notes || undefined,
+        packageKey: packageKey || undefined,
       });
       setConfirmed(appt);
     } catch (err) {
@@ -414,6 +415,7 @@ export default function Booking() {
   const prefillNotes = location.state?.prefillNotes ?? "";
   const skipServiceSelect = Boolean(location.state?.skipServiceSelect);
   const packageLabel = location.state?.packageLabel ?? "";
+  const packageKey = typeof location.state?.packageKey === "string" ? location.state.packageKey : "";
 
   useEffect(() => {
     getServices()
@@ -440,6 +442,7 @@ export default function Booking() {
         initialNotes={prefillNotes}
         skipServiceSelect={skipServiceSelect}
         packageLabel={packageLabel}
+        packageKey={packageKey}
       />
 
       <ManageAppointments />

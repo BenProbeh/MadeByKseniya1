@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { PACKAGE_DETAILS } from "../lib/packageData.js";
 import Ils from "../components/Ils.jsx";
 
-function OptionBlock({ option, index }) {
+function OptionBlock({ slug, option, index }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -58,6 +58,7 @@ function OptionBlock({ option, index }) {
                 prefillNotes: `בקשה: ${option.name} - מידה ${s.label}`,
                 skipServiceSelect: true,
                 packageLabel: `${option.name} · ${s.label}`,
+                packageKey: `${slug}:${option.id}:${s.label}`,
               }}
               className="group flex items-center justify-between gap-4 border-b border-white/[0.08] last:border-b-0 pb-4 last:pb-0 hover:text-violet-200 transition-colors"
             >
@@ -85,6 +86,7 @@ function OptionBlock({ option, index }) {
               prefillNotes: `בקשה: ${option.name}`,
               skipServiceSelect: true,
               packageLabel: option.name,
+              packageKey: `${slug}:${option.id}`,
             }}
             className="group flex items-center justify-center gap-2 py-2 hover:text-violet-200 transition-colors"
           >
@@ -129,7 +131,7 @@ export default function PackageDetail() {
 
       <div className="space-y-14">
         {pkg.options.map((option, i) => (
-          <OptionBlock key={option.name} option={option} index={i} />
+          <OptionBlock key={option.id} slug={slug} option={option} index={i} />
         ))}
       </div>
 

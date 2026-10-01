@@ -44,11 +44,14 @@ function request(server, { method = "GET", path = "/", body, cookies = [] }) {
   });
 }
 
+let phoneCounter = 0;
 async function register(server, { username, firstName, lastName }) {
+  phoneCounter += 1;
+  const phone = `054${String(phoneCounter).padStart(7, "0")}`;
   const res = await request(server, {
     method: "POST",
     path: "/api/auth/register",
-    body: { username, password: PASSWORD, confirmPassword: PASSWORD, firstName, lastName },
+    body: { username, password: PASSWORD, confirmPassword: PASSWORD, firstName, lastName, phone },
   });
   assert.equal(res.status, 201, res.raw);
   const line = res.setCookie.find((c) => c.startsWith(`${SESSION_COOKIE}=`));

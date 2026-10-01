@@ -5,7 +5,6 @@ const siteLinks = [
   { to: "/gallery", label: "גלריה" },
   { to: "/build-a-set", label: "עצבי סט" },
   { to: "/nail-sizing", label: "מדידת ציפורניים" },
-  { to: "/about", label: "אודות" },
   { to: "/booking", label: "קביעת תור" },
 ];
 
@@ -14,7 +13,7 @@ export default function Footer() {
     <footer className="border-t border-white/[0.08] mt-16">
       <div className="max-w-content mx-auto px-6 md:px-10 py-16 grid md:grid-cols-[1.3fr_1fr_1fr] gap-12">
         <div className="space-y-4">
-          <Link to="/" className="font-serif text-2xl tracking-wide inline-block">
+          <Link to="/services" className="font-serif text-2xl tracking-wide inline-block">
             MadeBy<span className="violet-text">Kseniya</span>
           </Link>
           <p className="text-sm text-white/55 leading-relaxed max-w-xs">

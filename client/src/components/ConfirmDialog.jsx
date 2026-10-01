@@ -7,6 +7,7 @@ export default function ConfirmDialog({
   confirmLabel = "אישור",
   cancelLabel = "ביטול",
   busy = false,
+  confirmDisabled = false,
   error = "",
   onConfirm,
   onCancel,
@@ -49,7 +50,12 @@ export default function ConfirmDialog({
           <button ref={cancelRef} type="button" className="btn-ghost" onClick={onCancel} disabled={busy}>
             {cancelLabel}
           </button>
-          <button type="button" className="btn-violet" onClick={onConfirm} disabled={busy}>
+          <button
+            type="button"
+            className="btn-violet disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:hover:translate-y-0"
+            onClick={onConfirm}
+            disabled={busy || confirmDisabled}
+          >
             {busy ? "רגע אחד…" : confirmLabel}
           </button>
         </div>

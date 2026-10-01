@@ -17,6 +17,12 @@ function uniqueUser() {
   return `u_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+let phoneCounter = 0;
+function uniquePhone() {
+  phoneCounter += 1;
+  return `052${String(phoneCounter).padStart(7, "0")}`;
+}
+
 function request(server, { method = "GET", path = "/", body, cookies = [], headers = {} }) {
   return new Promise((resolve, reject) => {
     const addr = server.address();
@@ -74,6 +80,7 @@ async function register(server, overrides = {}) {
       confirmPassword: "strong-pass-1",
       firstName: "קסניה",
       lastName: "כהן",
+      phone: uniquePhone(),
       rememberMe: false,
       ...overrides,
     },
@@ -148,6 +155,7 @@ describe("auth + profile API (PostgreSQL)", () => {
         confirmPassword: "strong-pass-1",
         firstName: "אנה",
         lastName: "לוי",
+        phone: uniquePhone(),
       },
     });
     assert.equal(res.status, 409);

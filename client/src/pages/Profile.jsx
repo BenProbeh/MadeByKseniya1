@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import UserAvatar from "../components/UserAvatar.jsx";
 import ChangePasswordForm from "../components/ChangePasswordForm.jsx";
+import PhoneForm from "../components/PhoneForm.jsx";
 import { MeasurementsSection, OrdersSection, ShipmentsSection } from "../components/profile/ProfileSections.jsx";
 import {
   deleteAvatar,
@@ -283,9 +284,12 @@ export default function Profile() {
               <p className="text-xs text-white/35">הצטרפת ב־{formatDate(user.createdAt)}</p>
             )}
             {isStaff(user) && (
-              <div className="pt-3 flex justify-center sm:justify-start">
+              <div className="pt-3 flex flex-wrap gap-2 justify-center sm:justify-start">
                 <Link to="/admin/customers" className="btn-ghost px-5 py-2.5 text-sm">
                   ניהול לקוחות
+                </Link>
+                <Link to="/admin/content" className="btn-ghost px-5 py-2.5 text-sm">
+                  ניהול תוכן
                 </Link>
               </div>
             )}
@@ -337,6 +341,10 @@ export default function Profile() {
             {avatarOk}
           </p>
         )}
+
+        <div className="border-t border-white/[0.08] pt-5">
+          <PhoneForm />
+        </div>
 
         <div className="border-t border-white/[0.08] pt-5">
           <ChangePasswordForm />

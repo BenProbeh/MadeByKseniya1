@@ -10,6 +10,8 @@ function mapUser(raw) {
     lastName: raw.lastName || "",
     avatarUrl: resolveMediaUrl(raw.avatarUrl),
     role: raw.role === "owner" || raw.role === "admin" ? raw.role : "customer",
+    phone: raw.phone || "",
+    phoneVerified: Boolean(raw.phoneVerified),
     createdAt: raw.createdAt,
     lastLoginAt: raw.lastLoginAt,
   };
@@ -42,6 +44,7 @@ export async function registerRequest(payload) {
     confirmPassword: payload.confirmPassword,
     firstName: payload.firstName,
     lastName: payload.lastName,
+    phone: payload.phone,
     rememberMe: Boolean(payload.rememberMe),
   });
   return assertUser(mapUser(data?.user));
@@ -95,12 +98,92 @@ export async function changePasswordRequest({ currentPassword, newPassword, conf
   return data;
 }
 
-export async function fetchAdminCustomers({ search = "", role = "", sort = "newest", page = 1, pageSize = 20 } = {}) {
+export async function updatePhoneRequest(phone) {
+  const { data } = await api.patch("/profile/phone", { phone });
+  return mapUser(data.user);
+}
+
+export async function fetchAdminCustomers({
+  search = "",
+  role = "",
+  tier = "",
+  sort = "score",
+  status = "active",
+  page = 1,
+  pageSize = 20,
+} = {}) {
   const params = { sort, page, pageSize };
   if (search) params.search = search;
   if (role) params.role = role;
+  if (tier) params.tier = tier;
+  if (status !== "active") params.status = status;
   const { data } = await api.get("/admin/customers", { params });
   return { ...data, customers: (data.customers || []).map(mapAdminCustomer) };
+}
+
+export async function removeCustomer(id) {
+  const { data } = await api.delete(`/admin/customers/${encodeURIComponent(id)}`);
+  return { ...data, customer: mapAdminCustomer(data.customer) };
+}
+
+export async function restoreCustomer(id) {
+  const { data } = await api.post(`/owner/users/${encodeURIComponent(id)}/restore`);
+  return { ...data, customer: mapAdminCustomer(data.customer) };
+}
+
+export async function fetchNotifications({ status = "" } = {}) {
+  const { data } = await api.get("/admin/notifications", { params: status ? { status } : {} });
+  return { notifications: data.notifications || [], unread: Number(data.unread) || 0 };
+}
+
+export async function fetchUnreadNotificationCount() {
+  const { data } = await api.get("/admin/notifications/unread-count");
+  return Number(data.unread) || 0;
+}
+
+export async function markNotificationRead(id) {
+  const { data } = await api.patch(`/admin/notifications/${encodeURIComponent(id)}/read`);
+  return { notification: data.notification, unread: Number(data.unread) || 0 };
+}
+
+export async function fetchContentPages() {
+  const { data } = await api.get("/admin/content/pages");
+  return data.pages || [];
+}
+
+export async function fetchContentPage(id) {
+  const { data } = await api.get(`/admin/content/pages/${encodeURIComponent(id)}`);
+  return data.page;
+}
+
+export async function createContentPage(page) {
+  const { data } = await api.post("/admin/content/pages", page);
+  return data.page;
+}
+
+export async function updateContentPage(id, page) {
+  const { data } = await api.patch(`/admin/content/pages/${encodeURIComponent(id)}`, page);
+  return data.page;
+}
+
+export async function setContentPagePublished(id, published) {
+  const action = published ? "publish" : "unpublish";
+  const { data } = await api.post(`/admin/content/pages/${encodeURIComponent(id)}/${action}`);
+  return data.page;
+}
+
+export async function duplicateContentPage(id) {
+  const { data } = await api.post(`/admin/content/pages/${encodeURIComponent(id)}/duplicate`);
+  return data.page;
+}
+
+export async function deleteContentPage(id) {
+  await api.delete(`/admin/content/pages/${encodeURIComponent(id)}`);
+}
+
+export async function fetchPublishedPage(slug) {
+  const { data } = await api.get(`/content/pages/${encodeURIComponent(slug)}`);
+  return data.page;
 }
 
 export async function fetchAdminCustomer(id) {

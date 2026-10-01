@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import db from "./db.js";
 import { config } from "./config.js";
+import { normalizePhone } from "./phone.js";
 
 export const SESSION_COOKIE = "mbk_session";
 export const BCRYPT_ROUNDS = 12;
@@ -44,6 +45,8 @@ export function publicUser(row) {
     lastName: row.last_name,
     avatarUrl: row.avatar_url || null,
     role: row.role || "customer",
+    phone: row.phone_display || null,
+    phoneVerified: Boolean(row.phone_verified),
     createdAt: row.created_at,
     lastLoginAt: row.last_login_at || null,
   };
@@ -116,6 +119,7 @@ export async function getSessionUser(token) {
       WHERE s.token_hash = $1
         AND s.expires_at > now()
         AND u.id = s.user_id
+        AND u.deleted_at IS NULL
      RETURNING s.id AS session_id, s.expires_at, s.remember_me, u.*`,
     [hashToken(token)]
   );
@@ -145,6 +149,7 @@ export function validateRegisterInput(body) {
   const username = normalizeUsername(body?.username);
   const password = String(body?.password || "");
   const confirmPassword = String(body?.confirmPassword || "");
+  const phone = normalizePhone(body?.phone);
 
   if (!firstName || firstName.length < 2) errors.push("יש להזין שם פרטי.");
   if (firstName.length > 60) errors.push("שם פרטי ארוך מדי.");
@@ -155,6 +160,7 @@ export function validateRegisterInput(body) {
   if (!/^[a-z0-9._-]+$/.test(username)) {
     errors.push("שם משתמש יכול להכיל אותיות באנגלית, מספרים, נקודה, מקף וקו תחתון.");
   }
+  if (!phone.ok) errors.push(phone.error);
   if (password.length < 8) errors.push("הסיסמה חייבת להכיל לפחות 8 תווים.");
   if (password.length > 128) errors.push("הסיסמה ארוכה מדי.");
   if (password !== confirmPassword) errors.push("אימות הסיסמה אינו תואם.");
@@ -166,6 +172,8 @@ export function validateRegisterInput(body) {
       firstName,
       lastName,
       username,
+      phoneE164: phone.ok ? phone.e164 : null,
+      phoneDisplay: phone.ok ? phone.display : null,
       password,
       rememberMe: Boolean(body?.rememberMe),
     },

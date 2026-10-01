@@ -51,9 +51,9 @@ router.patch(
         const actor = await tx.query(`SELECT role FROM users WHERE id = $1 FOR SHARE`, [req.user.id]);
         if (actor.rows[0]?.role !== ROLES.OWNER) return { status: 403, message: "הפעולה הזו שמורה לבעלים של האתר בלבד." };
 
-        const target = await tx.query(`SELECT id, role FROM users WHERE id = $1 FOR UPDATE`, [targetId]);
+        const target = await tx.query(`SELECT id, role, deleted_at FROM users WHERE id = $1 FOR UPDATE`, [targetId]);
         const current = target.rows[0];
-        if (!current) return { status: 404, message: "המשתמש לא נמצא." };
+        if (!current || current.deleted_at) return { status: 404, message: "המשתמש לא נמצא." };
         if (current.role === ROLES.OWNER) return { status: 403, message: "אי אפשר לשנות את התפקיד של בעלי האתר." };
         if (current.role === nextRole) return { status: 200, changed: false };
 
@@ -79,6 +79,43 @@ router.patch(
     }
 
     return res.json({ success: true, changed: outcome.changed, customer: await getCustomerSummary(targetId) });
+  })
+);
+
+router.post(
+  "/users/:id/restore",
+  requireOwner,
+  roleLimiter,
+  asyncRoute(async (req, res) => {
+    const targetId = parseUserId(req.params.id);
+    if (!targetId) return reply(res, 400, "VALIDATION_ERROR", "מזהה משתמש לא חוקי.");
+
+    const outcome = await transaction(async (tx) => {
+      const actor = await tx.query(`SELECT role FROM users WHERE id = $1 FOR SHARE`, [req.user.id]);
+      if (actor.rows[0]?.role !== ROLES.OWNER) return { status: 403, message: "הפעולה הזו שמורה לבעלים של האתר בלבד." };
+
+      const target = await tx.query(`SELECT id, role, deleted_at FROM users WHERE id = $1 FOR UPDATE`, [targetId]);
+      const current = target.rows[0];
+      if (!current) return { status: 404, message: "המשתמש לא נמצא." };
+      if (!current.deleted_at) return { status: 409, message: "החשבון הזה פעיל ולא צריך שחזור." };
+
+      await tx.query(`UPDATE users SET deleted_at = NULL, deleted_by = NULL, updated_at = now() WHERE id = $1`, [
+        targetId,
+      ]);
+      await recordAudit(tx, {
+        actorUserId: req.user.id,
+        action: "user_restored",
+        targetUserId: targetId,
+        details: { role: current.role },
+      });
+      return { status: 200 };
+    });
+
+    if (outcome.status !== 200) {
+      const code = { 403: "FORBIDDEN", 404: "NOT_FOUND", 409: "NOT_REMOVED" }[outcome.status];
+      return reply(res, outcome.status, code, outcome.message);
+    }
+    return res.json({ success: true, customer: await getCustomerSummary(targetId) });
   })
 );
 

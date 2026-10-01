@@ -4,6 +4,7 @@ export const PACKAGE_DETAILS = {
     title: "Basic Bitch",
     options: [
       {
+        id: "fill",
         name: "מילוי Basic Bitch",
         subtitle: "כולל סידור צורה + סידור קוטיקולה ביס בצבע לבחירה / צבע חלק",
         sizes: [
@@ -14,6 +15,7 @@ export const PACKAGE_DETAILS = {
         note: "מסלול זה עד 60 דק' עבודה ואת מתוקתקת!",
       },
       {
+        id: "plus",
         name: "Basic Plus+",
         subtitle: "כולל סידור צורה + סידור קוטיקולה פרנץ' / פנינה / עיצוב פשוט",
         sizes: [
@@ -24,6 +26,7 @@ export const PACKAGE_DETAILS = {
         note: "מסלול זה עד 90 דק' עבודה ואת מתוקתקת!",
       },
       {
+        id: "extras",
         name: "פרסונים",
         smallName: true,
         subtitle: "פרנץ' , צבע בסיס, קישוט אחד.",
@@ -36,6 +39,7 @@ export const PACKAGE_DETAILS = {
     title: "Bad Bitch",
     options: [
       {
+        id: "fill",
         name: "מילוי Bad Bitch",
         subtitle: "כולל סידור צורה קוטיקולה ועיצובי Pinterest.",
         pinterestUrl:
@@ -48,6 +52,7 @@ export const PACKAGE_DETAILS = {
         note: "מסלול זה עד 60 דק' עבודה ואת מתוקתקת!",
       },
       {
+        id: "build",
         name: "בניות",
         subtitle: "כולל בנייה של כל צורה שרק תבחרי!",
         sizes: [
@@ -58,6 +63,7 @@ export const PACKAGE_DETAILS = {
         note: "עד 90 דק' לא כולל עיצובים.",
       },
       {
+        id: "extras",
         name: "פרסונים",
         smallName: true,
         subtitle: "בעל הבית השתגעה",
@@ -70,6 +76,7 @@ export const PACKAGE_DETAILS = {
     title: "Stay High",
     options: [
       {
+        id: "design",
         name: "Stay High",
         hideName: true,
         subtitle: "עיצובים עם ציורים הכי משוגעים ומיוחדים שרק תוכלי לחשוב!",

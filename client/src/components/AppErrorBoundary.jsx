@@ -27,7 +27,7 @@ export default class AppErrorBoundary extends Component {
             <span className="section-eyebrow justify-center">MadeByKseniya</span>
             <h1 className="font-serif text-2xl text-white">משהו השתבש</h1>
             <p className="font-serif text-sm text-white/60">אפשר לרענן את העמוד ולנסות שוב.</p>
-            <button type="button" className="btn-violet w-full" onClick={() => window.location.assign("/")}>
+            <button type="button" className="btn-violet w-full" onClick={() => window.location.assign("/services")}>
               רענון העמוד
             </button>
           </div>

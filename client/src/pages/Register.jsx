@@ -3,11 +3,14 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
 import { getApiErrorMessage, isLatinUsername, USERNAME_LATIN_MESSAGE } from "../lib/authErrors.js";
+import { normalizePhone } from "../lib/phone.js";
+
+const AFTER_AUTH_PATH = "/services";
 
 function safeInternalPath(path) {
-  if (typeof path !== "string") return "/";
-  if (!path.startsWith("/") || path.startsWith("//")) return "/";
-  if (path === "/login" || path === "/register") return "/";
+  if (typeof path !== "string") return AFTER_AUTH_PATH;
+  if (!path.startsWith("/") || path.startsWith("//")) return AFTER_AUTH_PATH;
+  if (path === "/" || path === "/login" || path === "/register") return AFTER_AUTH_PATH;
   return path;
 }
 
@@ -20,6 +23,8 @@ export default function Register() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [username, setUsername] = useState("");
+  const [phone, setPhone] = useState("");
+  const [phoneTouched, setPhoneTouched] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
@@ -42,6 +47,9 @@ export default function Register() {
     return <Navigate to={from} replace />;
   }
 
+  const phoneCheck = normalizePhone(phone);
+  const phoneError = phoneTouched && !phoneCheck.ok ? phoneCheck.error : "";
+
   async function onSubmit(e) {
     e.preventDefault();
     e.stopPropagation();
@@ -50,6 +58,11 @@ export default function Register() {
     setError("");
     if (!isLatinUsername(username)) {
       setError(USERNAME_LATIN_MESSAGE);
+      return;
+    }
+    if (!phoneCheck.ok) {
+      setPhoneTouched(true);
+      setError(phoneCheck.error);
       return;
     }
     if (password !== confirmPassword) {
@@ -63,6 +76,7 @@ export default function Register() {
         firstName,
         lastName,
         username,
+        phone: phoneCheck.e164,
         password,
         confirmPassword,
         rememberMe,
@@ -135,6 +149,33 @@ export default function Register() {
             required
           />
         </label>
+
+        <div className="space-y-2">
+        <label className="block space-y-2 text-sm text-white/70">
+          <span>מספר טלפון נייד</span>
+          <input
+            type="tel"
+            name="tel"
+            autoComplete="tel"
+            inputMode="tel"
+            dir="ltr"
+            placeholder="050-1234567"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            onBlur={() => setPhoneTouched(Boolean(phone.trim()) || phoneTouched)}
+            aria-invalid={Boolean(phoneError)}
+            aria-describedby="register-phone-help"
+            className={`w-full bg-white/5 border rounded-xl px-4 py-3 text-base text-right outline-none focus:border-violet-400/60 ${
+              phoneError ? "border-amber-300/60" : "border-white/10"
+            }`}
+            maxLength={20}
+            required
+          />
+        </label>
+          <p id="register-phone-help" className={`text-xs ${phoneError ? "text-amber-200" : "text-white/40"}`} aria-live="polite">
+            {phoneError || (phoneCheck.ok ? `יישמר כ־${phoneCheck.display}` : "נייד ישראלי, למשל 050-1234567.")}
+          </p>
+        </div>
 
         <label className="block space-y-2 text-sm text-white/70">
           <span>סיסמה</span>
