@@ -91,10 +91,7 @@ function SiteColorPicker() {
         <h2 id="site-color-title" className="font-serif text-2xl md:text-3xl text-white">
           צבע האתר שלי
         </h2>
-        <p className="font-serif text-white/60 text-sm max-w-md mx-auto">
-          בחרי את הצבע שייתן לאתר את האווירה שלך. כל האתר יקבל את הצבע הזה, ואני אתאים את הטקסט והכרטיסים כך
-          שהכול יישאר קריא.
-        </p>
+        <p className="font-serif text-white/60 text-sm max-w-md mx-auto">תעצבי את האתר כמו שאת רוצה</p>
       </div>
 
       <div className="flex flex-col sm:flex-row items-center gap-8 sm:gap-10">
@@ -106,10 +103,10 @@ function SiteColorPicker() {
             onChange={onDrag}
             onChangeEnd={onCommit}
           />
-          <label className="block space-y-2">
-            <span className="block text-xs text-white/60 text-center">בהירות הצבע</span>
+          <label className="block">
             <input
               type="range"
+              aria-label="בהירות הצבע"
               dir="ltr"
               min={0}
               max={100}
@@ -124,29 +121,13 @@ function SiteColorPicker() {
 
         <div className="w-full space-y-5 text-center sm:text-right">
           <div className="flex items-end justify-center sm:justify-start gap-5">
-            <div className="space-y-2">
-              <span
-                className="block h-16 w-16 rounded-full ring-1 ring-white/15"
-                style={{ backgroundColor: isCustom ? chosenHex : "transparent" }}
-                aria-hidden="true"
-              />
-              <p className="text-xs text-white/60">הצבע שבחרת</p>
-            </div>
-            <div className="space-y-2">
-              <SitePreview palette={palette} />
-              <p className="text-xs text-white/60">כך זה נראה באתר</p>
-            </div>
+            <span
+              className="block h-16 w-16 rounded-full ring-1 ring-white/15"
+              style={{ backgroundColor: isCustom ? chosenHex : "transparent" }}
+              aria-hidden="true"
+            />
+            <SitePreview palette={palette} />
           </div>
-
-          <p className="text-sm text-white/70 min-h-[1.25rem]">
-            {isCustom ? (
-              <>
-                צבע אישי פעיל · <span dir="ltr">{activeColor}</span>
-              </>
-            ) : (
-              "כרגע האתר בצבע המקורי שלו."
-            )}
-          </p>
 
           <div className="flex flex-wrap items-center gap-3 justify-center sm:justify-start">
             <button
