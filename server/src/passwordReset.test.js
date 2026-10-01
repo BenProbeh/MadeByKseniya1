@@ -9,7 +9,16 @@ import { createApp } from "./app.js";
 import db, { closeDb, startDb } from "./db.js";
 import { SESSION_COOKIE, hashPassword } from "./auth.js";
 import { normalizePhone } from "./phone.js";
-import { activeSmsProvider, isSmsHealthy, resetSmsHealth, sendSms, smsTestOutbox } from "./sms.js";
+import {
+  activeSmsProvider,
+  checkTwilioDelivery,
+  isSmsHealthy,
+  resetSmsHealth,
+  sendSms,
+  smsSetupProblems,
+  smsStatus,
+  smsTestOutbox,
+} from "./sms.js";
 import {
   MAX_CODE_ATTEMPTS,
   generateResetCode,
@@ -455,10 +464,10 @@ describe("forgot password by SMS", () => {
     try {
       globalThis.fetch = async (url, init) => {
         calls.push({ url, init });
-        return new Response(JSON.stringify({ sid: "SM123" }), { status: 201 });
+        return new Response(JSON.stringify({ sid: "SM123", status: "queued" }), { status: 201 });
       };
       const ok = await sendSms("+972501234567", "קוד 123456");
-      assert.deepEqual(ok, { provider: "twilio", id: "SM123" });
+      assert.deepEqual(ok, { provider: "twilio", id: "SM123", status: "queued" });
       assert.equal(calls[0].url, "https://api.twilio.com/2010-04-01/Accounts/ACtest123/Messages.json");
       assert.equal(calls[0].init.headers.Authorization, `Basic ${Buffer.from("ACtest123:secret-token").toString("base64")}`);
       const form = new URLSearchParams(calls[0].init.body.toString());
@@ -532,6 +541,122 @@ describe("forgot password by SMS", () => {
       delete process.env.TWILIO_FROM;
       process.env.SMS_PROVIDER = "memory";
       resetSmsHealth();
+    }
+  });
+
+  it("production setup: names what is missing or misplaced, accepts the usual alternative names, never shows values", async () => {
+    const keys = [
+      "SMS_PROVIDER",
+      "TWILIO_ACCOUNT_SID",
+      "TWILIO_AUTH_TOKEN",
+      "TWILIO_FROM",
+      "TWILIO_PHONE_NUMBER",
+      "TWILIO_MESSAGING_SERVICE_SID",
+      "TWILIO_VERIFY_SERVICE_SID",
+    ];
+    const set = (values) => {
+      for (const k of keys) delete process.env[k];
+      Object.assign(process.env, values);
+    };
+    const srv = await startServer();
+    process.env.NODE_ENV = "production";
+    try {
+      set({});
+      assert.equal(smsStatus(), "off");
+      assert.deepEqual(smsSetupProblems(), [
+        "TWILIO_ACCOUNT_SID is missing",
+        "TWILIO_AUTH_TOKEN is missing",
+        "TWILIO_MESSAGING_SERVICE_SID (or TWILIO_FROM) is missing",
+      ]);
+      const health = await request(srv, { method: "GET", path: "/api/health" });
+      assert.equal(health.json.sms, "off");
+      assert.equal(health.json.smsSetup.length, 3);
+
+      // SMS_PROVIDER left out: Twilio values alone turn Twilio on.
+      set({ TWILIO_ACCOUNT_SID: "ACabc", TWILIO_AUTH_TOKEN: "tok-secret", TWILIO_MESSAGING_SERVICE_SID: "MGabc" });
+      assert.equal(activeSmsProvider(), "twilio");
+      assert.equal(smsStatus(), "ready");
+      assert.deepEqual(smsSetupProblems(), []);
+
+      // A Twilio number under TWILIO_PHONE_NUMBER works as the sender.
+      set({ SMS_PROVIDER: "twilio", TWILIO_ACCOUNT_SID: "ACabc", TWILIO_AUTH_TOKEN: "tok-secret", TWILIO_PHONE_NUMBER: "+15551234567" });
+      assert.equal(activeSmsProvider(), "twilio");
+
+      // A Verify SID is a different product: say so instead of failing at Twilio.
+      set({ SMS_PROVIDER: "twilio", TWILIO_ACCOUNT_SID: "ACabc", TWILIO_AUTH_TOKEN: "tok-secret", TWILIO_MESSAGING_SERVICE_SID: "VAabc" });
+      assert.equal(smsStatus(), "incomplete");
+      assert.match(smsSetupProblems()[0], /Verify service SID \(VA\.\.\.\).*Messaging Service SID \(MG\.\.\.\)/);
+      set({ TWILIO_ACCOUNT_SID: "ACabc", TWILIO_AUTH_TOKEN: "tok-secret", TWILIO_VERIFY_SERVICE_SID: "VAabc" });
+      assert.match(smsSetupProblems()[0], /TWILIO_MESSAGING_SERVICE_SID is missing \(TWILIO_VERIFY_SERVICE_SID is not used/);
+
+      // Wrong kinds of values.
+      set({ TWILIO_ACCOUNT_SID: "SKabc", TWILIO_AUTH_TOKEN: "tok-secret", TWILIO_FROM: "050-1234567" });
+      assert.deepEqual(smsSetupProblems(), [
+        "TWILIO_ACCOUNT_SID should be the Account SID (starts with AC)",
+        "TWILIO_FROM should be a Twilio number like +972... or a sender name of up to 11 letters/digits",
+      ]);
+      const bad = await request(srv, { method: "GET", path: "/api/health" });
+      assert.equal(bad.json.sms, "incomplete");
+      assert.ok(!bad.raw.includes("tok-secret") && !bad.raw.includes("SKabc"), "a value leaked into health");
+
+      // A messaging service SID put in TWILIO_FROM is sent as MessagingServiceSid, never together with From.
+      set({ SMS_PROVIDER: "twilio", TWILIO_ACCOUNT_SID: "ACabc", TWILIO_AUTH_TOKEN: "tok-secret", TWILIO_FROM: "MGabc" });
+      const realFetch = globalThis.fetch;
+      let form;
+      globalThis.fetch = async (_url, init) => {
+        form = Object.fromEntries(new URLSearchParams(init.body.toString()));
+        return new Response(JSON.stringify({ sid: "SM1", status: "accepted" }), { status: 201 });
+      };
+      try {
+        await sendSms("+972509414898", "x");
+      } finally {
+        globalThis.fetch = realFetch;
+      }
+      assert.deepEqual(form, { To: "+972509414898", Body: "x", MessagingServiceSid: "MGabc" });
+
+      set({ SMS_PROVIDER: "off", TWILIO_ACCOUNT_SID: "ACabc", TWILIO_AUTH_TOKEN: "tok-secret", TWILIO_FROM: "MadeByKsen" });
+      assert.equal(activeSmsProvider(), null);
+      assert.equal(smsStatus(), "off");
+    } finally {
+      process.env.NODE_ENV = "test";
+      set({ SMS_PROVIDER: "memory" });
+    }
+  });
+
+  it("the numbers people type become E.164 before the account lookup and the SMS", () => {
+    for (const typed of ["0509414898", "050-941-4898", "050 941 4898", "+972509414898", "972509414898", "+972 50-941-4898"]) {
+      assert.equal(normalizePhone(typed).e164, "+972509414898", typed);
+    }
+    assert.equal(normalizePhone("12345").ok, false);
+  });
+
+  it("delivery check logs Twilio's final status and error code, without the number or the text", async () => {
+    process.env.TWILIO_ACCOUNT_SID = "ACabc";
+    process.env.TWILIO_AUTH_TOKEN = "tok-secret";
+    const realFetch = globalThis.fetch;
+    const lines = [];
+    const original = { log: console.log, error: console.error };
+    console.log = (...a) => lines.push(a.join(" "));
+    console.error = (...a) => lines.push(a.join(" "));
+    try {
+      let url;
+      globalThis.fetch = async (u) => {
+        url = u;
+        return new Response(JSON.stringify({ status: "undelivered", error_code: 30007, to: "+972509414898", body: "secret" }));
+      };
+      const result = await checkTwilioDelivery("SM9", "password-reset req=abcd");
+      assert.deepEqual(result, { status: "undelivered", errorCode: 30007 });
+      assert.equal(url, "https://api.twilio.com/2010-04-01/Accounts/ACabc/Messages/SM9.json");
+      assert.match(lines[0], /req=abcd message SM9 status=undelivered error=30007 category=carrier_filter/);
+      assert.ok(!lines[0].includes("972509414898") && !lines[0].includes("secret"));
+
+      globalThis.fetch = async () => new Response(JSON.stringify({ status: "delivered" }));
+      assert.deepEqual(await checkTwilioDelivery("SM10"), { status: "delivered", errorCode: null });
+    } finally {
+      Object.assign(console, original);
+      globalThis.fetch = realFetch;
+      delete process.env.TWILIO_ACCOUNT_SID;
+      delete process.env.TWILIO_AUTH_TOKEN;
     }
   });
 });

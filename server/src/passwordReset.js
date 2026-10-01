@@ -134,14 +134,18 @@ async function issueResetCode(phoneE164) {
     return inserted.rows[0].id;
   });
 
+  const label = `password-reset req=${crypto.randomBytes(4).toString("hex")}`;
   try {
-    await sendSms(phoneE164, resetSmsBody(code));
+    const result = await sendSms(phoneE164, resetSmsBody(code), { label });
+    console.log(`[sms] ${label} to ${maskPhone(phoneE164)} accepted by ${result.provider} status=${result.status || "-"}${result.id ? ` id=${result.id}` : ""}`);
     return { sent: true };
   } catch (err) {
     await db
       .query(`UPDATE password_resets SET invalidated_at = now() WHERE id = $1 AND used_at IS NULL`, [resetId])
       .catch(() => {});
-    console.error(`[password-reset] SMS to ${maskPhone(phoneE164)} failed:`, err?.code || "", err?.message);
+    console.error(
+      `[sms] ${label} to ${maskPhone(phoneE164)} failed at ${new Date().toISOString()}: category=${err?.category || err?.code || "error"} http=${err?.httpStatus ?? "-"} twilio=${err?.providerCode ?? "-"} - ${err?.message}`
+    );
     return { sent: false, reason: "send_failed" };
   }
 }

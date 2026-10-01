@@ -64,7 +64,10 @@ export const config = {
   get openaiModel() {
     return read("OPENAI_MODEL") || "gpt-4o-mini";
   },
-  /** "twilio" in production; "console" (prints locally) or "memory" (tests) only outside production. */
+  /**
+   * "twilio", or "console" (prints locally) / "memory" (tests) outside production. Unset with Twilio values
+   * present means Twilio; "off" turns SMS off.
+   */
   get smsProvider() {
     return read("SMS_PROVIDER").toLowerCase();
   },
@@ -76,11 +79,15 @@ export const config = {
   },
   /** Sender: an approved alphanumeric sender ID (e.g. MadeByKsen) or a Twilio number in E.164. */
   get twilioFrom() {
-    return read("TWILIO_FROM");
+    return read("TWILIO_FROM") || read("TWILIO_PHONE_NUMBER");
   },
-  /** Optional instead of TWILIO_FROM: a Twilio Messaging Service that holds the sender. */
+  /** Preferred over TWILIO_FROM: a Twilio Messaging Service (MG...) that holds the sender. */
   get twilioMessagingServiceSid() {
     return read("TWILIO_MESSAGING_SERVICE_SID");
+  },
+  /** Not used for sending (codes are generated here); read only to explain a Verify SID put in the wrong place. */
+  get twilioVerifyServiceSid() {
+    return read("TWILIO_VERIFY_SERVICE_SID");
   },
 };
 
@@ -92,12 +99,5 @@ export function reportConfigProblems() {
   }
   if (config.frontendOrigins.length === 0) {
     console.error("[config] FRONTEND_URL is not set - browser requests from the site will be refused by CORS.");
-  }
-  if (config.smsProvider !== "twilio") {
-    console.warn("[config] SMS_PROVIDER is not 'twilio' - password reset by SMS is turned off.");
-  } else if (!config.twilioAccountSid || !config.twilioAuthToken || !(config.twilioFrom || config.twilioMessagingServiceSid)) {
-    console.error(
-      "[config] Twilio is incomplete - set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM (or TWILIO_MESSAGING_SERVICE_SID)."
-    );
   }
 }
