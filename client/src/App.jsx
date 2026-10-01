@@ -12,6 +12,7 @@ import Configurator from "./pages/Configurator.jsx";
 import NailSizing from "./pages/NailSizing.jsx";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
+import ForgotPassword from "./pages/ForgotPassword.jsx";
 import Profile from "./pages/Profile.jsx";
 import AdminCustomers from "./pages/AdminCustomers.jsx";
 import AdminCustomerProfile from "./pages/AdminCustomerProfile.jsx";
@@ -43,7 +44,7 @@ function AuthBoot({ children }) {
 
 export default function App() {
   const { pathname } = useLocation();
-  const isAuthPage = pathname === "/login" || pathname === "/register";
+  const isAuthPage = pathname === "/login" || pathname === "/register" || pathname === "/forgot-password";
 
   return (
     <AuthBoot>
@@ -54,6 +55,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/" element={<Navigate to="/services" replace />} />
             <Route path="/about" element={<Navigate to="/services" replace />} />
             <Route

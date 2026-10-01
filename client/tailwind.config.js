@@ -1,10 +1,16 @@
+// Personal site colour: surfaces, "white" text/lines and light accent inks read CSS variables whose defaults
+// (:root in index.css) are the original values. Brand violet backgrounds, buttons and glows are fixed.
+const ink = (name) => `rgb(var(--ink-${name}) / <alpha-value>)`;
+// Translucent text (white/60 …) is pulled toward solid on personal colours: alpha' = 1 - (1 - alpha) * soft.
+const SOFT_FG = "rgb(var(--theme-fg) / calc(1 - (1 - <alpha-value>) * var(--theme-fg-soft)))";
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{js,jsx}"],
   theme: {
     extend: {
       colors: {
-        // Surfaces follow the user's personal colour; the defaults live in :root (index.css).
+        white: "rgb(var(--theme-fg) / <alpha-value>)",
         oled: {
           950: "rgb(var(--oled-950) / <alpha-value>)",
           900: "rgb(var(--oled-900) / <alpha-value>)",
@@ -23,8 +29,9 @@ export default {
           700: "#5c0091",
         },
       },
-      // Dark ink on violet buttons/badges stays exactly as designed, whatever the background colour.
       textColor: {
+        white: SOFT_FG,
+        // Dark ink on violet buttons/badges stays exactly as designed, whatever the background colour.
         oled: {
           950: "#000000",
           900: "#07050c",
@@ -33,6 +40,20 @@ export default {
           700: "#251536",
           600: "#371d4f",
         },
+        violet: { 100: ink("violet-100"), 200: ink("violet-200"), 300: ink("violet-300") },
+        red: { 300: ink("red-300") },
+        rose: { 300: ink("rose-300") },
+        amber: { 200: ink("amber-200"), 300: ink("amber-300") },
+        emerald: { 200: ink("emerald-200"), 300: ink("emerald-300"), 400: ink("emerald-400") },
+      },
+      placeholderColor: {
+        white: SOFT_FG,
+      },
+      borderColor: {
+        white: "rgb(var(--theme-fg) / calc(<alpha-value> * var(--theme-line)))",
+      },
+      ringColor: {
+        violet: { 300: ink("violet-300") },
       },
       fontFamily: {
         sans: ["Sekuya", "Heebo", "system-ui", "sans-serif"],

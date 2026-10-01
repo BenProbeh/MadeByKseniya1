@@ -114,7 +114,7 @@ export default function ColorWheel({ hsv, onChange, onChangeEnd, hasSelection, l
       />
       <span
         aria-hidden="true"
-        className={`pointer-events-none absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_0_0_1px_rgba(0,0,0,0.45),0_4px_14px_rgba(0,0,0,0.5)] ${
+        className={`pointer-events-none absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-[#ffffff] shadow-[0_0_0_1px_rgba(0,0,0,0.45),0_4px_14px_rgba(0,0,0,0.5)] ${
           hasSelection ? "" : "bg-transparent border-dashed opacity-80"
         }`}
         style={{ left: `${left}%`, top: `${top}%`, backgroundColor: hasSelection ? hex : "transparent" }}

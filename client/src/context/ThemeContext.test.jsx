@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { derivePalette, THEME_VARS } from "../lib/theme/palette.js";
+import { derivePalette, PALETTE_VERSION, THEME_VARS } from "../lib/theme/palette.js";
 import { THEME_CACHE_KEY, applyPalette, resetTheme } from "../lib/theme/runtime.js";
 
 const h = vi.hoisted(() => ({ auth: null, update: null }));
@@ -56,7 +56,7 @@ afterEach(() => {
 
 describe("ThemeProvider", () => {
   it("signed-out visitors get the default and a stale cache is cleared", () => {
-    localStorage.setItem(THEME_CACHE_KEY, JSON.stringify({ v: 1, c: BLUE, m: "#000000", vars: derivePalette(BLUE).vars }));
+    localStorage.setItem(THEME_CACHE_KEY, JSON.stringify({ v: PALETTE_VERSION, c: BLUE, m: "#000000", vars: derivePalette(BLUE).vars }));
     applyPalette(derivePalette(BLUE));
     render(<Harness user={null} />);
     expect(noOverrides()).toBe(true);

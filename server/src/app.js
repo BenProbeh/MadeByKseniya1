@@ -7,6 +7,7 @@ import appointmentsRouter from "./routes/appointments.js";
 import chatRouter from "./routes/chat.js";
 import measurementsRouter from "./routes/measurements.js";
 import authRouter from "./routes/auth.js";
+import { createPasswordResetRouter } from "./routes/passwordReset.js";
 import profileRouter from "./routes/profile.js";
 import adminRouter from "./routes/admin.js";
 import ownerRouter from "./routes/owner.js";
@@ -68,6 +69,7 @@ export function createApp() {
     next();
   });
 
+  app.use("/api/auth/password-reset", createPasswordResetRouter());
   app.use("/api/auth", authRouter);
   app.use("/api/profile", profileRouter);
   app.use("/api/admin/content", adminContentRouter);

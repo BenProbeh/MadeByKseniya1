@@ -10,20 +10,26 @@
     <script id="mbk-theme-boot">
       (function () {
         var KEY = "mbk-theme";
-        var NAMES = ["--oled-950", "--oled-900", "--oled-850", "--oled-800", "--oled-700", "--oled-600", "--theme-border", "--theme-tint"];
+        var NAMES = ["--oled-950", "--oled-900", "--oled-850", "--oled-800", "--oled-700", "--oled-600", "--theme-fg", "--theme-fg-soft", "--theme-line", "--theme-border", "--theme-scheme", "--ink-violet-100", "--ink-violet-200", "--ink-violet-300", "--ink-red-300", "--ink-rose-300", "--ink-amber-200", "--ink-amber-300", "--ink-emerald-200", "--ink-emerald-300", "--ink-emerald-400", "--theme-violet-gradient"];
         var CH = /^\d{1,3} \d{1,3} \d{1,3}$/;
         var RGBA = /^rgba\(\d{1,3}, \d{1,3}, \d{1,3}, (0(\.\d{1,3})?|1)\)$/;
+        var FACTOR = /^[0-2](\.\d{1,3})?$/;
+        var SCHEME = /^(normal|light|dark)$/;
+        var GRADIENT = /^linear-gradient\(135deg(, #[0-9a-f]{6} \d{1,3}%){4}\)$/;
         function safe(n, v) {
           if (typeof v !== "string") return false;
-          if (n.indexOf("--oled-") === 0) return CH.test(v);
+          if (n.indexOf("--oled-") === 0 || n.indexOf("--ink-") === 0 || n === "--theme-fg") return CH.test(v);
+          if (n === "--theme-fg-soft" || n === "--theme-line") return FACTOR.test(v);
           if (n === "--theme-border") return RGBA.test(v);
-          return v === "transparent" || RGBA.test(v);
+          if (n === "--theme-scheme") return SCHEME.test(v);
+          if (n === "--theme-violet-gradient") return GRADIENT.test(v);
+          return false;
         }
         try {
           var raw = localStorage.getItem(KEY);
           if (!raw) return;
           var d = JSON.parse(raw);
-          var ok = d && d.v === 1 && /^#[0-9a-f]{6}$/.test(d.c) && /^#[0-9a-f]{6}$/.test(d.m) && d.vars;
+          var ok = d && d.v === 2 && /^#[0-9a-f]{6}$/.test(d.c) && /^#[0-9a-f]{6}$/.test(d.m) && d.vars;
           for (var i = 0; ok && i < NAMES.length; i++) ok = safe(NAMES[i], d.vars[NAMES[i]]);
           if (!ok) {
             localStorage.removeItem(KEY);

@@ -64,6 +64,24 @@ export const config = {
   get openaiModel() {
     return read("OPENAI_MODEL") || "gpt-4o-mini";
   },
+  /** "twilio" in production; "console" (prints locally) or "memory" (tests) only outside production. */
+  get smsProvider() {
+    return read("SMS_PROVIDER").toLowerCase();
+  },
+  get twilioAccountSid() {
+    return read("TWILIO_ACCOUNT_SID");
+  },
+  get twilioAuthToken() {
+    return read("TWILIO_AUTH_TOKEN");
+  },
+  /** Sender: an approved alphanumeric sender ID (e.g. MadeByKsen) or a Twilio number in E.164. */
+  get twilioFrom() {
+    return read("TWILIO_FROM");
+  },
+  /** Optional instead of TWILIO_FROM: a Twilio Messaging Service that holds the sender. */
+  get twilioMessagingServiceSid() {
+    return read("TWILIO_MESSAGING_SERVICE_SID");
+  },
 };
 
 /** Log clear, secret-free problems with production configuration. Never throws. */
@@ -74,5 +92,12 @@ export function reportConfigProblems() {
   }
   if (config.frontendOrigins.length === 0) {
     console.error("[config] FRONTEND_URL is not set - browser requests from the site will be refused by CORS.");
+  }
+  if (config.smsProvider !== "twilio") {
+    console.warn("[config] SMS_PROVIDER is not 'twilio' - password reset by SMS is turned off.");
+  } else if (!config.twilioAccountSid || !config.twilioAuthToken || !(config.twilioFrom || config.twilioMessagingServiceSid)) {
+    console.error(
+      "[config] Twilio is incomplete - set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM (or TWILIO_MESSAGING_SERVICE_SID)."
+    );
   }
 }

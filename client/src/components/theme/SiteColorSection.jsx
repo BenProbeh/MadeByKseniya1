@@ -7,7 +7,7 @@ import { DEFAULT_PALETTE, derivePalette } from "../../lib/theme/palette.js";
 const START_HSV = { h: 0, s: 0, v: 1 };
 
 function SitePreview({ palette }) {
-  const { pageBackground, surfaceBackground, borderColor } = palette.named;
+  const { pageBackground, elevatedSurface, borderColor, textPrimary, textSecondary } = palette.named;
   return (
     <div
       className="h-16 w-24 rounded-lg p-2 ring-1 ring-white/10"
@@ -16,11 +16,11 @@ function SitePreview({ palette }) {
     >
       <div
         className="h-full rounded-md border p-1.5 flex flex-col justify-between"
-        style={{ backgroundColor: surfaceBackground, borderColor }}
+        style={{ backgroundColor: elevatedSurface, borderColor }}
       >
-        <span className="block h-1 w-10 rounded-full bg-white/80" />
-        <span className="block h-1 w-7 rounded-full bg-white/40" />
-        <span className="block h-2.5 w-9 self-end rounded-full bg-violet-gradient" />
+        <span className="block h-1 w-10 rounded-full" style={{ backgroundColor: textPrimary }} />
+        <span className="block h-1 w-7 rounded-full" style={{ backgroundColor: textSecondary }} />
+        <span className="block h-2.5 w-9 self-end rounded-full bg-violet-gradient shadow-glow" />
       </div>
     </div>
   );
@@ -92,7 +92,8 @@ function SiteColorPicker() {
           צבע האתר שלי
         </h2>
         <p className="font-serif text-white/60 text-sm max-w-md mx-auto">
-          בחרי את הצבע שייתן לאתר את האווירה שלך. אני אתאים אותו אוטומטית למראה OLED כהה ונקי.
+          בחרי את הצבע שייתן לאתר את האווירה שלך. כל האתר יקבל את הצבע הזה, ואני אתאים את הטקסט והכרטיסים כך
+          שהכול יישאר קריא.
         </p>
       </div>
 

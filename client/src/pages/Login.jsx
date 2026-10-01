@@ -14,11 +14,15 @@ export default function Login() {
     !location.state.from.startsWith("//") &&
     location.state.from !== "/" &&
     location.state.from !== "/login" &&
-    location.state.from !== "/register"
+    location.state.from !== "/register" &&
+    location.state.from !== "/forgot-password"
       ? location.state.from
       : "/services";
 
-  const [username, setUsername] = useState("");
+  const resetDone = typeof location.state?.resetDone === "string" ? location.state.resetDone : "";
+  const [username, setUsername] = useState(() =>
+    typeof location.state?.username === "string" ? location.state.username : ""
+  );
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -110,6 +114,12 @@ export default function Login() {
           </div>
         </label>
 
+        <div className="flex justify-end -mt-2">
+          <Link to="/forgot-password" className="text-sm text-violet-200 hover:text-violet-100">
+            שכחתי סיסמה
+          </Link>
+        </div>
+
         <label className="flex items-center gap-3 text-sm text-white/65 cursor-pointer select-none">
           <input
             type="checkbox"
@@ -123,6 +133,10 @@ export default function Login() {
         {error ? (
           <p className="text-sm text-red-300 text-center" role="alert" aria-live="assertive">
             {String(error)}
+          </p>
+        ) : resetDone ? (
+          <p className="text-sm text-violet-200 text-center" role="status" aria-live="polite">
+            {resetDone}
           </p>
         ) : null}
 

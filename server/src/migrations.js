@@ -328,6 +328,34 @@ export const migrations = [
         CHECK (theme_palette_version IS NULL OR theme_palette_version BETWEEN 1 AND 100);
     `,
   },
+  {
+    id: "006_password_resets",
+    sql: `
+      -- "Forgot password" by SMS. Only hashes are stored: never the code, the reset token or a password.
+      CREATE TABLE IF NOT EXISTS password_resets (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        phone_e164 TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+        verified_at TIMESTAMPTZ,
+        reset_token_hash TEXT,
+        reset_expires_at TIMESTAMPTZ,
+        used_at TIMESTAMPTZ,
+        invalidated_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets (user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_password_resets_phone ON password_resets (phone_e164, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_password_resets_created ON password_resets (created_at);
+      CREATE UNIQUE INDEX IF NOT EXISTS password_resets_token_key
+        ON password_resets (reset_token_hash) WHERE reset_token_hash IS NOT NULL;
+      -- At most one live code per account: a new code must retire the previous one first (also under races).
+      CREATE UNIQUE INDEX IF NOT EXISTS password_resets_one_live
+        ON password_resets (user_id) WHERE used_at IS NULL AND invalidated_at IS NULL;
+    `,
+  },
 ];
 
 const LOCK_KEY = 4815162342;

@@ -101,6 +101,22 @@ export async function changePasswordRequest({ currentPassword, newPassword, conf
   return data;
 }
 
+/** "Forgot password" by SMS. The reset token lives only in page memory — never in the URL or storage. */
+export async function requestPasswordResetCode(phone) {
+  const { data } = await api.post("/auth/password-reset/request", { phone });
+  return data;
+}
+
+export async function verifyPasswordResetCode(phone, code) {
+  const { data } = await api.post("/auth/password-reset/verify", { phone, code });
+  return data;
+}
+
+export async function completePasswordResetRequest({ resetToken, newPassword, confirmPassword }) {
+  const { data } = await api.post("/auth/password-reset/complete", { resetToken, newPassword, confirmPassword });
+  return data;
+}
+
 export async function updatePhoneRequest(phone) {
   const { data } = await api.patch("/profile/phone", { phone });
   return mapUser(data.user);

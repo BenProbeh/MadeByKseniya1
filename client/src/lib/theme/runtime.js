@@ -6,14 +6,19 @@ export const THEME_CACHE_KEY = "mbk-theme";
 
 const CHANNELS = /^\d{1,3} \d{1,3} \d{1,3}$/;
 const RGBA = /^rgba\(\d{1,3}, \d{1,3}, \d{1,3}, (0(\.\d{1,3})?|1)\)$/;
+const FACTOR = /^[0-2](\.\d{1,3})?$/;
+const SCHEME = /^(normal|light|dark)$/;
+const GRADIENT = /^linear-gradient\(135deg(, #[0-9a-f]{6} \d{1,3}%){4}\)$/;
 const HEX = /^#[0-9a-f]{6}$/;
 
 /** Must stay in sync with the inline script in index.html (tests run both against the same inputs). */
 export function isSafeThemeValue(name, value) {
   if (typeof value !== "string") return false;
-  if (name.startsWith("--oled-")) return CHANNELS.test(value);
+  if (name.startsWith("--oled-") || name.startsWith("--ink-") || name === "--theme-fg") return CHANNELS.test(value);
+  if (name === "--theme-fg-soft" || name === "--theme-line") return FACTOR.test(value);
   if (name === "--theme-border") return RGBA.test(value);
-  if (name === "--theme-tint") return value === "transparent" || RGBA.test(value);
+  if (name === "--theme-scheme") return SCHEME.test(value);
+  if (name === "--theme-violet-gradient") return GRADIENT.test(value);
   return false;
 }
 
