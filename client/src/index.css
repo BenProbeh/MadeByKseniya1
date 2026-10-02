@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Hebrew text font. Only the Hebrew range is declared, so Latin text keeps the brand fonts that come
+ * before it in every stack. Secular One has a single weight; declaring it for 100–900 stops browsers
+ * from faking a bold version when font-semibold / font-bold is applied to Hebrew.
+ * The shekel sign (U+20AA) is left out of the range so prices keep their existing ₪.
+ */
+@font-face {
+  font-family: "Secular One";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource/secular-one/files/secular-one-hebrew-400-normal.woff2") format("woff2"),
+    url("@fontsource/secular-one/files/secular-one-hebrew-400-normal.woff") format("woff");
+  unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+25CC, U+FB1D-FB4F;
+}
+
 @layer base {
   /* Site default theme. A personal colour overrides these on <html>; removing the overrides restores them. */
   :root {
@@ -47,7 +63,7 @@
     color-scheme: var(--theme-scheme);
   }
 
-  /* Bitcount Ink is Latin-only — Hebrew glyphs fall through to Heebo automatically */
+  /* The Latin brand fonts have no Hebrew glyphs, so Hebrew falls through to Secular One in every stack */
 
   body {
     position: relative;
@@ -98,10 +114,9 @@
 }
 
 @layer components {
-  /* nav menu labels: Sekuya for Latin, Suez One (loud/rugged — same "Feeling" tag
-     as Sekuya on Google Fonts) for Hebrew, instead of the default Heebo body font */
+  /* nav menu labels: Sekuya for Latin, Secular One for Hebrew */
   .font-nav {
-    font-family: "Sekuya", "Suez One", Heebo, system-ui, sans-serif;
+    font-family: "Sekuya", "Secular One", Heebo, Arial, sans-serif;
   }
 
   .glass-panel {

@@ -56,9 +56,10 @@ export default {
         violet: { 300: ink("violet-300") },
       },
       fontFamily: {
-        sans: ["Sekuya", "Heebo", "system-ui", "sans-serif"],
-        serif: ["'Bitcount Ink Variable'", "Heebo", "system-ui", "sans-serif"],
-        neon: ["'Alex Brush'", "cursive"],
+        // Latin brand font first; Hebrew falls through to Secular One (index.css declares only its Hebrew range).
+        sans: ["Sekuya", "'Secular One'", "Heebo", "Arial", "sans-serif"],
+        serif: ["'Bitcount Ink Variable'", "'Secular One'", "Heebo", "Arial", "sans-serif"],
+        neon: ["'Alex Brush'", "'Secular One'", "cursive"],
       },
       fontSize: {
         "display-lg": ["clamp(3rem, 6.5vw, 6.75rem)", { lineHeight: "1.04", letterSpacing: "-0.01em" }],

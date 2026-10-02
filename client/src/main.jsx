@@ -7,7 +7,6 @@ import "@fontsource/heebo/500.css";
 import "@fontsource/heebo/700.css";
 import "@fontsource/heebo/900.css";
 import "@fontsource/sekuya";
-import "@fontsource/suez-one";
 import "@fontsource-variable/bitcount-ink/full.css";
 import "@fontsource/luckiest-guy";
 import "@fontsource/alex-brush";
