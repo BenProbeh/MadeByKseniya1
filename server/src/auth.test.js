@@ -8,6 +8,7 @@ import http from "node:http";
 import { createApp } from "./app.js";
 import db, { closeDb, startDb } from "./db.js";
 import { SESSION_COOKIE, hashToken } from "./auth.js";
+import { cookieFrom, latestCode, loginByEmail, registerVerified, request, uniqueEmail } from "./testSupport.js";
 
 // 1x1 transparent PNG
 const TINY_PNG_BASE64 =
@@ -17,75 +18,20 @@ function uniqueUser() {
   return `u_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-let phoneCounter = 0;
-function uniquePhone() {
-  phoneCounter += 1;
-  return `052${String(phoneCounter).padStart(7, "0")}`;
-}
-
-function request(server, { method = "GET", path = "/", body, cookies = [], headers = {} }) {
-  return new Promise((resolve, reject) => {
-    const addr = server.address();
-    const payload = body != null ? JSON.stringify(body) : null;
-    const req = http.request(
-      {
-        host: "127.0.0.1",
-        port: addr.port,
-        method,
-        path,
-        headers: {
-          "Content-Type": "application/json",
-          ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
-          ...(cookies.length ? { Cookie: cookies.join("; ") } : {}),
-          ...headers,
-        },
-      },
-      (res) => {
-        const chunks = [];
-        res.on("data", (c) => chunks.push(c));
-        res.on("end", () => {
-          const buffer = Buffer.concat(chunks);
-          const raw = buffer.toString("utf8");
-          let json = null;
-          try {
-            json = raw ? JSON.parse(raw) : null;
-          } catch {
-            json = raw;
-          }
-          const setCookie = res.headers["set-cookie"] || [];
-          resolve({ status: res.statusCode, headers: res.headers, setCookie, json, raw, buffer });
-        });
-      }
-    );
-    req.on("error", reject);
-    if (payload) req.write(payload);
-    req.end();
-  });
-}
-
-function cookieFrom(setCookie) {
-  const line = setCookie.find((c) => c.startsWith(`${SESSION_COOKIE}=`));
-  if (!line) return null;
-  return line.split(";")[0];
-}
-
-async function register(server, overrides = {}) {
-  const username = overrides.username || uniqueUser();
-  const res = await request(server, {
+function registerRaw(server, overrides = {}) {
+  return request(server, {
     method: "POST",
     path: "/api/auth/register",
     body: {
-      username,
+      username: uniqueUser(),
+      email: uniqueEmail("auth"),
       password: "strong-pass-1",
       confirmPassword: "strong-pass-1",
       firstName: "קסניה",
       lastName: "כהן",
-      phone: uniquePhone(),
-      rememberMe: false,
       ...overrides,
     },
   });
-  return { username, res, cookie: cookieFrom(res.setCookie) };
 }
 
 describe("auth + profile API (PostgreSQL)", () => {
@@ -95,6 +41,7 @@ describe("auth + profile API (PostgreSQL)", () => {
     process.env.NODE_ENV = "test";
     process.env.DATABASE_URL = "";
     process.env.PGLITE_DIR = "memory://";
+    process.env.EMAIL_PROVIDER = "memory";
     await startDb();
     server = http.createServer(createApp());
     await new Promise((r) => server.listen(0, "127.0.0.1", r));
@@ -108,8 +55,7 @@ describe("auth + profile API (PostgreSQL)", () => {
   it("health reports server + database connected", async () => {
     const res = await request(server, { path: "/api/health" });
     assert.equal(res.status, 200);
-    assert.deepEqual(res.json, { ok: true, database: "connected", ownerAssigned: false, sms: res.json.sms });
-    assert.ok(["ready", "paused", "incomplete", "off"].includes(res.json.sms));
+    assert.deepEqual(res.json, { ok: true, database: "connected", ownerAssigned: false, email: "ready" });
   });
 
   it("unknown /api route returns JSON 404, not HTML", async () => {
@@ -126,39 +72,41 @@ describe("auth + profile API (PostgreSQL)", () => {
     assert.ok(res.json.every((s) => typeof s.id === "number" && s.name_he));
   });
 
-  it("registers a user and sets httpOnly session cookie", async () => {
-    const { username, res, cookie } = await register(server, { rememberMe: true });
-    assert.equal(res.status, 201);
-    assert.equal(res.json.success, true);
-    assert.equal(res.json.user.username, username);
-    assert.equal(res.json.user.firstName, "קסניה");
-    assert.equal(res.json.user.lastName, "כהן");
-    assert.ok(!res.json.user.password_hash);
-    assert.ok(!res.json.password);
-    assert.ok(cookie);
-    assert.ok(res.setCookie.some((c) => /HttpOnly/i.test(c)));
-    assert.ok(res.setCookie.some((c) => /Max-Age=/i.test(c)));
+  it("sign-up waits for the email code, then signs in with an httpOnly session cookie", async () => {
+    const email = uniqueEmail("signup");
+    const reg = await registerRaw(server, { email: `  ${email.toUpperCase()} ` });
+    assert.equal(reg.status, 202);
+    assert.equal(reg.json.pendingVerification, true);
+    assert.equal(reg.json.email, email, "address is trimmed and lowercased");
+    assert.equal(cookieFrom(reg.setCookie), null, "no session before the code");
+    assert.ok(!reg.json.user);
 
-    // auto-login: the cookie from registration authenticates immediately
+    const code = await latestCode(email);
+    const verified = await request(server, {
+      method: "POST",
+      path: "/api/auth/verify-email",
+      body: { email, code, rememberMe: true },
+    });
+    assert.equal(verified.status, 200, verified.raw);
+    assert.equal(verified.json.signedIn, true);
+    assert.equal(verified.json.user.email, email);
+    assert.equal(verified.json.user.emailVerified, true);
+    assert.equal(verified.json.user.accountStatus, "active");
+    assert.ok(!verified.json.user.password_hash);
+    const cookie = cookieFrom(verified.setCookie);
+    assert.ok(cookie);
+    assert.ok(verified.setCookie.some((c) => /HttpOnly/i.test(c)));
+    assert.ok(verified.setCookie.some((c) => /Max-Age=/i.test(c)));
+
     const me = await request(server, { path: "/api/auth/me", cookies: [cookie] });
     assert.equal(me.status, 200);
-    assert.equal(me.json.user.username, username);
+    assert.equal(me.json.user.email, email);
+    assert.equal(me.json.emailDeliveryReady, true);
   });
 
   it("rejects duplicate username case-insensitively", async () => {
-    const { username } = await register(server);
-    const res = await request(server, {
-      method: "POST",
-      path: "/api/auth/register",
-      body: {
-        username: username.toUpperCase(),
-        password: "strong-pass-1",
-        confirmPassword: "strong-pass-1",
-        firstName: "אנה",
-        lastName: "לוי",
-        phone: uniquePhone(),
-      },
-    });
+    const { username } = await registerVerified(server);
+    const res = await registerRaw(server, { username: username.toUpperCase(), firstName: "אנה", lastName: "לוי" });
     assert.equal(res.status, 409);
     assert.equal(res.json.success, false);
     assert.equal(res.json.error?.code, "USERNAME_TAKEN");
@@ -169,85 +117,81 @@ describe("auth + profile API (PostgreSQL)", () => {
 
   it("concurrent duplicate registrations create exactly one user", async () => {
     const username = uniqueUser();
-    const results = await Promise.all([register(server, { username }), register(server, { username })]);
-    const statuses = results.map((r) => r.res.status).sort();
-    assert.deepEqual(statuses, [201, 409]);
+    const results = await Promise.all([registerRaw(server, { username }), registerRaw(server, { username })]);
+    assert.deepEqual(results.map((r) => r.status).sort(), [202, 409]);
     const { rows } = await db.query(`SELECT count(*)::int AS n FROM users WHERE username = $1`, [username]);
     assert.equal(rows[0].n, 1);
   });
 
-  it("rejects weak password and mismatched confirm", async () => {
-    const weak = await register(server, { password: "short", confirmPassword: "short" });
-    assert.equal(weak.res.status, 400);
-    assert.equal(weak.res.json.error?.code, "VALIDATION_ERROR");
+  it("rejects weak password, mismatched confirm and a bad email", async () => {
+    const weak = await registerRaw(server, { password: "short", confirmPassword: "short" });
+    assert.equal(weak.status, 400);
+    assert.equal(weak.json.error?.code, "VALIDATION_ERROR");
 
-    const mismatch = await register(server, { confirmPassword: "strong-pass-2" });
-    assert.equal(mismatch.res.status, 400);
-    assert.equal(mismatch.res.json.error?.message, "אימות הסיסמה אינו תואם.");
+    const mismatch = await registerRaw(server, { confirmPassword: "strong-pass-2" });
+    assert.equal(mismatch.status, 400);
+    assert.equal(mismatch.json.error?.message, "אימות הסיסמה אינו תואם.");
+
+    const badEmail = await registerRaw(server, { email: "not-an-email" });
+    assert.equal(badEmail.status, 400);
+    assert.equal(badEmail.json.error?.message, "כתובת האימייל לא נראית תקינה. כדאי לבדוק ולנסות שוב.");
+
+    const noEmail = await registerRaw(server, { email: "" });
+    assert.equal(noEmail.status, 400);
+    assert.equal(noEmail.json.error?.message, "יש להזין כתובת אימייל.");
   });
 
-  it("logs in, reads /me, logs out", async () => {
-    const { username } = await register(server, { firstName: "נועה", lastName: "בר" });
+  it("logs in by email, reads /me, logs out", async () => {
+    const { email } = await registerVerified(server, { firstName: "נועה", lastName: "בר" });
 
-    const login = await request(server, {
-      method: "POST",
-      path: "/api/auth/login",
-      body: { username, password: "strong-pass-1", rememberMe: false },
-    });
-    assert.equal(login.status, 200);
-    const cookie = cookieFrom(login.setCookie);
-    assert.ok(cookie);
+    const login = await loginByEmail(server, ` ${email.toUpperCase()} `);
+    assert.equal(login.res.status, 200);
+    assert.ok(login.cookie);
     // session cookie (no remember) has no Max-Age → ends with the browser session
-    assert.ok(!login.setCookie.some((c) => /Max-Age=/i.test(c)));
+    assert.ok(!login.res.setCookie.some((c) => /Max-Age=/i.test(c)));
 
-    const me = await request(server, { path: "/api/auth/me", cookies: [cookie] });
+    const me = await request(server, { path: "/api/auth/me", cookies: [login.cookie] });
     assert.equal(me.status, 200);
     assert.equal(me.json.user.firstName, "נועה");
 
-    const logout = await request(server, { method: "POST", path: "/api/auth/logout", cookies: [cookie] });
+    const logout = await request(server, { method: "POST", path: "/api/auth/logout", cookies: [login.cookie] });
     assert.equal(logout.status, 200);
 
-    const me2 = await request(server, { path: "/api/auth/me", cookies: [cookie] });
+    const me2 = await request(server, { path: "/api/auth/me", cookies: [login.cookie] });
     assert.equal(me2.status, 401);
   });
 
+  it("a verified account no longer signs in by username", async () => {
+    const { username } = await registerVerified(server);
+    const res = await request(server, { method: "POST", path: "/api/auth/login", body: { username, password: "strong-pass-1" } });
+    assert.equal(res.status, 401);
+  });
+
   it("remember-me login issues a 30-day persistent cookie", async () => {
-    const { username } = await register(server);
-    const login = await request(server, {
-      method: "POST",
-      path: "/api/auth/login",
-      body: { username, password: "strong-pass-1", rememberMe: true },
-    });
-    assert.equal(login.status, 200);
-    const line = login.setCookie.find((c) => c.startsWith(`${SESSION_COOKIE}=`));
+    const { email } = await registerVerified(server);
+    const login = await loginByEmail(server, email, "strong-pass-1", { rememberMe: true });
+    assert.equal(login.res.status, 200);
+    const line = login.res.setCookie.find((c) => c.startsWith(`${SESSION_COOKIE}=`));
     const maxAge = Number(/Max-Age=(\d+)/i.exec(line)?.[1]);
     assert.equal(maxAge, 30 * 24 * 60 * 60);
   });
 
   it("rejects wrong password for an existing user", async () => {
-    const { username } = await register(server);
-    const res = await request(server, {
-      method: "POST",
-      path: "/api/auth/login",
-      body: { username, password: "wrong-password" },
-    });
-    assert.equal(res.status, 401);
-    assert.equal(res.json.error?.code, "INVALID_CREDENTIALS");
-    assert.equal(cookieFrom(res.setCookie), null);
+    const { email } = await registerVerified(server);
+    const res = await loginByEmail(server, email, "wrong-password");
+    assert.equal(res.res.status, 401);
+    assert.equal(res.res.json.error?.code, "INVALID_CREDENTIALS");
+    assert.equal(res.cookie, null);
   });
 
-  it("rejects unknown user with generic message", async () => {
-    const res = await request(server, {
-      method: "POST",
-      path: "/api/auth/login",
-      body: { username: "nobody_here_xyz", password: "wrong-password" },
-    });
-    assert.equal(res.status, 401);
-    assert.equal(res.json.error?.message || res.json.errorMessage, "שם המשתמש או הסיסמה אינם נכונים");
+  it("rejects unknown user with the same generic message", async () => {
+    const res = await loginByEmail(server, "nobody-here@example.com", "wrong-password");
+    assert.equal(res.res.status, 401);
+    assert.equal(res.res.json.error?.message, "האימייל או הסיסמה אינם נכונים.");
   });
 
   it("protects profile and scopes measurements to user", async () => {
-    const { res: reg, cookie } = await register(server, { rememberMe: true });
+    const { id, cookie } = await registerVerified(server, { rememberMe: true });
 
     const denied = await request(server, { path: "/api/profile" });
     assert.equal(denied.status, 401);
@@ -273,7 +217,7 @@ describe("auth + profile API (PostgreSQL)", () => {
       },
     });
     assert.equal(save.status, 201);
-    assert.equal(save.json.userId, reg.json.user.id);
+    assert.equal(save.json.userId, id);
     assert.equal(typeof save.json.id, "number");
 
     const meas = await request(server, { path: "/api/profile/measurements", cookies: [cookie] });
@@ -313,11 +257,9 @@ describe("auth + profile API (PostgreSQL)", () => {
   });
 
   it("stores only bcrypt password hash and sha256 session token hash", async () => {
-    const { username, cookie } = await register(server, { rememberMe: true });
+    const { username, cookie } = await registerVerified(server, { rememberMe: true });
     const rawToken = cookie.split("=")[1];
-    const session = await db.query(`SELECT token_hash FROM user_sessions WHERE token_hash = $1`, [
-      hashToken(rawToken),
-    ]);
+    const session = await db.query(`SELECT token_hash FROM user_sessions WHERE token_hash = $1`, [hashToken(rawToken)]);
     assert.equal(session.rows.length, 1);
     assert.notEqual(session.rows[0].token_hash, rawToken);
 
@@ -327,7 +269,7 @@ describe("auth + profile API (PostgreSQL)", () => {
   });
 
   it("uploads, serves and removes an avatar stored in the database", async () => {
-    const { cookie } = await register(server);
+    const { cookie } = await registerVerified(server);
     const up = await request(server, {
       method: "POST",
       path: "/api/profile/avatar",
@@ -351,7 +293,7 @@ describe("auth + profile API (PostgreSQL)", () => {
   });
 
   it("rejects oversized avatar payload", async () => {
-    const { cookie } = await register(server);
+    const { cookie } = await registerVerified(server);
     const huge = "a".repeat(6 * 1024 * 1024);
     const res = await request(server, {
       method: "POST",
@@ -362,19 +304,19 @@ describe("auth + profile API (PostgreSQL)", () => {
     assert.ok(res.status === 400 || res.status === 413);
   });
 
-  it("a booking becomes a pending request and holds the slot", async () => {
-    const { cookie } = await register(server);
+  it("a booking becomes a pending request and holds the slot (phone is optional)", async () => {
+    const { cookie } = await registerVerified(server);
     const date = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const avail = await request(server, { path: `/api/appointments/availability?date=${date}&serviceId=1` });
     assert.equal(avail.status, 200);
     assert.ok(avail.json.slots.includes("10:00"));
 
-    const body = { clientName: "בדיקה", phone: "0509999999", serviceId: 1, date, time: "10:00" };
+    const body = { clientName: "בדיקה", serviceId: 1, date, time: "10:00" };
     const anonymous = await request(server, { method: "POST", path: "/api/appointments", body });
     assert.equal(anonymous.status, 401);
 
     const first = await request(server, { method: "POST", path: "/api/appointments", body, cookies: [cookie] });
-    assert.equal(first.status, 201);
+    assert.equal(first.status, 201, first.raw);
     assert.equal(first.json.appointment.status, "pending");
     const second = await request(server, { method: "POST", path: "/api/appointments", body, cookies: [cookie] });
     assert.equal(second.status, 409);

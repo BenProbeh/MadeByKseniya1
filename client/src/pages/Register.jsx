@@ -3,16 +3,8 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
 import { getApiErrorMessage, isLatinUsername, USERNAME_LATIN_MESSAGE } from "../lib/authErrors.js";
-import { normalizePhone } from "../lib/phone.js";
-
-const AFTER_AUTH_PATH = "/services";
-
-function safeInternalPath(path) {
-  if (typeof path !== "string") return AFTER_AUTH_PATH;
-  if (!path.startsWith("/") || path.startsWith("//")) return AFTER_AUTH_PATH;
-  if (path === "/" || path === "/login" || path === "/register") return AFTER_AUTH_PATH;
-  return path;
-}
+import { normalizeEmail } from "../lib/email.js";
+import { safeInternalPath } from "../lib/authPaths.js";
 
 export default function Register() {
   const { register, authenticated, loading: authLoading } = useAuth();
@@ -23,8 +15,8 @@ export default function Register() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [username, setUsername] = useState("");
-  const [phone, setPhone] = useState("");
-  const [phoneTouched, setPhoneTouched] = useState(false);
+  const [email, setEmail] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
@@ -47,8 +39,8 @@ export default function Register() {
     return <Navigate to={from} replace />;
   }
 
-  const phoneCheck = normalizePhone(phone);
-  const phoneError = phoneTouched && !phoneCheck.ok ? phoneCheck.error : "";
+  const emailCheck = normalizeEmail(email);
+  const emailError = emailTouched && !emailCheck.ok ? emailCheck.error : "";
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -60,33 +52,43 @@ export default function Register() {
       setError(USERNAME_LATIN_MESSAGE);
       return;
     }
-    if (!phoneCheck.ok) {
-      setPhoneTouched(true);
-      setError(phoneCheck.error);
+    if (!emailCheck.ok) {
+      setEmailTouched(true);
+      setError(emailCheck.error);
+      return;
+    }
+    if (password.length < 8) {
+      setError("הסיסמה חייבת להכיל לפחות 8 תווים.");
       return;
     }
     if (password !== confirmPassword) {
-      setError("יש לבדוק את הפרטים שמילאת ולנסות שוב.");
+      setError("אימות הסיסמה אינו תואם.");
       return;
     }
 
     setSubmitting(true);
     try {
-      const user = await register({
+      const pending = await register({
         firstName,
         lastName,
         username,
-        phone: phoneCheck.e164,
+        email: emailCheck.email,
         password,
         confirmPassword,
-        rememberMe,
       });
-      if (!user?.id) {
-        throw new Error("יצירת החשבון לא הושלמה");
-      }
+      const start = Date.now();
       setPassword("");
       setConfirmPassword("");
-      navigate(from, { replace: true });
+      navigate("/verify-email", {
+        replace: true,
+        state: {
+          email: pending.email,
+          expiresAt: start + pending.expiresInSeconds * 1000,
+          resendAt: start + pending.resendAfterSeconds * 1000,
+          rememberMe,
+          from,
+        },
+      });
     } catch (err) {
       setError(getApiErrorMessage(err, "לא הצלחתי ליצור את החשבון כרגע. נסי שוב בעוד רגע."));
     } finally {
@@ -152,28 +154,31 @@ export default function Register() {
 
         <div className="space-y-2">
         <label className="block space-y-2 text-sm text-white/70">
-          <span>מספר טלפון נייד</span>
+          <span>אימייל</span>
           <input
-            type="tel"
-            name="tel"
-            autoComplete="tel"
-            inputMode="tel"
+            type="email"
+            name="email"
+            autoComplete="email"
+            inputMode="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             dir="ltr"
-            placeholder="050-1234567"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            onBlur={() => setPhoneTouched(Boolean(phone.trim()) || phoneTouched)}
-            aria-invalid={Boolean(phoneError)}
-            aria-describedby="register-phone-help"
+            placeholder="name@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onBlur={() => setEmailTouched(Boolean(email.trim()) || emailTouched)}
+            aria-invalid={Boolean(emailError)}
+            aria-describedby="register-email-help"
             className={`w-full bg-white/5 border rounded-xl px-4 py-3 text-base text-right outline-none focus:border-violet-400/60 ${
-              phoneError ? "border-amber-300/60" : "border-white/10"
+              emailError ? "border-amber-300/60" : "border-white/10"
             }`}
-            maxLength={20}
+            maxLength={254}
             required
           />
         </label>
-          <p id="register-phone-help" className={`text-xs ${phoneError ? "text-amber-200" : "text-white/40"}`} aria-live="polite">
-            {phoneError || (phoneCheck.ok ? `יישמר כ־${phoneCheck.display}` : "נייד ישראלי, למשל 050-1234567.")}
+          <p id="register-email-help" className={`text-xs ${emailError ? "text-amber-200" : "text-white/40"}`} aria-live="polite">
+            {emailError || "אשלח לכאן קוד אימות כדי להפעיל את החשבון."}
           </p>
         </div>
 

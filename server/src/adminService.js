@@ -9,7 +9,7 @@ export const LIST_SORTS = Object.freeze(["score", "newest", "oldest", "activity"
 const SUMMARY_SELECT = `
   SELECT u.id, u.username, u.first_name, u.last_name, u.avatar_url, u.role,
          u.created_at, u.last_login_at, u.role_updated_at, u.deleted_at,
-         u.phone_e164, u.phone_display, u.phone_verified,
+         u.phone_e164, u.phone_display, u.email, u.email_verified, u.account_status,
          GREATEST(u.last_login_at, sess.last_used_at) AS last_active_at,
          EXISTS (
            SELECT 1 FROM measurement_profiles mp WHERE mp.user_id = u.id AND mp.is_active = 1
@@ -44,8 +44,10 @@ function mapCustomer(row) {
     lastName: row.last_name,
     avatarUrl: row.avatar_url || null,
     role: row.role,
+    email: row.email || null,
+    emailVerified: Boolean(row.email_verified),
+    accountStatus: row.account_status || "active",
     ...customerPhone(row),
-    phoneVerified: Boolean(row.phone_verified),
     createdAt: row.created_at,
     lastLoginAt: row.last_login_at || null,
     lastActiveAt: row.last_active_at || null,
@@ -87,7 +89,8 @@ export async function listCustomers({
   pageSize = 20,
 }) {
   const params = [];
-  const conditions = [removed ? "u.deleted_at IS NOT NULL" : "u.deleted_at IS NULL"];
+  // Sign-ups that never entered their email code aren't customers yet.
+  const conditions = [removed ? "u.deleted_at IS NOT NULL" : "u.deleted_at IS NULL AND u.account_status = 'active'"];
 
   if (search) {
     params.push(`%${escapeLike(search)}%`);
@@ -96,6 +99,7 @@ export async function listCustomers({
       `u.first_name ILIKE ${like}`,
       `u.last_name ILIKE ${like}`,
       `u.username ILIKE ${like}`,
+      `u.email_normalized ILIKE ${like}`,
       `(u.first_name || ' ' || u.last_name) ILIKE ${like}`,
     ];
     const digits = search.replace(/\D/g, "");

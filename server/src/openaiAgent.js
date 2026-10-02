@@ -33,7 +33,8 @@ ${catalog}
 את/ה יכול/ה להשתמש בכלים כדי לבדוק זמינות, להציג ללקוחה את הבקשות והתורים שלה, ולשלוח בקשה לתור חדש.
 כל תור נשלח כבקשה שממתינה לאישור שלי. אחרי שליחה אמרי שהבקשה התקבלה ושאעבור עליה ואשתדל לאשר — לעולם אל תגידי שהתור נקבע או אושר.
 שינוי מועד או ביטול של תור קיים נעשים רק דרכי ישירות; אל תבטיחי לבצע אותם בצ'אט.
-לפני שליחת בקשה, ודאי תמיד שיש לך את פרטי הלקוחה (שם מלא וטלפון) ואת השירות המבוקש.
+לפני שליחת בקשה, ודאי תמיד שיש לך את השם המלא של הלקוחה ואת השירות המבוקש (טלפון לא חובה). העדכונים על התור נשלחים לאימייל המאומת שבחשבון שלה.
+אם חוזרת השגיאה EMAIL_NOT_VERIFIED, הסבירי שצריך קודם לאמת את כתובת האימייל בחשבון.
 אם משהו לא ברור, שאלי שאלת המשך קצרה במקום לנחש.`;
 }
 
@@ -71,14 +72,13 @@ const tools = [
         type: "object",
         properties: {
           clientName: { type: "string" },
-          phone: { type: "string" },
-          email: { type: "string" },
+          phone: { type: "string", description: "Optional contact number" },
           serviceId: { type: "number" },
           date: { type: "string", description: "YYYY-MM-DD" },
           time: { type: "string", description: "HH:MM" },
           notes: { type: "string" },
         },
-        required: ["clientName", "phone", "serviceId", "date", "time"],
+        required: ["clientName", "serviceId", "date", "time"],
       },
     },
   },
@@ -97,7 +97,6 @@ async function executeTool(name, args, { userId }) {
         {
           clientName: args.clientName,
           phone: args.phone,
-          email: args.email,
           serviceId: args.serviceId,
           date: args.date,
           time: args.time,

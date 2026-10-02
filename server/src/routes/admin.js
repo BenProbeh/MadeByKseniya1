@@ -18,6 +18,7 @@ import {
   STAFF_SCOPES,
   changeAppointmentStatus,
   listAppointmentsForStaff,
+  resendAppointmentEmail,
 } from "../appointmentsService.js";
 import { sendStatusChangeError } from "./appointmentStatus.js";
 
@@ -224,12 +225,29 @@ async function applyStatus(req, res, nextStatus) {
   }
 }
 
-router.post("/appointments/:id/confirm", asyncRoute((req, res) => applyStatus(req, res, "confirmed")));
+router.post("/appointments/:id/approve", asyncRoute((req, res) => applyStatus(req, res, "manager_approved")));
 router.post("/appointments/:id/reject", asyncRoute((req, res) => applyStatus(req, res, "rejected")));
 router.post("/appointments/:id/cancel", asyncRoute((req, res) => applyStatus(req, res, "cancelled")));
 router.patch(
   "/appointments/:id/status",
   asyncRoute((req, res) => applyStatus(req, res, typeof req.body?.status === "string" ? req.body.status : ""))
+);
+
+/** Re-sends the customer's email for the booking's current status, only after a failed attempt. */
+router.post(
+  "/appointments/:id/resend-email",
+  asyncRoute(async (req, res) => {
+    const id = parseUserId(req.params.id);
+    if (!id) return badRequest(res, "מזהה תור לא חוקי.");
+    try {
+      const { sent, appointment } = await resendAppointmentEmail(id);
+      if (!sent) return reply(res, 502, "EMAIL_SEND_FAILED", "גם הפעם המייל לא נשלח. כדאי לבדוק את הגדרות המייל ולנסות שוב מאוחר יותר.");
+      return res.json({ success: true, appointment });
+    } catch (err) {
+      if (sendStatusChangeError(res, err)) return undefined;
+      throw err;
+    }
+  })
 );
 
 router.patch(

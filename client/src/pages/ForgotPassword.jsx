@@ -1,42 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
+import CodeStep, { AUTH_INPUT_CLASS, Feedback } from "../components/auth/CodeStep.jsx";
 import {
   completePasswordResetRequest,
   requestPasswordResetCode,
   verifyPasswordResetCode,
 } from "../lib/authApi.js";
-import { getApiErrorMessage } from "../lib/authErrors.js";
-import { normalizePhone } from "../lib/phone.js";
+import { apiErrorCode, getApiErrorMessage } from "../lib/authErrors.js";
+import { normalizeEmail } from "../lib/email.js";
 
-const INPUT_CLASS =
-  "w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60";
-const PHONE_INVALID = "מספר הטלפון לא נראה תקין. אפשר לכתוב נייד ישראלי, למשל 050-1234567.";
-const SENT_MESSAGE = "אם המספר קיים במערכת, אשלח אליו קוד להמשך.";
-
-/** Server message for the codes this page handles itself (503 would otherwise map to a generic text). */
-function resetError(err, fallback) {
-  const data = err?.response?.data;
-  const code = data?.error?.code;
-  if (code === "SMS_UNAVAILABLE" && typeof data.error.message === "string") return data.error.message;
-  return getApiErrorMessage(err, fallback);
-}
-
-function useNow(active) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!active) return undefined;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [active]);
-  return now;
-}
-
-const clock = (ms) => {
-  const total = Math.max(0, Math.ceil(ms / 1000));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-};
+const SENT_MESSAGE = "אם קיים חשבון עם כתובת האימייל הזאת, שלחתי אליו קוד לאיפוס הסיסמה.";
 
 function PasswordField({ id, label, autoComplete, value, onChange, describedBy }) {
   const [visible, setVisible] = useState(false);
@@ -54,7 +29,7 @@ function PasswordField({ id, label, autoComplete, value, onChange, describedBy }
           value={value}
           onChange={(e) => onChange(e.target.value)}
           aria-describedby={describedBy}
-          className={`${INPUT_CLASS} pe-12`}
+          className={`${AUTH_INPUT_CLASS} pe-12`}
           maxLength={128}
           required
         />
@@ -64,46 +39,17 @@ function PasswordField({ id, label, autoComplete, value, onChange, describedBy }
   );
 }
 
-function Feedback({ error, info }) {
-  if (error) {
-    return (
-      <p className="text-sm text-red-300 text-center" role="alert" aria-live="assertive">
-        {error}
-      </p>
-    );
-  }
-  if (info) {
-    return (
-      <p className="text-sm text-violet-200 text-center" role="status" aria-live="polite">
-        {info}
-      </p>
-    );
-  }
-  return null;
-}
-
 export default function ForgotPassword() {
   const { authenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const [step, setStep] = useState("phone");
-  const [phoneInput, setPhoneInput] = useState("");
-  const [phone, setPhone] = useState(null);
-  const [code, setCode] = useState("");
-  const [expiresAt, setExpiresAt] = useState(0);
-  const [resendAt, setResendAt] = useState(0);
+  const [step, setStep] = useState("email");
+  const [emailInput, setEmailInput] = useState("");
+  const [sent, setSent] = useState(null);
   const [resetToken, setResetToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [info, setInfo] = useState("");
-  const codeRef = useRef(null);
-  const autoSubmitted = useRef("");
-  const now = useNow(step === "code");
-
-  useEffect(() => {
-    if (step === "code") codeRef.current?.focus();
-  }, [step]);
 
   if (authLoading) {
     return (
@@ -114,73 +60,38 @@ export default function ForgotPassword() {
   }
   if (authenticated) return <Navigate to="/profile" replace />;
 
-  const expired = step === "code" && expiresAt > 0 && now >= expiresAt;
-  const resendIn = Math.max(0, resendAt - now);
-
-  async function sendCode(target) {
-    setBusy(true);
-    setError("");
-    try {
-      const data = await requestPasswordResetCode(target.e164);
-      const start = Date.now();
-      setPhone(target);
-      setExpiresAt(start + (Number(data?.expiresInSeconds) || 600) * 1000);
-      setResendAt(start + (Number(data?.resendAfterSeconds) || 60) * 1000);
-      setCode("");
-      autoSubmitted.current = "";
-      setInfo(data?.message || SENT_MESSAGE);
-      setStep("code");
-    } catch (err) {
-      const retry = Number(err?.response?.data?.retryAfterSeconds);
-      if (retry > 0 && phone?.e164 === target.e164) setResendAt(Date.now() + retry * 1000);
-      setError(resetError(err, "לא הצלחתי לשלוח קוד כרגע. אפשר לנסות שוב בעוד רגע."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function onPhoneSubmit(e) {
+  async function onEmailSubmit(e) {
     e.preventDefault();
     if (busy) return;
-    const checked = normalizePhone(phoneInput);
+    const checked = normalizeEmail(emailInput);
     if (!checked.ok) {
-      setError(checked.error === "יש להזין מספר טלפון." ? checked.error : PHONE_INVALID);
-      return;
-    }
-    void sendCode(checked);
-  }
-
-  async function submitCode(value) {
-    if (busy || expired) return;
-    if (!/^\d{6}$/.test(value)) {
-      setError("הקוד צריך להכיל 6 ספרות.");
+      setError(checked.error);
       return;
     }
     setBusy(true);
     setError("");
     try {
-      const data = await verifyPasswordResetCode(phone.e164, value);
-      setResetToken(data.resetToken);
-      setCode("");
-      setInfo("");
-      setStep("password");
+      const data = await requestPasswordResetCode(checked.email);
+      const start = Date.now();
+      setSent({
+        email: checked.email,
+        expiresAt: start + (Number(data?.expiresInSeconds) || 600) * 1000,
+        resendAt: start + (Number(data?.resendAfterSeconds) || 60) * 1000,
+        info: data?.message || SENT_MESSAGE,
+      });
+      setStep("code");
     } catch (err) {
-      const left = err?.response?.data?.attemptsLeft;
-      const message = resetError(err, "לא הצלחתי לבדוק את הקוד כרגע. אפשר לנסות שוב.");
-      setError(left > 0 ? `${message} נשארו עוד ${left} ניסיונות.` : message);
+      setError(getApiErrorMessage(err, "לא הצלחתי לשלוח קוד כרגע. אפשר לנסות שוב בעוד רגע."));
     } finally {
       setBusy(false);
     }
   }
 
-  function onCodeChange(e) {
-    const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
-    setCode(digits);
-    if (error) setError("");
-    if (digits.length === 6 && autoSubmitted.current !== digits) {
-      autoSubmitted.current = digits;
-      void submitCode(digits);
-    }
+  async function submitCode(code) {
+    const data = await verifyPasswordResetCode(sent.email, code);
+    setResetToken(data.resetToken);
+    setError("");
+    setStep("password");
   }
 
   const mismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
@@ -200,17 +111,17 @@ export default function ForgotPassword() {
         replace: true,
         state: {
           resetDone: data?.message || "הסיסמה עודכנה בהצלחה. אפשר להתחבר עם הסיסמה החדשה.",
-          username: typeof data?.username === "string" ? data.username : "",
+          email: typeof data?.email === "string" ? data.email : sent?.email || "",
         },
       });
     } catch (err) {
-      if (err?.response?.data?.error?.code === "RESET_EXPIRED") {
+      if (apiErrorCode(err) === "RESET_EXPIRED") {
         setResetToken("");
         setNewPassword("");
         setConfirmPassword("");
-        setStep("phone");
+        setStep("email");
       }
-      setError(resetError(err, "לא הצלחתי לעדכן את הסיסמה כרגע. אפשר לנסות שוב בעוד רגע."));
+      setError(getApiErrorMessage(err, "לא הצלחתי לעדכן את הסיסמה כרגע. אפשר לנסות שוב בעוד רגע."));
     } finally {
       setBusy(false);
     }
@@ -228,103 +139,57 @@ export default function ForgotPassword() {
         </Link>
         <h1 className="font-serif text-2xl text-white mt-4">שכחתי סיסמה</h1>
         <p className="font-serif text-sm text-white/60 mt-2">
-          {step === "phone" && "אין בעיה. אשלח לך קוד ב־SMS למספר שאיתו נרשמת."}
-          {step === "code" && "הקלידי את הקוד בן 6 הספרות שקיבלת ב־SMS."}
+          {step === "email" && "אין בעיה. אשלח לך קוד לכתובת האימייל שאיתה נרשמת."}
+          {step === "code" && "הקלידי את הקוד בן 6 הספרות ששלחתי לך במייל."}
           {step === "password" && "הקוד אומת. נשאר רק לבחור סיסמה חדשה."}
         </p>
       </div>
 
-      {step === "phone" && (
-        <form onSubmit={onPhoneSubmit} className="glass-panel p-6 md:p-8 space-y-5" noValidate>
-          <label className="block space-y-2 text-sm text-white/70" htmlFor="reset-phone">
-            <span>מספר טלפון</span>
+      {step === "email" && (
+        <form onSubmit={onEmailSubmit} className="glass-panel p-6 md:p-8 space-y-5" noValidate>
+          <label className="block space-y-2 text-sm text-white/70" htmlFor="reset-email">
+            <span>אימייל</span>
             <input
-              id="reset-phone"
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
+              id="reset-email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               dir="ltr"
-              placeholder="050-1234567"
-              value={phoneInput}
+              placeholder="name@example.com"
+              value={emailInput}
               onChange={(e) => {
-                setPhoneInput(e.target.value);
+                setEmailInput(e.target.value);
                 if (error) setError("");
               }}
-              aria-describedby="reset-phone-help"
-              className={`${INPUT_CLASS} text-right`}
-              maxLength={20}
+              className={`${AUTH_INPUT_CLASS} text-right`}
+              maxLength={254}
               required
             />
           </label>
-          <p id="reset-phone-help" className="text-xs text-white/40">
-            נייד ישראלי, למשל 050-1234567 או ‎+972501234567.
-          </p>
           <Feedback error={error} />
           <button type="submit" className="btn-violet w-full" disabled={busy}>
-            {busy ? "שולחת…" : "שליחת קוד ב־SMS"}
+            {busy ? "שולחת…" : "שליחת קוד לאיפוס"}
           </button>
         </form>
       )}
 
-      {step === "code" && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void submitCode(code);
+      {step === "code" && sent && (
+        <CodeStep
+          key={sent.expiresAt}
+          email={sent.email}
+          expiresAt={sent.expiresAt}
+          resendAt={sent.resendAt}
+          info={sent.info}
+          onSubmit={submitCode}
+          onResend={() => requestPasswordResetCode(sent.email)}
+          onChangeEmail={() => {
+            setStep("email");
+            setError("");
           }}
-          className="glass-panel p-6 md:p-8 space-y-5"
-          noValidate
-        >
-          <Feedback info={!error ? info : ""} />
-          <label className="block space-y-2 text-sm text-white/70 text-center" htmlFor="reset-code">
-            <span>קוד אימות</span>
-            <input
-              id="reset-code"
-              ref={codeRef}
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              pattern="[0-9]*"
-              dir="ltr"
-              value={code}
-              onChange={onCodeChange}
-              maxLength={12}
-              aria-describedby="reset-code-timer"
-              className={`${INPUT_CLASS} text-center text-2xl tracking-[0.5em] font-semibold`}
-              disabled={expired}
-              required
-            />
-          </label>
-          <p id="reset-code-timer" className="text-xs text-white/60 text-center" aria-live="polite">
-            {expired ? "תוקף הקוד הסתיים. אפשר לבקש קוד חדש." : `הקוד תקף עוד ${clock(expiresAt - now)} דקות.`}
-          </p>
-          <Feedback error={error} />
-          <button type="submit" className="btn-violet w-full" disabled={busy || expired || code.length !== 6}>
-            {busy ? "בודקת…" : "אימות הקוד"}
-          </button>
-          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-            <button
-              type="button"
-              className="text-violet-200 hover:text-violet-100 disabled:text-white/40 disabled:cursor-not-allowed"
-              disabled={busy || resendIn > 0}
-              onClick={() => void sendCode(phone)}
-            >
-              {resendIn > 0 ? `שליחת קוד מחדש בעוד ${clock(resendIn)}` : "שליחת קוד מחדש"}
-            </button>
-            <button
-              type="button"
-              className="text-white/60 hover:text-white"
-              disabled={busy}
-              onClick={() => {
-                setStep("phone");
-                setError("");
-                setInfo("");
-              }}
-            >
-              שינוי המספר
-            </button>
-          </div>
-        </form>
+        />
       )}
 
       {step === "password" && (

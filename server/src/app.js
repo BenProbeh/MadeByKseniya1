@@ -6,15 +6,17 @@ import servicesRouter from "./routes/services.js";
 import appointmentsRouter from "./routes/appointments.js";
 import chatRouter from "./routes/chat.js";
 import measurementsRouter from "./routes/measurements.js";
-import authRouter from "./routes/auth.js";
+import { createAuthRouter } from "./routes/auth.js";
 import { createPasswordResetRouter } from "./routes/passwordReset.js";
 import profileRouter from "./routes/profile.js";
+import { createProfileEmailRouter } from "./routes/profileEmail.js";
 import adminRouter from "./routes/admin.js";
 import ownerRouter from "./routes/owner.js";
 import { adminContentRouter, publicContentRouter } from "./routes/content.js";
 import db, { pingDb } from "./db.js";
 import { hasOwner } from "./roles.js";
-import { smsSetupProblems, smsStatus } from "./sms.js";
+import { emailSetupProblems, emailStatus, handleResendWebhook } from "./email/mailer.js";
+import { createCodeLimits } from "./codeLimits.js";
 import { asyncRoute, sendServiceUnavailable } from "./http.js";
 import { loadAvatar } from "./storage/avatarStorage.js";
 
@@ -40,6 +42,17 @@ export function createApp() {
     })
   );
 
+  // Signature verification needs the exact raw bytes, so this route is mounted before the JSON parser.
+  app.post(
+    "/api/webhooks/resend",
+    express.raw({ type: "*/*", limit: "256kb" }),
+    asyncRoute(async (req, res) => {
+      const payload = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : "";
+      const { status } = await handleResendWebhook(payload, req.headers);
+      res.status(status).json({ ok: status === 200 });
+    })
+  );
+
   app.use(express.json({ limit: "2mb" }));
   app.use(cookieParser());
 
@@ -48,13 +61,13 @@ export function createApp() {
     const connected = await pingDb();
     if (connected) {
       const ownerAssigned = await hasOwner(db).catch(() => null);
-      const smsSetup = smsSetupProblems();
+      const emailSetup = emailSetupProblems();
       return res.json({
         ok: true,
         database: "connected",
         ownerAssigned,
-        sms: smsStatus(),
-        ...(smsSetup.length ? { smsSetup } : {}),
+        email: emailStatus(),
+        ...(emailSetup.length ? { emailSetup } : {}),
       });
     }
     return res.status(503).json({ ok: false, database: "disconnected" });
@@ -77,8 +90,10 @@ export function createApp() {
     next();
   });
 
-  app.use("/api/auth/password-reset", createPasswordResetRouter());
-  app.use("/api/auth", authRouter);
+  const codeLimits = createCodeLimits();
+  app.use("/api/auth/password-reset", createPasswordResetRouter(codeLimits));
+  app.use("/api/auth", createAuthRouter(codeLimits));
+  app.use("/api/profile/email", createProfileEmailRouter(codeLimits));
   app.use("/api/profile", profileRouter);
   app.use("/api/admin/content", adminContentRouter);
   app.use("/api/admin", adminRouter);

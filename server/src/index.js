@@ -2,10 +2,10 @@ import { config, reportConfigProblems } from "./config.js";
 import { createApp } from "./app.js";
 import { closeDb, startDb } from "./db.js";
 import { backfillAppointmentPhones } from "./appointmentsService.js";
-import { reportSmsSetup } from "./sms.js";
+import { reportEmailSetup } from "./email/mailer.js";
 
 reportConfigProblems();
-reportSmsSetup();
+reportEmailSetup();
 
 const app = createApp();
 const server = app.listen(config.port, "0.0.0.0", () => {

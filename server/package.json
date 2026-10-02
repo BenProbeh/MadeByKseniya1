@@ -22,7 +22,8 @@
     "libphonenumber-js": "^1.13.14",
     "multer": "^2.4.0",
     "openai": "^4.67.3",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "resend": "^6.32.0"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

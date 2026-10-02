@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { format } from "date-fns";
 import Calendar from "../components/Calendar.jsx";
 import { getServices, getAvailability, createAppointmentRequest, fetchMyAppointments } from "../lib/api.js";
@@ -22,9 +22,12 @@ const SLOT_TAKEN_NOTICE = "השעה שבחרת נתפסה בינתיים. אפש
 
 const SLOT_STATE_TEXT = { free: "פנוי", pending: "ממתין לאישור", booked: "תפוס" };
 
-/** Israeli phone: digits only after stripping spaces/dashes; 9–10 local digits, or 972 + 8–9. */
+const EMAIL_NOT_VERIFIED_TEXT = "כדי לשלוח בקשה לתור צריך קודם לאמת את כתובת האימייל בחשבון.";
+
+/** Optional contact phone; when given: 9–10 local digits, or 972 + 8–9. */
 function isValidPhone(phone) {
   const digits = String(phone).replace(/\D/g, "");
+  if (!digits) return true;
   if (digits.startsWith("972")) {
     return digits.length >= 11 && digits.length <= 12;
   }
@@ -111,9 +114,9 @@ function BookingForm({
   const [form, setForm] = useState(() => ({
     clientName: [user?.firstName, user?.lastName].filter(Boolean).join(" "),
     phone: user?.phone || "",
-    email: "",
     notes: initialNotes || "",
   }));
+  const emailReady = Boolean(user?.emailVerified);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState("");
@@ -216,8 +219,12 @@ function BookingForm({
   async function handleSubmit(e) {
     e.preventDefault();
     if (submittingRef.current || !serviceId || !dateStr || !time) return;
+    if (!emailReady) {
+      setError(EMAIL_NOT_VERIFIED_TEXT);
+      return;
+    }
     if (!isValidPhone(form.phone)) {
-      setError("נא להזין מספר טלפון תקין (ספרות בלבד).");
+      setError("מספר הטלפון לא נראה תקין. אפשר גם להשאיר את השדה ריק.");
       return;
     }
     submittingRef.current = true;
@@ -233,8 +240,7 @@ function BookingForm({
       }
       const { appointment } = await createAppointmentRequest({
         clientName: form.clientName,
-        phone: form.phone,
-        email: form.email || undefined,
+        phone: form.phone.trim() || undefined,
         serviceId: Number(serviceId),
         date: dateStr,
         time,
@@ -275,6 +281,14 @@ function BookingForm({
           {label} · {formatCalendarDay(requested.date)} בשעה {requested.time}
         </p>
         <p className="text-white/45 text-sm mt-2">הבקשה ממתינה לאישור. אפשר לראות את הסטטוס שלה בפרופיל.</p>
+        {user?.email && (
+          <p className="text-white/45 text-sm mt-1">
+            פרטי הבקשה נשלחים גם למייל{" "}
+            <bdi dir="ltr" className="break-all">
+              {user.email}
+            </bdi>
+          </p>
+        )}
 
         <div className="mt-8 pt-6 border-t border-white/[0.08] flex flex-col items-center gap-3">
           <a
@@ -376,28 +390,35 @@ function BookingForm({
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
             />
             <input
-              required
               type="tel"
               inputMode="numeric"
               autoComplete="tel"
-              placeholder="טלפון"
+              placeholder="טלפון (אופציונלי)"
               value={form.phone}
               onChange={(e) => {
                 const next = e.target.value.replace(/[^\d\s\-+()]/g, "");
                 setForm((f) => ({ ...f, phone: next }));
                 if (error) setError(null);
               }}
-              pattern="[\d\s\-+()]+"
+              pattern="[\d\s\-+()]*"
               title="נא להזין מספר טלפון תקין"
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
             />
-            <input
-              type="email"
-              placeholder="אימייל (אופציונלי)"
-              value={form.email}
-              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
-            />
+            {emailReady ? (
+              <p className="text-xs text-white/50">
+                העדכונים על התור יישלחו למייל{" "}
+                <bdi dir="ltr" className="text-white/75 break-all">
+                  {user.email}
+                </bdi>
+              </p>
+            ) : (
+              <p className="text-sm text-amber-200" role="alert">
+                {EMAIL_NOT_VERIFIED_TEXT}{" "}
+                <Link to="/account/email" state={{ from: "/booking" }} className="text-violet-200 underline">
+                  לאימות האימייל
+                </Link>
+              </p>
+            )}
             <textarea
               placeholder="הערות (אופציונלי)"
               value={form.notes}
@@ -411,7 +432,7 @@ function BookingForm({
               </p>
             )}
             <p className="text-xs text-white/45">התור ייקבע רק אחרי שאאשר את הבקשה.</p>
-            <button type="submit" disabled={submitting} className="btn-violet w-full disabled:opacity-50">
+            <button type="submit" disabled={submitting || !emailReady} className="btn-violet w-full disabled:opacity-50">
               {submitting ? "שולחת בקשה..." : "שליחת בקשה לתור"}
             </button>
           </form>
@@ -452,6 +473,9 @@ function MyAppointments({ refreshKey }) {
       title="הבקשות והתורים שלי"
       emptyText="עדיין לא שלחת בקשה לתור."
       showBookingLink={false}
+      onAppointmentUpdated={(updated) =>
+        setAppointments((list) => (list || []).map((a) => (a.id === updated.id ? updated : a)))
+      }
     />
   );
 }

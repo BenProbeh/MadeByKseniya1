@@ -2,32 +2,29 @@ import { useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
-import { getApiErrorMessage, isLatinUsername, USERNAME_LATIN_MESSAGE } from "../lib/authErrors.js";
+import { resendVerificationRequest } from "../lib/authApi.js";
+import { apiErrorCode, getApiErrorMessage, isLatinUsername } from "../lib/authErrors.js";
+import { safeInternalPath } from "../lib/authPaths.js";
+
+const LATIN_MESSAGE = "האימייל נכתב באותיות באנגלית. כדאי לבדוק שהמקלדת באנגלית ולנסות שוב.";
 
 export default function Login() {
   const { login, authenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from =
-    typeof location.state?.from === "string" &&
-    location.state.from.startsWith("/") &&
-    !location.state.from.startsWith("//") &&
-    location.state.from !== "/" &&
-    location.state.from !== "/login" &&
-    location.state.from !== "/register" &&
-    location.state.from !== "/forgot-password"
-      ? location.state.from
-      : "/services";
+  const from = safeInternalPath(location.state?.from);
 
   const resetDone = typeof location.state?.resetDone === "string" ? location.state.resetDone : "";
-  const [username, setUsername] = useState(() =>
-    typeof location.state?.username === "string" ? location.state.username : ""
+  const [identifier, setIdentifier] = useState(() =>
+    typeof location.state?.email === "string" ? location.state.email : ""
   );
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [unverifiedEmail, setUnverifiedEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [resending, setResending] = useState(false);
 
   if (authLoading) {
     return (
@@ -44,22 +41,57 @@ export default function Login() {
   async function onSubmit(e) {
     e.preventDefault();
     e.stopPropagation();
-    if (submitting) return;
+    if (submitting || resending) return;
     setError("");
-    if (!isLatinUsername(username)) {
-      setError(USERNAME_LATIN_MESSAGE);
+    setUnverifiedEmail("");
+    const value = identifier.trim();
+    if (!isLatinUsername(value)) {
+      setError(LATIN_MESSAGE);
       return;
     }
     setSubmitting(true);
     try {
-      const user = await login({ username, password, rememberMe });
+      const user = await login({ email: value, password, rememberMe });
       if (!user?.id) throw new Error("ההתחברות לא הושלמה");
       navigate(from, { replace: true });
     } catch (err) {
-      setError(getApiErrorMessage(err, "שם המשתמש או הסיסמה אינם נכונים"));
+      if (apiErrorCode(err) === "EMAIL_NOT_VERIFIED") {
+        setUnverifiedEmail(err.response.data.email || (value.includes("@") ? value.toLowerCase() : ""));
+      }
+      setError(getApiErrorMessage(err, "האימייל או הסיסמה אינם נכונים."));
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function continueVerification() {
+    if (submitting || resending || !unverifiedEmail) return;
+    setResending(true);
+    const start = Date.now();
+    let resendAfterSeconds = 60;
+    let info = "שלחתי קוד אימות חדש לכתובת האימייל שלך.";
+    try {
+      ({ resendAfterSeconds } = await resendVerificationRequest(unverifiedEmail));
+    } catch (err) {
+      const retry = Number(err?.response?.data?.retryAfterSeconds);
+      if (apiErrorCode(err) !== "RESEND_TOO_SOON") {
+        setError(getApiErrorMessage(err, "לא הצלחתי לשלוח קוד כרגע. אפשר לנסות שוב בעוד רגע."));
+        setResending(false);
+        return;
+      }
+      resendAfterSeconds = retry > 0 ? retry : 60;
+      info = "שלחתי לך קוד לפני רגע, הוא מחכה במייל.";
+    }
+    navigate("/verify-email", {
+      state: {
+        email: unverifiedEmail,
+        expiresAt: start + 600 * 1000,
+        resendAt: start + resendAfterSeconds * 1000,
+        rememberMe,
+        from,
+        info,
+      },
+    });
   }
 
   return (
@@ -77,19 +109,27 @@ export default function Login() {
 
       <form onSubmit={onSubmit} className="glass-panel p-6 md:p-8 space-y-5" noValidate>
         <label className="block space-y-2 text-sm text-white/70">
-          <span>שם משתמש</span>
+          <span>אימייל</span>
           <input
-            type="text"
-            name="username"
+            type="email"
+            name="email"
             autoComplete="username"
+            inputMode="email"
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
+            dir="ltr"
+            placeholder="name@example.com"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            aria-describedby="login-email-help"
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base text-right outline-none focus:border-violet-400/60"
+            maxLength={254}
             required
           />
+          <span id="login-email-help" className="block text-xs text-white/40">
+            נרשמת לפני שהיה אימייל באתר? אפשר להתחבר פעם אחת עם שם המשתמש ולהוסיף כתובת.
+          </span>
         </label>
 
         <label className="block space-y-2 text-sm text-white/70">
@@ -130,7 +170,14 @@ export default function Login() {
           <span>זכרי אותי</span>
         </label>
 
-        {error ? (
+        {unverifiedEmail ? (
+          <div className="rounded-2xl border border-violet-400/30 bg-violet-500/10 p-4 space-y-3 text-center" role="status" aria-live="polite">
+            <p className="text-sm text-violet-100">{error}</p>
+            <button type="button" className="btn-violet w-full" disabled={submitting || resending} onClick={() => void continueVerification()}>
+              {resending ? "שולחת…" : "שליחת קוד חדש והשלמת האימות"}
+            </button>
+          </div>
+        ) : error ? (
           <p className="text-sm text-red-300 text-center" role="alert" aria-live="assertive">
             {String(error)}
           </p>
@@ -140,7 +187,7 @@ export default function Login() {
           </p>
         ) : null}
 
-        <button type="submit" className="btn-violet w-full" disabled={submitting}>
+        <button type="submit" className="btn-violet w-full" disabled={submitting || resending}>
           {submitting ? "מתחברת…" : "התחברות"}
         </button>
       </form>

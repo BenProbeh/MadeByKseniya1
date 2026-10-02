@@ -1,8 +1,9 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import { needsEmailSetup } from "../lib/emailSetupGate.js";
 
 export default function ProtectedRoute({ children }) {
-  const { authenticated, loading } = useAuth();
+  const { user, authenticated, loading, emailDeliveryReady } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -18,6 +19,10 @@ export default function ProtectedRoute({ children }) {
 
   if (!authenticated) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (needsEmailSetup(user, emailDeliveryReady)) {
+    return <Navigate to="/account/email" replace state={{ from: location.pathname }} />;
   }
 
   return children;

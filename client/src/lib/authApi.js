@@ -12,8 +12,11 @@ function mapUser(raw) {
     lastName: raw.lastName || "",
     avatarUrl: resolveMediaUrl(raw.avatarUrl),
     role: raw.role === "owner" || raw.role === "admin" ? raw.role : "customer",
+    email: raw.email || "",
+    emailVerified: Boolean(raw.emailVerified),
+    accountStatus: raw.accountStatus || "active",
+    notifyBookingEmails: Boolean(raw.notifyBookingEmails),
     phone: raw.phone || "",
-    phoneVerified: Boolean(raw.phoneVerified),
     themeColor: normalizeHex(raw.themeColor),
     createdAt: raw.createdAt,
     lastLoginAt: raw.lastLoginAt,
@@ -25,32 +28,65 @@ function mapAdminCustomer(raw) {
   return { ...raw, avatarUrl: resolveMediaUrl(raw.avatarUrl) };
 }
 
+/** `{ user, emailDeliveryReady }`; user is null when signed out. */
 export async function fetchCurrentUser() {
   try {
     const { data } = await api.get("/auth/me");
-    return mapUser(data?.user);
+    return { user: mapUser(data?.user), emailDeliveryReady: data?.emailDeliveryReady !== false };
   } catch (err) {
-    if (err?.response?.status === 401) return null;
+    if (err?.response?.status === 401) return { user: null, emailDeliveryReady: true };
     throw err;
   }
 }
 
-export async function loginRequest({ username, password, rememberMe }) {
-  const { data } = await api.post("/auth/login", { username, password, rememberMe: Boolean(rememberMe) });
+/** `email` may also be a username for accounts that haven't verified an address yet. */
+export async function loginRequest({ email, password, rememberMe }) {
+  const { data } = await api.post("/auth/login", { email, password, rememberMe: Boolean(rememberMe) });
   return assertUser(mapUser(data?.user));
 }
 
+/** Creates the account as pending; resolves `{ email, expiresInSeconds, resendAfterSeconds }` — no session yet. */
 export async function registerRequest(payload) {
   const { data } = await api.post("/auth/register", {
     username: payload.username,
+    email: payload.email,
     password: payload.password,
     confirmPassword: payload.confirmPassword,
     firstName: payload.firstName,
     lastName: payload.lastName,
-    phone: payload.phone,
-    rememberMe: Boolean(payload.rememberMe),
   });
+  return {
+    email: data?.email || payload.email,
+    expiresInSeconds: Number(data?.expiresInSeconds) || 600,
+    resendAfterSeconds: Number(data?.resendAfterSeconds) || 60,
+  };
+}
+
+/** Completes sign-up: the account becomes active and a session is created. */
+export async function verifyEmailRequest({ email, code, rememberMe }) {
+  const { data } = await api.post("/auth/verify-email", { email, code, rememberMe: Boolean(rememberMe) });
   return assertUser(mapUser(data?.user));
+}
+
+export async function resendVerificationRequest(email) {
+  const { data } = await api.post("/auth/verify-email/resend", { email });
+  return { resendAfterSeconds: Number(data?.resendAfterSeconds) || 60 };
+}
+
+/** Signed-in: send a code to a new address (accounts from before email sign-in, or a change of address). */
+export async function startEmailChangeRequest(email) {
+  const { data } = await api.post("/profile/email", { email });
+  return { email: data?.email || email, resendAfterSeconds: Number(data?.resendAfterSeconds) || 60 };
+}
+
+export async function confirmEmailChangeRequest({ email, code }) {
+  const { data } = await api.post("/profile/email/verify", { email, code });
+  return mapUser(data?.user);
+}
+
+export async function updateBookingEmailsRequest(notifyBookingEmails) {
+  const { data } = await api.patch("/profile/notifications", { notifyBookingEmails: Boolean(notifyBookingEmails) });
+  return mapUser(data?.user);
 }
 
 export async function logoutRequest() {
@@ -101,14 +137,14 @@ export async function changePasswordRequest({ currentPassword, newPassword, conf
   return data;
 }
 
-/** "Forgot password" by SMS. The reset token lives only in page memory — never in the URL or storage. */
-export async function requestPasswordResetCode(phone) {
-  const { data } = await api.post("/auth/password-reset/request", { phone });
+/** "Forgot password" by email. The reset token lives only in page memory — never in the URL or storage. */
+export async function requestPasswordResetCode(email) {
+  const { data } = await api.post("/auth/password-reset/request", { email });
   return data;
 }
 
-export async function verifyPasswordResetCode(phone, code) {
-  const { data } = await api.post("/auth/password-reset/verify", { phone, code });
+export async function verifyPasswordResetCode(email, code) {
+  const { data } = await api.post("/auth/password-reset/verify", { email, code });
   return data;
 }
 
@@ -172,24 +208,44 @@ export async function markNotificationRead(id) {
   return { notification: data.notification, unread: Number(data.unread) || 0 };
 }
 
-/** `status`: pending | confirmed | rejected | cancelled | "" (all); `scope`: upcoming | past | all. */
+/** `status`: pending | manager_approved | confirmed | rejected | cancelled | "" (all); `scope`: upcoming | past | all. */
 export async function fetchAdminAppointments({ status = "", scope = "upcoming" } = {}) {
   const params = { scope };
   if (status) params.status = status;
   const { data } = await api.get("/admin/appointments", { params });
   return {
     appointments: data.appointments || [],
-    counts: { pending: Number(data.counts?.pending) || 0, confirmed: Number(data.counts?.confirmed) || 0 },
+    counts: {
+      pending: Number(data.counts?.pending) || 0,
+      approved: Number(data.counts?.approved) || 0,
+      confirmed: Number(data.counts?.confirmed) || 0,
+    },
   };
 }
 
-const APPOINTMENT_ACTIONS = { confirmed: "confirm", rejected: "reject", cancelled: "cancel" };
+const APPOINTMENT_ACTIONS = { manager_approved: "approve", rejected: "reject", cancelled: "cancel" };
 
 export async function setAppointmentStatus(id, status) {
   const action = APPOINTMENT_ACTIONS[status];
   if (!action) throw new Error("unknown appointment status");
   const { data } = await api.post(`/admin/appointments/${encodeURIComponent(id)}/${action}`);
   return data.appointment;
+}
+
+export async function resendAppointmentEmail(id) {
+  const { data } = await api.post(`/admin/appointments/${encodeURIComponent(id)}/resend-email`);
+  return data.appointment;
+}
+
+/** The "אישור ההזמנה" link from the approval email; works signed out. */
+export async function confirmBookingByToken(id, token) {
+  const { data } = await api.post("/appointments/confirm-booking", { id, token });
+  return { alreadyConfirmed: Boolean(data?.alreadyConfirmed), appointment: data?.appointment || null };
+}
+
+export async function confirmMyAppointment(id) {
+  const { data } = await api.post(`/appointments/${encodeURIComponent(id)}/confirm`);
+  return { alreadyConfirmed: Boolean(data?.alreadyConfirmed), appointment: data?.appointment || null };
 }
 
 export async function fetchContentPages() {

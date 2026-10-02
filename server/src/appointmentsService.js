@@ -1,9 +1,19 @@
+import crypto from "node:crypto";
 import db, { transaction } from "./db.js";
 import { resolvePackageKey } from "./packageCatalog.js";
 import { displayPhone, toE164OrNull } from "./phone.js";
 import { refreshScoresForAppointment } from "./customerScore.js";
 import { markAppointmentNotificationsRead, notifyAppointmentRequest } from "./notifications.js";
 import { recordAudit } from "./roles.js";
+import { hashToken } from "./auth.js";
+import { runEmailJob } from "./email/mailer.js";
+import {
+  customerEmailStatuses,
+  queueAppointmentRequestedEmails,
+  sendAppointmentApprovedEmail,
+  sendAppointmentClosedEmail,
+  sendAppointmentRequestedEmail,
+} from "./appointmentEmails.js";
 
 // JS getDay(): 0=Sunday ... 6=Saturday
 const BUSINESS_HOURS = {
@@ -22,24 +32,33 @@ const BOOKING_HORIZON_DAYS = 365;
 /** Pending requests hold their slot for everyone, so one account can't hold more than a few at a time. */
 export const MAX_PENDING_PER_USER = 3;
 
-export const APPOINTMENT_STATUSES = Object.freeze(["pending", "confirmed", "rejected", "cancelled"]);
-const ACTIVE_STATUSES = ["pending", "confirmed"];
+/**
+ * pending -> manager_approved (owner/admin) -> confirmed (the customer, from the email link or her profile).
+ * manager_approved and confirmed both hold the slot ("booked"); rejected and cancelled free it.
+ */
+export const APPOINTMENT_STATUSES = Object.freeze(["pending", "manager_approved", "confirmed", "rejected", "cancelled"]);
 
 /** Customer-facing wording for each status. */
 export const STATUS_LABELS_HE = Object.freeze({
   pending: "ממתין לאישור",
+  manager_approved: "אושר — נשאר לאשר את ההזמנה",
   confirmed: "התור אושר",
   rejected: "הבקשה לא אושרה",
   cancelled: "התור בוטל",
 });
 
-/** Allowed status changes; rejected and cancelled are final. */
+/** Status changes staff may make; rejected and cancelled are final, and only the customer moves a booking to confirmed. */
 const TRANSITIONS = Object.freeze({
-  pending: ["confirmed", "rejected", "cancelled"],
+  pending: ["manager_approved", "rejected", "cancelled"],
+  manager_approved: ["cancelled"],
   confirmed: ["cancelled"],
   rejected: [],
   cancelled: [],
 });
+
+const BOOKED_STATUSES = ["manager_approved", "confirmed"];
+/** How long the "אישור ההזמנה" link works when the booking has no start time recorded. */
+const CONFIRM_LINK_FALLBACK_DAYS = 14;
 
 export const VALIDATION_MESSAGES = Object.freeze({
   date: "התאריך שנבחר אינו תקין.",
@@ -49,8 +68,7 @@ export const VALIDATION_MESSAGES = Object.freeze({
   time: "השעה שנבחרה אינה תקינה.",
   service: "השירות שנבחר לא נמצא.",
   name: "נא להזין שם מלא.",
-  phone: "נא להזין מספר טלפון תקין (ספרות בלבד).",
-  email: "כתובת האימייל ארוכה מדי.",
+  phone: "מספר הטלפון לא נראה תקין (ספרות בלבד). אפשר גם להשאיר את השדה ריק.",
   notes: "ההערות ארוכות מדי.",
   requestKey: "מזהה הבקשה אינו תקין.",
 });
@@ -136,7 +154,7 @@ async function activeRangesForDate(dateStr, executor) {
     `SELECT a.time, a.status, COALESCE(a.duration_min, s.duration_min) AS duration_min
        FROM appointments a
        JOIN services s ON s.id = a.service_id
-      WHERE a.date = $1 AND a.status IN ('pending', 'confirmed') AND a.time ~ '^[0-9]{2}:[0-9]{2}$'`,
+      WHERE a.date = $1 AND a.status IN ('pending', 'manager_approved', 'confirmed') AND a.time ~ '^[0-9]{2}:[0-9]{2}$'`,
     [dateStr]
   );
   return rows.map((row) => {
@@ -147,7 +165,7 @@ async function activeRangesForDate(dateStr, executor) {
 
 /**
  * Every bookable start time on a date with its public state: "free", "pending" (waiting for approval)
- * or "booked" (confirmed). The whole length of the chosen service has to fit, not only its first minute.
+ * or "booked" (approved by the studio). The whole length of the chosen service has to fit, not only its first minute.
  * No names, phones, services or notes ever leave this function.
  */
 export async function getAvailability(dateStr, serviceId, { now = new Date(), executor = db } = {}) {
@@ -168,7 +186,7 @@ export async function getAvailability(dateStr, serviceId, { now = new Date(), ex
     if (dateStr === today.date && start <= today.minutes) continue;
     const end = start + duration;
     const overlapping = ranges.filter((r) => start < r.end && end > r.start);
-    const state = overlapping.some((r) => r.status === "confirmed")
+    const state = overlapping.some((r) => BOOKED_STATUSES.includes(r.status))
       ? "booked"
       : overlapping.length
         ? "pending"
@@ -189,14 +207,13 @@ function validateRequest(input, now) {
   const clientName = cleanText(input.clientName, 80);
   if (clientName.length < 2 || clientName.length > 80) throw appointmentError("INVALID", VALIDATION_MESSAGES.name);
 
+  // Optional contact number; the booking's email always comes from the verified account.
   const phone = cleanText(input.phone, 32);
   const digits = phone.replace(/\D/g, "");
-  if (!phone || phone.length > 32 || /[^\d\s\-+()]/.test(phone) || digits.length < 9 || digits.length > 12) {
+  if (phone && (phone.length > 32 || /[^\d\s\-+()]/.test(phone) || digits.length < 9 || digits.length > 12)) {
     throw appointmentError("INVALID", VALIDATION_MESSAGES.phone);
   }
 
-  const email = cleanText(input.email, 200);
-  if (email.length > 200) throw appointmentError("INVALID", VALIDATION_MESSAGES.email);
   const notes = cleanText(input.notes, 1000);
   if (notes.length > 1000) throw appointmentError("INVALID", VALIDATION_MESSAGES.notes);
 
@@ -219,7 +236,7 @@ function validateRequest(input, now) {
   if (!hours) throw appointmentError("INVALID", VALIDATION_MESSAGES.closed);
   if (!slotGrid(hours).includes(toMinutes(time))) throw appointmentError("INVALID", VALIDATION_MESSAGES.time);
 
-  return { clientName, phone, email: email || null, notes: notes || null, requestKey, date, time };
+  return { clientName, phone: phone || null, notes: notes || null, requestKey, date, time };
 }
 
 const isConflict = (err) => err?.code === "23P01" || (err?.code === "23505" && /one_active_start/.test(err?.constraint || err?.message || ""));
@@ -250,7 +267,11 @@ export async function createAppointmentRequest(input, { userId = null, now = new
         if (existing.rows.length) return { row: existing.rows[0], duplicate: true };
       }
 
+      let account = null;
       if (userId) {
+        const user = await tx.query(`SELECT first_name, last_name, email, email_verified FROM users WHERE id = $1`, [userId]);
+        account = user.rows[0] || null;
+        if (!account?.email_verified || !account.email) throw appointmentError("EMAIL_NOT_VERIFIED");
         const pending = await tx.query(
           `SELECT count(*)::int AS n FROM appointments
             WHERE user_id = $1 AND status = 'pending' AND (starts_at IS NULL OR starts_at > now())`,
@@ -277,7 +298,7 @@ export async function createAppointmentRequest(input, { userId = null, now = new
         [
           values.clientName,
           values.phone,
-          values.email,
+          account?.email ?? null,
           service.id,
           values.date,
           values.time,
@@ -294,20 +315,14 @@ export async function createAppointmentRequest(input, { userId = null, now = new
       );
       const row = rows[0];
 
-      let firstName = "";
-      let lastName = "";
-      if (userId) {
-        const user = await tx.query(`SELECT first_name, last_name FROM users WHERE id = $1`, [userId]);
-        firstName = user.rows[0]?.first_name || "";
-        lastName = user.rows[0]?.last_name || "";
-      }
       await notifyAppointmentRequest(tx, {
         appointmentId: row.id,
         userId: userId || null,
         clientName: row.client_name,
-        firstName,
-        lastName,
-        phoneDisplay: displayPhone(row.phone),
+        firstName: account?.first_name || "",
+        lastName: account?.last_name || "",
+        email: row.email,
+        phoneDisplay: row.phone ? displayPhone(row.phone) : null,
         phoneE164: row.phone_e164,
         date: row.date,
         time: row.time,
@@ -332,7 +347,10 @@ export async function createAppointmentRequest(input, { userId = null, now = new
     throw err;
   }
 
-  if (!result.duplicate) await refreshScoresForAppointment(db, result.row);
+  if (!result.duplicate) {
+    await refreshScoresForAppointment(db, result.row);
+    queueAppointmentRequestedEmails(result.row.id);
+  }
   return { appointment: await getAppointmentForCustomer(result.row.id), duplicate: result.duplicate };
 }
 
@@ -341,11 +359,14 @@ const APPOINTMENT_SELECT = `
          COALESCE(a.duration_min, s.duration_min) AS effective_duration,
          u.first_name AS user_first_name, u.last_name AS user_last_name, u.username AS user_username,
          u.phone_e164 AS user_phone_e164, u.phone_display AS user_phone_display,
-         cb.first_name AS changed_by_first_name, cb.last_name AS changed_by_last_name
+         u.email AS user_email, u.email_verified AS user_email_verified,
+         cb.first_name AS changed_by_first_name, cb.last_name AS changed_by_last_name,
+         ab.first_name AS approved_by_first_name, ab.last_name AS approved_by_last_name
     FROM appointments a
     JOIN services s ON s.id = a.service_id
     LEFT JOIN users u ON u.id = a.user_id
-    LEFT JOIN users cb ON cb.id = a.status_changed_by`;
+    LEFT JOIN users cb ON cb.id = a.status_changed_by
+    LEFT JOIN users ab ON ab.id = a.approved_by`;
 
 function serviceLabel(row) {
   return row.package_label || row.service_name;
@@ -362,6 +383,8 @@ function toIso(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+const isFuture = (row, now = Date.now()) => !row.starts_at || new Date(row.starts_at).getTime() > now;
+
 /** What a customer may see about her own booking. */
 function mapForCustomer(row) {
   return {
@@ -374,15 +397,19 @@ function mapForCustomer(row) {
     serviceLabel: serviceLabel(row),
     priceIls: priceOf(row),
     createdAt: toIso(row.created_at),
+    approvedAt: toIso(row.approved_at),
+    customerConfirmedAt: toIso(row.customer_confirmed_at),
+    canConfirm: row.status === "manager_approved" && isFuture(row),
   };
 }
 
 /** Full details for the owner and admins. */
-function mapForStaff(row) {
+function mapForStaff(row, emailStatus = {}) {
   const nameFromAccount = `${row.user_first_name || ""} ${row.user_last_name || ""}`.trim();
   const status = row.status;
+  const { canConfirm: _customerOnly, ...base } = mapForCustomer(row);
   return {
-    ...mapForCustomer(row),
+    ...base,
     startsAt: toIso(row.starts_at),
     endsAt: toIso(row.ends_at),
     clientName: row.client_name,
@@ -391,10 +418,14 @@ function mapForStaff(row) {
     displayName: nameFromAccount || row.client_name,
     username: row.user_username || null,
     userId: row.user_id || null,
-    phone: displayPhone(row.phone) || row.phone,
+    phone: row.phone ? displayPhone(row.phone) : null,
     phoneE164: row.phone_e164 || null,
-    email: row.email || null,
+    email: (row.user_email_verified && row.user_email) || row.email || null,
     notes: row.notes || "",
+    approvedBy: row.approved_by
+      ? { id: row.approved_by, name: `${row.approved_by_first_name || ""} ${row.approved_by_last_name || ""}`.trim() }
+      : null,
+    emailStatus,
     statusChangedAt: toIso(row.status_changed_at),
     statusChangedBy: row.status_changed_by
       ? {
@@ -402,9 +433,7 @@ function mapForStaff(row) {
           name: `${row.changed_by_first_name || ""} ${row.changed_by_last_name || ""}`.trim(),
         }
       : null,
-    allowedActions: (TRANSITIONS[status] || []).filter(
-      (next) => next !== "confirmed" || !row.starts_at || new Date(row.starts_at).getTime() > Date.now()
-    ),
+    allowedActions: (TRANSITIONS[status] || []).filter((next) => next !== "manager_approved" || isFuture(row)),
   };
 }
 
@@ -457,18 +486,35 @@ export async function listAppointmentsForStaff({ status = "", scope = "upcoming"
 
   const counts = await db.query(
     `SELECT count(*) FILTER (WHERE status = 'pending')::int AS pending,
+            count(*) FILTER (WHERE status = 'manager_approved')::int AS approved,
             count(*) FILTER (WHERE status = 'confirmed')::int AS confirmed
        FROM appointments WHERE date >= $1`,
     [today]
   );
-  return { appointments: rows.map(mapForStaff), counts: counts.rows[0] };
+  const emailStatuses = await customerEmailStatuses(rows.map((r) => r.id));
+  return { appointments: rows.map((r) => mapForStaff(r, emailStatuses[r.id])), counts: counts.rows[0] };
+}
+
+async function getAppointmentForStaff(id) {
+  const { rows } = await db.query(`${APPOINTMENT_SELECT} WHERE a.id = $1`, [id]);
+  if (!rows[0]) return null;
+  const emailStatuses = await customerEmailStatuses([rows[0].id]);
+  return mapForStaff(rows[0], emailStatuses[rows[0].id]);
 }
 
 const AUDIT_ACTIONS = Object.freeze({
-  confirmed: "appointment_confirmed",
+  manager_approved: "appointment_approved",
   rejected: "appointment_rejected",
   cancelled: "appointment_cancelled",
 });
+
+const newConfirmationToken = () => crypto.randomBytes(32).toString("base64url");
+const CONFIRMATION_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
+
+function confirmationExpiry(appt) {
+  if (appt.starts_at) return new Date(appt.starts_at);
+  return new Date(Date.now() + CONFIRM_LINK_FALLBACK_DAYS * 24 * 60 * 60 * 1000);
+}
 
 /**
  * Owner/admin decision on a booking. The row is locked and the update only applies while the status is still
@@ -479,21 +525,35 @@ export async function changeAppointmentStatus(id, nextStatus, actorUserId, { now
   if (!Number.isInteger(apptId) || apptId <= 0) throw appointmentError("NOT_FOUND");
   if (!AUDIT_ACTIONS[nextStatus]) throw appointmentError("INVALID_STATUS");
 
+  let token = null;
   const row = await transaction(async (tx) => {
     const current = await tx.query(`SELECT * FROM appointments WHERE id = $1 FOR UPDATE`, [apptId]);
     const appt = current.rows[0];
     if (!appt) throw appointmentError("NOT_FOUND");
     if (appt.status === nextStatus) throw appointmentError("ALREADY_HANDLED");
     if (!(TRANSITIONS[appt.status] || []).includes(nextStatus)) throw appointmentError("INVALID_TRANSITION");
-    if (nextStatus === "confirmed" && appt.starts_at && new Date(appt.starts_at) <= now) {
+    if (nextStatus === "manager_approved" && appt.starts_at && new Date(appt.starts_at) <= now) {
       throw appointmentError("IN_PAST");
     }
 
-    const updated = await tx.query(
-      `UPDATE appointments SET status = $2, status_changed_at = now(), status_changed_by = $3
-        WHERE id = $1 AND status = $4 RETURNING *`,
-      [apptId, nextStatus, actorUserId, appt.status]
-    );
+    let updated;
+    if (nextStatus === "manager_approved") {
+      token = newConfirmationToken();
+      updated = await tx.query(
+        `UPDATE appointments
+            SET status = 'manager_approved', status_changed_at = now(), status_changed_by = $2,
+                approved_by = $2, approved_at = now(),
+                confirmation_token_hash = $3, confirmation_token_expires_at = $4
+          WHERE id = $1 AND status = $5 RETURNING *`,
+        [apptId, actorUserId, hashToken(token), confirmationExpiry(appt), appt.status]
+      );
+    } else {
+      updated = await tx.query(
+        `UPDATE appointments SET status = $2, status_changed_at = now(), status_changed_by = $3
+          WHERE id = $1 AND status = $4 RETURNING *`,
+        [apptId, nextStatus, actorUserId, appt.status]
+      );
+    }
     if (!updated.rows.length) throw appointmentError("ALREADY_HANDLED");
 
     await recordAudit(tx, {
@@ -507,8 +567,111 @@ export async function changeAppointmentStatus(id, nextStatus, actorUserId, { now
   });
 
   await refreshScoresForAppointment(db, row);
-  const { rows } = await db.query(`${APPOINTMENT_SELECT} WHERE a.id = $1`, [row.id]);
-  return mapForStaff(rows[0]);
+  if (nextStatus === "manager_approved") {
+    runEmailJob(`appointment ${apptId} approved`, () => sendAppointmentApprovedEmail(apptId, token));
+  } else {
+    runEmailJob(`appointment ${apptId} ${nextStatus}`, () => sendAppointmentClosedEmail(apptId, nextStatus));
+  }
+  return getAppointmentForStaff(row.id);
+}
+
+function sameHash(a, b) {
+  const left = Buffer.from(String(a || ""));
+  const right = Buffer.from(String(b || ""));
+  return left.length === right.length && left.length > 0 && crypto.timingSafeEqual(left, right);
+}
+
+/**
+ * The customer's final "אישור ההזמנה": manager_approved -> confirmed. `authorize(row)` decides who may do it
+ * (the one-time email link, or the signed-in owner of the booking). Returns
+ * { ok: true, alreadyConfirmed, appointment } or { ok: false, reason: "invalid" | "unavailable" | "expired" }.
+ */
+async function confirmByCustomer(apptId, authorize, via, now) {
+  const result = await transaction(async (tx) => {
+    const current = await tx.query(`SELECT * FROM appointments WHERE id = $1 FOR UPDATE`, [apptId]);
+    const appt = current.rows[0];
+    if (!appt || !authorize(appt)) return { ok: false, reason: "invalid" };
+    if (appt.status === "confirmed") return { ok: true, alreadyConfirmed: true, id: appt.id };
+    if (appt.status !== "manager_approved") return { ok: false, reason: "unavailable" };
+    const linkExpired =
+      via === "email_link" && appt.confirmation_token_expires_at && new Date(appt.confirmation_token_expires_at) <= now;
+    if (linkExpired || (appt.starts_at && new Date(appt.starts_at) <= now)) return { ok: false, reason: "expired" };
+
+    await tx.query(
+      `UPDATE appointments
+          SET status = 'confirmed', customer_confirmed_at = now(), status_changed_at = now(), status_changed_by = user_id
+        WHERE id = $1 AND status = 'manager_approved'`,
+      [apptId]
+    );
+    await recordAudit(tx, {
+      actorUserId: appt.user_id || null,
+      action: "appointment_confirmed",
+      targetUserId: appt.user_id || null,
+      details: { appointmentId: apptId, via, date: appt.date, time: appt.time },
+    });
+    return { ok: true, alreadyConfirmed: false, id: appt.id, row: appt };
+  });
+  if (!result.ok) return result;
+  if (!result.alreadyConfirmed) await refreshScoresForAppointment(db, { ...result.row, status: "confirmed" });
+  return { ok: true, alreadyConfirmed: result.alreadyConfirmed, appointment: await getAppointmentForCustomer(result.id) };
+}
+
+/** From the email link: the token is single-use, bound to this appointment, and only its hash is stored. */
+export async function confirmAppointmentByToken(id, token, { now = new Date() } = {}) {
+  const apptId = Number(id);
+  if (!Number.isInteger(apptId) || apptId <= 0 || typeof token !== "string" || !CONFIRMATION_TOKEN_RE.test(token)) {
+    return { ok: false, reason: "invalid" };
+  }
+  const tokenHash = hashToken(token);
+  return confirmByCustomer(apptId, (appt) => sameHash(appt.confirmation_token_hash, tokenHash), "email_link", now);
+}
+
+/** From her profile while signed in: only the customer the booking belongs to. */
+export async function confirmAppointmentForUser(id, userId, { now = new Date() } = {}) {
+  const apptId = Number(id);
+  if (!Number.isInteger(apptId) || apptId <= 0) return { ok: false, reason: "invalid" };
+  return confirmByCustomer(apptId, (appt) => appt.user_id === userId, "profile", now);
+}
+
+const RESEND_KIND_BY_STATUS = Object.freeze({
+  pending: "requested",
+  manager_approved: "approved",
+  rejected: "rejected",
+  cancelled: "cancelled",
+});
+
+/**
+ * Staff re-send of the customer email for the booking's current status, only when the last attempt failed.
+ * A re-sent approval gets a fresh link (the old one stops working).
+ */
+export async function resendAppointmentEmail(id) {
+  const apptId = Number(id);
+  if (!Number.isInteger(apptId) || apptId <= 0) throw appointmentError("NOT_FOUND");
+  const appt = await getAppointmentForStaff(apptId);
+  if (!appt) throw appointmentError("NOT_FOUND");
+  const kind = RESEND_KIND_BY_STATUS[appt.status];
+  if (!kind) throw appointmentError("NOTHING_TO_RESEND");
+  if (!appt.email) throw appointmentError("NO_EMAIL");
+  const last = appt.emailStatus?.[kind];
+  if (last && last !== "failed") throw appointmentError("ALREADY_SENT");
+
+  let result;
+  if (kind === "approved") {
+    const token = newConfirmationToken();
+    const updated = await db.query(
+      `UPDATE appointments SET confirmation_token_hash = $2, confirmation_token_expires_at = $3
+        WHERE id = $1 AND status = 'manager_approved' RETURNING id`,
+      [apptId, hashToken(token), confirmationExpiry({ starts_at: appt.startsAt })]
+    );
+    if (!updated.rows.length) throw appointmentError("ALREADY_HANDLED");
+    result = await sendAppointmentApprovedEmail(apptId, token, { retry: true });
+  } else if (kind === "requested") {
+    result = await sendAppointmentRequestedEmail(apptId, { retry: true });
+  } else {
+    result = await sendAppointmentClosedEmail(apptId, appt.status, { retry: true });
+  }
+  if (result?.skipped) throw appointmentError("ALREADY_SENT");
+  return { sent: Boolean(result?.ok), appointment: await getAppointmentForStaff(apptId) };
 }
 
 /** Fill phone_e164 for bookings made before phones were normalised. Rows that can't be parsed stay NULL. */

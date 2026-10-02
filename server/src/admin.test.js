@@ -11,6 +11,7 @@ import { SESSION_COOKIE } from "./auth.js";
 import { ensureOwner } from "./roles.js";
 import { computeCustomerStats } from "./adminService.js";
 import { config } from "./config.js";
+import { registerVerified } from "./testSupport.js";
 
 const PASSWORD = "strong-pass-1";
 
@@ -58,22 +59,14 @@ function cookieFrom(setCookie) {
 let counter = 0;
 async function register(server, overrides = {}) {
   counter += 1;
-  const username = overrides.username || `adm_${Date.now().toString(36)}_${counter}`;
-  const res = await request(server, {
-    method: "POST",
-    path: "/api/auth/register",
-    body: {
-      username,
-      password: PASSWORD,
-      confirmPassword: PASSWORD,
-      firstName: overrides.firstName || "לקוחה",
-      lastName: overrides.lastName || "בדיקה",
-      phone: overrides.phone || `053${String(counter).padStart(7, "0")}`,
-      rememberMe: Boolean(overrides.rememberMe),
-    },
+  const user = await registerVerified(server, {
+    username: overrides.username || `adm_${Date.now().toString(36)}_${counter}`,
+    password: PASSWORD,
+    firstName: overrides.firstName || "לקוחה",
+    lastName: overrides.lastName || "בדיקה",
+    rememberMe: Boolean(overrides.rememberMe),
   });
-  assert.equal(res.status, 201, res.raw);
-  return { id: res.json.user.id, username, cookie: cookieFrom(res.setCookie) };
+  return { id: user.id, username: user.username, email: user.email, cookie: user.cookie };
 }
 
 function assertNoSecrets(value) {
@@ -91,6 +84,7 @@ describe("roles + admin API (PostgreSQL)", () => {
     process.env.NODE_ENV = "test";
     process.env.DATABASE_URL = "";
     process.env.PGLITE_DIR = "memory://";
+    process.env.EMAIL_PROVIDER = "memory";
     await startDb();
     server = http.createServer(createApp());
     await new Promise((r) => server.listen(0, "127.0.0.1", r));
@@ -344,7 +338,7 @@ describe("roles + admin API (PostgreSQL)", () => {
     const otherLogin = await request(server, {
       method: "POST",
       path: "/api/auth/login",
-      body: { username: user.username, password: PASSWORD },
+      body: { email: user.email, password: PASSWORD },
     });
     const otherDevice = cookieFrom(otherLogin.setCookie);
 
@@ -399,13 +393,13 @@ describe("roles + admin API (PostgreSQL)", () => {
     const oldLogin = await request(server, {
       method: "POST",
       path: "/api/auth/login",
-      body: { username: user.username, password: PASSWORD },
+      body: { email: user.email, password: PASSWORD },
     });
     assert.equal(oldLogin.status, 401);
     const newLogin = await request(server, {
       method: "POST",
       path: "/api/auth/login",
-      body: { username: user.username, password: "brand-new-pass" },
+      body: { email: user.email, password: "brand-new-pass" },
     });
     assert.equal(newLogin.status, 200);
 
@@ -424,7 +418,7 @@ describe("roles + admin API (PostgreSQL)", () => {
     const login = await request(server, {
       method: "POST",
       path: "/api/auth/login",
-      body: { username: customer.username, password: PASSWORD },
+      body: { email: customer.email, password: PASSWORD },
     });
     assert.equal(login.status, 200);
   });
@@ -442,7 +436,7 @@ describe("roles + admin API (PostgreSQL)", () => {
     ];
     for (const [username, createdAt] of seeded) {
       await db.query(
-        `INSERT INTO users (username, password_hash, first_name, last_name, created_at) VALUES ($1, 'x', 'סטט', 'בדיקה', $2)`,
+        `INSERT INTO users (username, password_hash, first_name, last_name, created_at, account_status) VALUES ($1, 'x', 'סטט', 'בדיקה', $2, 'active')`,
         [username, createdAt]
       );
     }

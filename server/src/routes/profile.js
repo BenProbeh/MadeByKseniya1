@@ -71,7 +71,7 @@ const phoneLimiter = rateLimit({
   message: { error: "יותר מדי ניסיונות לעדכון הטלפון. אפשר לנסות שוב בעוד כמה דקות." },
 });
 
-/** Existing accounts without a phone complete it here; the unique index still guarantees one account per phone. */
+/** Optional contact phone (never used to sign in). An empty value removes it; one account per number still applies. */
 router.patch(
   "/phone",
   requireAuth,
@@ -81,16 +81,14 @@ router.patch(
     if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((k) => k !== "phone")) {
       return res.status(400).json({ code: "VALIDATION_ERROR", error: "אפשר לעדכן כאן רק את מספר הטלפון." });
     }
-    const phone = normalizePhone(body.phone);
+    const clearing = body.phone === null || (typeof body.phone === "string" && !body.phone.trim());
+    const phone = clearing ? { ok: true, e164: null, display: null } : normalizePhone(body.phone);
     if (!phone.ok) return res.status(400).json({ code: "VALIDATION_ERROR", error: phone.error });
 
     try {
       const row = await transaction(async (tx) => {
         const { rows } = await tx.query(
-          `UPDATE users
-              SET phone_e164 = $1, phone_display = $2,
-                  phone_verified = CASE WHEN phone_e164 = $1 THEN phone_verified ELSE false END,
-                  updated_at = now()
+          `UPDATE users SET phone_e164 = $1, phone_display = $2, phone_verified = false, updated_at = now()
             WHERE id = $3
           RETURNING *`,
           [phone.e164, phone.display, req.user.id]
@@ -108,6 +106,25 @@ router.patch(
       }
       throw err;
     }
+  })
+);
+
+/** Staff choose whether new booking requests also reach them by email (the in-admin notification always appears). */
+router.patch(
+  "/notifications",
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    if (!["owner", "admin"].includes(req.user.role)) {
+      return res.status(403).json({ code: "FORBIDDEN", error: "ההגדרה הזו זמינה רק לצוות." });
+    }
+    if (typeof req.body?.notifyBookingEmails !== "boolean") {
+      return res.status(400).json({ code: "VALIDATION_ERROR", error: "ההגדרה שנשלחה אינה תקינה." });
+    }
+    const { rows } = await db.query(
+      `UPDATE users SET notify_booking_emails = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      [req.body.notifyBookingEmails, req.user.id]
+    );
+    return res.json({ user: publicUser(rows[0]) });
   })
 );
 

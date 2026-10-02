@@ -1,72 +1,12 @@
 import db from "./db.js";
 
+/** duplicate_phone_signup notifications are no longer created (sign-up is by email) but older ones still display. */
 export const NOTIFICATION_TYPES = Object.freeze({
   DUPLICATE_PHONE: "duplicate_phone_signup",
   APPOINTMENT_REQUEST: "appointment_request",
 });
 
-export const DUPLICATE_PHONE_REASON = "ניסיון הרשמה עם מספר טלפון שכבר קיים";
-
-/** Repeated attempts with the same phone within this window update one notification instead of adding more. */
-const DEDUPE_WINDOW = "1 hour";
-/** Hard cap on new notifications of one type per hour, so a flood of sign-ups can't bury real events. */
-const MAX_NEW_PER_HOUR = 30;
-
 const clip = (value, max = 60) => String(value ?? "").trim().slice(0, max);
-
-/**
- * Record a sign-up attempt that used a phone already on another account.
- * Stores only what was typed into non-secret fields (never passwords, headers or the raw body).
- */
-export async function notifyDuplicatePhoneSignup(
-  executor,
-  { firstName, lastName, username, phoneE164, phoneDisplay, existingUserId }
-) {
-  const dedupeKey = `${NOTIFICATION_TYPES.DUPLICATE_PHONE}:${phoneE164}`;
-  const attemptedAt = new Date().toISOString();
-
-  const recent = await executor.query(
-    `SELECT id FROM admin_notifications
-      WHERE dedupe_key = $1 AND status = 'new' AND created_at > now() - interval '${DEDUPE_WINDOW}'
-      ORDER BY created_at DESC LIMIT 1`,
-    [dedupeKey]
-  );
-  if (recent.rows.length) {
-    await executor.query(
-      `UPDATE admin_notifications
-          SET metadata = metadata
-                || jsonb_build_object('attempts', COALESCE((metadata->>'attempts')::int, 1) + 1, 'lastAttemptAt', $2::text),
-              updated_at = now()
-        WHERE id = $1`,
-      [recent.rows[0].id, attemptedAt]
-    );
-    return { status: "merged", id: recent.rows[0].id };
-  }
-
-  const volume = await executor.query(
-    `SELECT count(*)::int AS n FROM admin_notifications WHERE type = $1 AND created_at > now() - interval '1 hour'`,
-    [NOTIFICATION_TYPES.DUPLICATE_PHONE]
-  );
-  if (volume.rows[0].n >= MAX_NEW_PER_HOUR) return { status: "throttled" };
-
-  const metadata = {
-    reason: DUPLICATE_PHONE_REASON,
-    firstName: clip(firstName),
-    lastName: clip(lastName),
-    username: clip(username, 40),
-    phoneE164,
-    phoneDisplay,
-    attemptedAt,
-    lastAttemptAt: attemptedAt,
-    attempts: 1,
-  };
-  const { rows } = await executor.query(
-    `INSERT INTO admin_notifications (type, related_user_id, dedupe_key, metadata)
-     VALUES ($1, $2, $3, $4::jsonb) RETURNING id`,
-    [NOTIFICATION_TYPES.DUPLICATE_PHONE, existingUserId || null, dedupeKey, JSON.stringify(metadata)]
-  );
-  return { status: "created", id: rows[0].id };
-}
 
 const appointmentDedupeKey = (appointmentId) => `${NOTIFICATION_TYPES.APPOINTMENT_REQUEST}:${appointmentId}`;
 
@@ -77,6 +17,7 @@ export async function notifyAppointmentRequest(executor, request) {
     clientName: clip(request.clientName, 80),
     firstName: clip(request.firstName),
     lastName: clip(request.lastName),
+    email: request.email || null,
     phoneDisplay: request.phoneDisplay || null,
     phoneE164: request.phoneE164 || null,
     date: request.date,
@@ -94,7 +35,7 @@ export async function notifyAppointmentRequest(executor, request) {
   return { status: "created", id: rows[0].id };
 }
 
-/** Once a request is confirmed, rejected or cancelled its notification no longer needs attention. */
+/** Once a request is approved, rejected or cancelled its notification no longer needs attention. */
 export async function markAppointmentNotificationsRead(executor, appointmentId, userId) {
   await executor.query(
     `UPDATE admin_notifications
@@ -110,6 +51,7 @@ function mapAppointmentMetadata(m, row) {
     clientName: m.clientName || "",
     firstName: m.firstName || "",
     lastName: m.lastName || "",
+    email: m.email || null,
     phoneDisplay: m.phoneDisplay || null,
     phoneE164: m.phoneE164 || null,
     date: m.date || "",

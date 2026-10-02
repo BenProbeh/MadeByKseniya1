@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import DialButton from "../components/admin/DialButton.jsx";
 import AppointmentStatusBadge from "../components/AppointmentStatusBadge.jsx";
-import { fetchAdminAppointments, setAppointmentStatus } from "../lib/authApi.js";
+import { fetchAdminAppointments, resendAppointmentEmail, setAppointmentStatus } from "../lib/authApi.js";
 import { getApiErrorMessage } from "../lib/authErrors.js";
 import { formatCalendarDay, formatDateTime } from "../lib/format.js";
 
@@ -12,7 +12,8 @@ const REFRESH_MS = 30_000;
 
 const STATUS_FILTERS = [
   { value: "pending", label: "ממתינות לאישור", countKey: "pending" },
-  { value: "confirmed", label: "מאושרים", countKey: "confirmed" },
+  { value: "manager_approved", label: "אושרו · ממתינות ללקוחה", countKey: "approved" },
+  { value: "confirmed", label: "מאושרים סופית", countKey: "confirmed" },
   { value: "rejected", label: "נדחו" },
   { value: "cancelled", label: "בוטלו" },
   { value: "", label: "הכול" },
@@ -25,11 +26,11 @@ const SCOPES = [
 ];
 
 const ACTIONS = {
-  confirmed: {
+  manager_approved: {
     label: "אישור התור",
     title: "לאשר את התור?",
     confirmLabel: "כן, לאשר",
-    done: "התור אושר.",
+    done: "התור אושר. שלחתי ללקוחה מייל עם כפתור לאישור ההזמנה.",
     className: "btn-violet px-5 py-2.5 text-sm",
   },
   rejected: {
@@ -42,7 +43,7 @@ const ACTIONS = {
   },
   cancelled: {
     label: "ביטול התור",
-    title: "לבטל את התור המאושר?",
+    title: "לבטל את התור?",
     confirmLabel: "כן, לבטל",
     done: "התור בוטל והשעה התפנתה.",
     className:
@@ -50,8 +51,22 @@ const ACTIONS = {
   },
 };
 
-/** Actions offered per status: decisions on requests, cancellation of confirmed bookings. */
-const OFFERED = { pending: ["confirmed", "rejected"], confirmed: ["cancelled"] };
+/** Actions offered per status: decisions on requests, cancellation of approved bookings. */
+const OFFERED = {
+  pending: ["manager_approved", "rejected"],
+  manager_approved: ["cancelled"],
+  confirmed: ["cancelled"],
+};
+
+/** The customer email that belongs to each status (the one staff can re-send if it failed). */
+const EMAIL_KIND = { pending: "requested", manager_approved: "approved", rejected: "rejected", cancelled: "cancelled" };
+
+const EMAIL_STATUS_TEXT = {
+  queued: "בשליחה",
+  sent: "נשלח",
+  delivered: "התקבל אצל הלקוחה",
+  failed: "לא נשלח",
+};
 
 function Field({ label, children }) {
   return (
@@ -66,10 +81,13 @@ function fullName(a) {
   return `${a.firstName || ""} ${a.lastName || ""}`.trim() || a.clientName || "—";
 }
 
-function AppointmentCard({ appointment: a, busy, onAction }) {
+function AppointmentCard({ appointment: a, busy, onAction, onResendEmail }) {
   const offered = (OFFERED[a.status] || []).filter((s) => a.allowedActions?.includes(s));
   const isPending = a.status === "pending";
   const name = fullName(a);
+  const emailKind = EMAIL_KIND[a.status];
+  const emailState = emailKind ? a.emailStatus?.[emailKind] : null;
+  const canResend = Boolean(a.email && emailKind && emailState === "failed");
 
   return (
     <li
@@ -101,6 +119,15 @@ function AppointmentCard({ appointment: a, busy, onAction }) {
             <span dir="ltr">{a.phone || "—"}</span>
           )}
         </Field>
+        <Field label="אימייל">
+          {a.email ? (
+            <bdi dir="ltr" className="break-all">
+              {a.email}
+            </bdi>
+          ) : (
+            "—"
+          )}
+        </Field>
         <Field label="שירות / חבילה">{a.serviceLabel || "—"}</Field>
         <Field label="מחיר">{a.priceIls != null ? `${a.priceIls} ₪` : "—"}</Field>
         <Field label="נשלחה ב־">{formatDateTime(a.createdAt)}</Field>
@@ -116,15 +143,29 @@ function AppointmentCard({ appointment: a, busy, onAction }) {
             )}
           </Field>
         )}
+        {a.approvedAt && (
+          <Field label="אושר על ידי">
+            {formatDateTime(a.approvedAt)}
+            {a.approvedBy?.name ? ` · ${a.approvedBy.name}` : ""}
+          </Field>
+        )}
+        {a.customerConfirmedAt && <Field label="הלקוחה אישרה">{formatDateTime(a.customerConfirmedAt)}</Field>}
         {a.statusChangedAt && a.status !== "pending" && (
           <Field label="עודכן">
             {formatDateTime(a.statusChangedAt)}
             {a.statusChangedBy?.name ? ` · ${a.statusChangedBy.name}` : ""}
           </Field>
         )}
+        {emailKind && a.email && (
+          <Field label="מייל ללקוחה">
+            <span className={emailState === "failed" ? "text-amber-200" : ""}>
+              {EMAIL_STATUS_TEXT[emailState] || "עדיין לא נשלח"}
+            </span>
+          </Field>
+        )}
       </dl>
 
-      {offered.length > 0 && (
+      {(offered.length > 0 || canResend) && (
         <div className="flex flex-wrap items-center gap-3">
           {offered.map((status) => (
             <button
@@ -137,6 +178,11 @@ function AppointmentCard({ appointment: a, busy, onAction }) {
               {ACTIONS[status].label}
             </button>
           ))}
+          {canResend && (
+            <button type="button" className="btn-ghost px-5 py-2.5 text-sm" disabled={busy} onClick={() => onResendEmail(a)}>
+              שליחת המייל שוב
+            </button>
+          )}
         </div>
       )}
     </li>
@@ -148,7 +194,8 @@ export default function AdminAppointments() {
   const [status, setStatus] = useState("pending");
   const [scope, setScope] = useState("upcoming");
   const [items, setItems] = useState(null);
-  const [counts, setCounts] = useState({ pending: 0, confirmed: 0 });
+  const [counts, setCounts] = useState({ pending: 0, approved: 0, confirmed: 0 });
+  const [resendingId, setResendingId] = useState(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [pendingAction, setPendingAction] = useState(null);
@@ -244,6 +291,26 @@ export default function AdminAppointments() {
     }
   }
 
+  async function resendEmail(appointment) {
+    if (resendingId) return;
+    setResendingId(appointment.id);
+    setMessage("");
+    try {
+      const updated = await resendAppointmentEmail(appointment.id);
+      setItems((prev) => (prev || []).map((a) => (a.id === updated.id ? updated : a)));
+      setMessage(
+        appointment.status === "manager_approved"
+          ? "המייל נשלח שוב, עם קישור חדש לאישור ההזמנה."
+          : "המייל נשלח שוב ללקוחה."
+      );
+    } catch (err) {
+      setMessage(getApiErrorMessage(err, "לא הצלחתי לשלוח את המייל שוב. אפשר לנסות שוב מאוחר יותר."));
+      void load({ silent: true });
+    } finally {
+      setResendingId(null);
+    }
+  }
+
   const target = pendingAction?.appointment;
   const action = pendingAction ? ACTIONS[pendingAction.next] : null;
 
@@ -256,7 +323,8 @@ export default function AdminAppointments() {
         </h1>
         <p className="font-serif text-white/60 text-sm md:text-base" aria-live="polite">
           {counts.pending > 0 ? `${counts.pending} בקשות ממתינות לאישור` : "אין בקשות שממתינות לאישור"}
-          {` · ${counts.confirmed} תורים מאושרים מהיום והלאה`}
+          {counts.approved > 0 ? ` · ${counts.approved} ממתינות לאישור הלקוחה` : ""}
+          {` · ${counts.confirmed} תורים מאושרים סופית מהיום והלאה`}
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
           <Link to="/admin/customers" className="btn-text text-sm">
@@ -331,8 +399,9 @@ export default function AdminAppointments() {
               <AppointmentCard
                 key={a.id}
                 appointment={a}
-                busy={actionBusy && pendingAction?.appointment.id === a.id}
+                busy={(actionBusy && pendingAction?.appointment.id === a.id) || resendingId === a.id}
                 onAction={openAction}
+                onResendEmail={resendEmail}
               />
             ))}
           </ul>
@@ -357,7 +426,11 @@ export default function AdminAppointments() {
             <p>
               {formatCalendarDay(target.date)} בשעה {target.time}
             </p>
-            {pendingAction.next !== "confirmed" && <p className="text-white/50">השעה תתפנה לבחירה של לקוחות אחרות.</p>}
+            {pendingAction.next === "manager_approved" ? (
+              <p className="text-white/50">השעה תסומן כתפוסה, והלקוחה תקבל מייל עם כפתור לאישור ההזמנה.</p>
+            ) : (
+              <p className="text-white/50">השעה תתפנה לבחירה של לקוחות אחרות, והלקוחה תקבל על כך מייל.</p>
+            )}
           </>
         )}
       </ConfirmDialog>

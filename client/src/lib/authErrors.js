@@ -19,6 +19,12 @@ export function getApiErrorMessage(err, fallback = "משהו השתבש. נסי 
     }
   }
 
+  const knownCode = apiErrorCode(err);
+  if (knownCode && SERVER_WORDED_CODES.has(knownCode)) {
+    const worded = apiErrorText(data);
+    if (worded && !looksLikeHtmlOrHttpNoise(worded)) return worded;
+  }
+
   // Vercel / CDN HTML or plain-text 404 bodies must never reach the UI.
   if (
     status === 404 ||
@@ -67,6 +73,34 @@ export function getApiErrorMessage(err, fallback = "משהו השתבש. נסי 
     return "לא הצלחתי להתחבר לשרת. בדקי את החיבור ונסי שוב.";
   }
   return message;
+}
+
+/** Error codes whose server message is written for the customer even on 4xx/5xx statuses. */
+const SERVER_WORDED_CODES = new Set([
+  "EMAIL_UNAVAILABLE",
+  "EMAIL_NOT_VERIFIED",
+  "INVALID_CODE",
+  "CODE_LOCKED",
+  "RESEND_TOO_SOON",
+  "TOO_MANY_REQUESTS",
+  "RATE_LIMITED",
+  "CONFIRM_INVALID",
+  "CONFIRM_UNAVAILABLE",
+  "CONFIRM_EXPIRED",
+]);
+
+/** The error code from either response shape: `{ error: { code } }` or `{ code }`. */
+export function apiErrorCode(err) {
+  const data = err?.response?.data;
+  if (!data || typeof data !== "object") return "";
+  const code = typeof data.error === "object" && data.error ? data.error.code : data.code;
+  return typeof code === "string" ? code : "";
+}
+
+function apiErrorText(data) {
+  if (!data || typeof data !== "object") return "";
+  const raw = typeof data.error === "object" && data.error ? data.error.message : data.error ?? data.errorMessage;
+  return typeof raw === "string" ? raw.trim() : "";
 }
 
 function looksLikeHtmlOrHttpNoise(text) {

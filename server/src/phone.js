@@ -1,8 +1,8 @@
 import { parsePhoneNumberFromString } from "libphonenumber-js";
 
 /**
- * Phone policy: Israeli mobile numbers only (SMS verification needs a mobile line).
- * Identity and uniqueness use E.164 (+972501234567); display uses the national format (050-123-4567).
+ * Phone policy: an optional contact number, Israeli mobile only. Never used to sign in or verify anything.
+ * Stored and compared as E.164 (+972501234567); display uses the national format (050-123-4567).
  * Mobile = 05X + 7 digits. Allocated-range checks are deliberately skipped: they go stale and reject real new numbers.
  * Keep in sync with client/src/lib/phone.js.
  */

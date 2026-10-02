@@ -1,5 +1,5 @@
 /**
- * Phone uniqueness, duplicate-phone notifications, user removal, customer ranking and content pages.
+ * Optional contact phones, admin notifications, user removal, customer ranking and content pages.
  * Runs against an in-memory PostgreSQL engine (PGlite), same SQL as production.
  */
 import { describe, it, before, after } from "node:test";
@@ -7,88 +7,49 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { createApp } from "./app.js";
 import db, { closeDb, startDb } from "./db.js";
-import { SESSION_COOKIE, hashPassword, publicUser } from "./auth.js";
+import { hashPassword, publicUser } from "./auth.js";
 import { ensureOwner } from "./roles.js";
 import { normalizePhone } from "./phone.js";
 import { computeCustomerScore, refreshCustomerScores, SCORE_WEIGHTS } from "./customerScore.js";
-import { notifyDuplicatePhoneSignup } from "./notifications.js";
 import { resolvePackageKey } from "./packageCatalog.js";
+import { cookieFrom, registerVerified, request } from "./testSupport.js";
 
 const PASSWORD = "strong-pass-1";
 const DAY = 24 * 60 * 60 * 1000;
 
-function request(server, { method = "GET", path = "/", body, cookies = [] }) {
-  return new Promise((resolve, reject) => {
-    const payload = body != null ? JSON.stringify(body) : null;
-    const req = http.request(
-      {
-        host: "127.0.0.1",
-        port: server.address().port,
-        method,
-        path,
-        headers: {
-          "Content-Type": "application/json",
-          ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
-          ...(cookies.length ? { Cookie: cookies.join("; ") } : {}),
-        },
-      },
-      (res) => {
-        const chunks = [];
-        res.on("data", (c) => chunks.push(c));
-        res.on("end", () => {
-          const raw = Buffer.concat(chunks).toString("utf8");
-          let json = null;
-          try {
-            json = raw ? JSON.parse(raw) : null;
-          } catch {
-            json = raw;
-          }
-          resolve({ status: res.statusCode, setCookie: res.headers["set-cookie"] || [], json, raw });
-        });
-      }
-    );
-    req.on("error", reject);
-    if (payload) req.write(payload);
-    req.end();
-  });
-}
-
-const cookieFrom = (setCookie) => setCookie.find((c) => c.startsWith(`${SESSION_COOKIE}=`))?.split(";")[0] || null;
-
 let seq = 0;
-function registerBody(overrides = {}) {
+async function register(server, { phone, ...overrides } = {}) {
   seq += 1;
-  return {
+  const user = await registerVerified(server, {
     username: `f_${seq}_${Date.now().toString(36)}`,
     password: PASSWORD,
-    confirmPassword: PASSWORD,
     firstName: "דנה",
     lastName: "לוי",
-    phone: `055${String(seq).padStart(7, "0")}`,
     ...overrides,
-  };
+  });
+  if (phone) {
+    const res = await request(server, { method: "PATCH", path: "/api/profile/phone", cookies: [user.cookie], body: { phone } });
+    assert.equal(res.status, 200, res.raw);
+    user.user = res.json.user;
+  }
+  return user;
 }
 
-async function register(server, overrides) {
-  const body = registerBody(overrides);
-  const res = await request(server, { method: "POST", path: "/api/auth/register", body });
-  assert.equal(res.status, 201, res.raw);
-  return { id: res.json.user.id, username: body.username, cookie: cookieFrom(res.setCookie), user: res.json.user };
-}
-
-/** Accounts created straight in the database (keeps the file under the sign-up rate limit). */
+/** Accounts from before email sign-in, created straight in the database. */
 async function insertUser({ username, firstName = "לקוחה", lastName = "ישנה", phone = null }) {
   const parsed = phone ? normalizePhone(phone) : null;
   const { rows } = await db.query(
-    `INSERT INTO users (username, password_hash, first_name, last_name, phone_e164, phone_display)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    `INSERT INTO users (username, password_hash, first_name, last_name, phone_e164, phone_display, account_status)
+     VALUES ($1, $2, $3, $4, $5, $6, 'active') RETURNING id`,
     [username, await hashPassword(PASSWORD), firstName, lastName, parsed?.e164 ?? null, parsed?.display ?? null]
   );
   return rows[0].id;
 }
 
-async function login(server, username) {
-  const res = await request(server, { method: "POST", path: "/api/auth/login", body: { username, password: PASSWORD } });
+/** Email for verified accounts; a username still works for accounts that haven't added an email yet. */
+async function login(server, identifier) {
+  const key = identifier.includes("@") ? "email" : "username";
+  const res = await request(server, { method: "POST", path: "/api/auth/login", body: { [key]: identifier, password: PASSWORD } });
   return { res, cookie: cookieFrom(res.setCookie) };
 }
 
@@ -106,6 +67,7 @@ describe("phones, notifications, removal, ranking, content (PostgreSQL)", () => 
     process.env.NODE_ENV = "test";
     process.env.DATABASE_URL = "";
     process.env.PGLITE_DIR = "memory://";
+    process.env.EMAIL_PROVIDER = "memory";
     await startDb();
     server = http.createServer(createApp());
     await new Promise((r) => server.listen(0, "127.0.0.1", r));
@@ -131,7 +93,7 @@ describe("phones, notifications, removal, ranking, content (PostgreSQL)", () => 
     await closeDb();
   });
 
-  describe("phone at sign-up", () => {
+  describe("optional contact phone", () => {
     it("normalises every common Israeli format to the same E.164 number", () => {
       const inputs = ["050-1234567", "050 123 4567", "0501234567", "+972501234567", "972501234567", "+972-50-123-4567"];
       for (const input of inputs) {
@@ -142,67 +104,58 @@ describe("phones, notifications, removal, ranking, content (PostgreSQL)", () => 
       }
     });
 
-    it("registers with 050-1234567 and stores E.164 + display, unverified", async () => {
-      const created = await register(server, { phone: "050-1234567", firstName: "רותם", lastName: "שמש" });
-      assert.equal(created.user.phone, "050-123-4567");
-      assert.equal(created.user.phoneVerified, false);
-      const { rows } = await db.query(`SELECT phone_e164, phone_display, phone_verified FROM users WHERE id = $1`, [created.id]);
-      assert.deepEqual(rows[0], { phone_e164: "+972501234567", phone_display: "050-123-4567", phone_verified: false });
+    it("sign-up doesn't ask for a phone; a contact phone added later is stored as E.164 + display", async () => {
+      const created = await register(server, { firstName: "רותם", lastName: "שמש" });
+      assert.equal(created.user.phone, null);
+      assert.ok(!("phoneVerified" in created.user), "phones are contact details only, never verified or used to sign in");
+      const res = await request(server, { method: "PATCH", path: "/api/profile/phone", cookies: [created.cookie], body: { phone: "050-1234567" } });
+      assert.equal(res.status, 200, res.raw);
+      assert.equal(res.json.user.phone, "050-123-4567");
+      const { rows } = await db.query(`SELECT phone_e164, phone_display FROM users WHERE id = $1`, [created.id]);
+      assert.deepEqual(rows[0], { phone_e164: "+972501234567", phone_display: "050-123-4567" });
+
+      const phoneLogin = await request(server, { method: "POST", path: "/api/auth/login", body: { username: "0501234567", password: PASSWORD } });
+      assert.equal(phoneLogin.status, 401, "a phone number is not a sign-in identifier");
+
+      const cleared = await request(server, { method: "PATCH", path: "/api/profile/phone", cookies: [created.cookie], body: { phone: "" } });
+      assert.equal(cleared.status, 200);
+      assert.equal(cleared.json.user.phone, null);
+      await request(server, { method: "PATCH", path: "/api/profile/phone", cookies: [created.cookie], body: { phone: "050-1234567" } });
     });
 
-    it("rejects the same number in another format without creating or touching an account", async () => {
+    it("one account per contact number, in any format, without revealing whose it is", async () => {
       const before = await userCount();
       const existing = (await db.query(`SELECT * FROM users WHERE phone_e164 = '+972501234567'`)).rows[0];
+      const other = await register(server, { firstName: "אחרת", lastName: "לגמרי" });
 
-      const res = await request(server, {
-        method: "POST",
-        path: "/api/auth/register",
-        body: registerBody({ phone: "+972501234567", firstName: "אחרת", lastName: "לגמרי" }),
-      });
+      const res = await request(server, { method: "PATCH", path: "/api/profile/phone", cookies: [other.cookie], body: { phone: "+972501234567" } });
       assert.equal(res.status, 409);
-      assert.equal(res.json.error.code, "PHONE_UNAVAILABLE");
-      assert.match(res.json.error.message, /לא ניתן להשלים את ההרשמה עם מספר הטלפון הזה/);
-      assert.equal(cookieFrom(res.setCookie), null);
-      // Public response never reveals who owns the number.
-      assert.ok(!res.raw.includes("רותם") && !res.raw.includes(existing.username) && !/"user"/.test(res.raw));
+      assert.equal(res.json.code, "PHONE_UNAVAILABLE");
+      assert.ok(!res.raw.includes("רותם") && !res.raw.includes(existing.username));
 
-      assert.equal(await userCount(), before);
+      assert.equal(await userCount(), before + 1);
       const after = (await db.query(`SELECT * FROM users WHERE id = $1`, [existing.id])).rows[0];
       assert.deepEqual(after, existing);
-    });
-
-    it("the unique index stops a race between two sign-ups with one phone", async () => {
-      const phone = "054-7770001";
-      const results = await Promise.all([
-        request(server, { method: "POST", path: "/api/auth/register", body: registerBody({ phone }) }),
-        request(server, { method: "POST", path: "/api/auth/register", body: registerBody({ phone: "+972547770001" }) }),
-      ]);
-      assert.deepEqual(results.map((r) => r.status).sort(), [201, 409]);
-      assert.equal(results.find((r) => r.status === 409).json.error.code, "PHONE_UNAVAILABLE");
-      const { rows } = await db.query(`SELECT count(*)::int AS n FROM users WHERE phone_e164 = '+972547770001'`);
-      assert.equal(rows[0].n, 1);
       await assert.rejects(
-        db.query(`UPDATE users SET phone_e164 = '+972547770001' WHERE id = $1`, [customer.id]),
+        db.query(`UPDATE users SET phone_e164 = '+972501234567' WHERE id = $1`, [customer.id]),
         /users_phone_e164_key|duplicate/
       );
     });
 
-    it("rejects invalid, empty, landline and foreign numbers with friendly messages", async () => {
+    it("rejects invalid, landline and foreign numbers with friendly messages", async () => {
       const cases = [
         ["12345", /לא נראה תקין/],
-        ["", /יש להזין מספר טלפון/],
         ["03-1234567", /נייד ישראלי/],
         ["+14155552671", /נייד ישראלי/],
         ["<script>", /לא נראה תקין/],
       ];
-      const before = await userCount();
       for (const [phone, message] of cases) {
-        const res = await request(server, { method: "POST", path: "/api/auth/register", body: registerBody({ phone }) });
+        const res = await request(server, { method: "PATCH", path: "/api/profile/phone", cookies: [customer.cookie], body: { phone } });
         assert.equal(res.status, 400, phone);
-        assert.equal(res.json.error.code, "VALIDATION_ERROR");
-        assert.match(res.json.error.message, message, phone);
+        assert.equal(res.json.code, "VALIDATION_ERROR");
+        assert.match(res.json.error, message, phone);
       }
-      assert.equal(await userCount(), before);
+      assert.equal((await db.query(`SELECT phone_e164 FROM users WHERE id = $1`, [customer.id])).rows[0].phone_e164, "+972509990004");
     });
 
     it("existing accounts without a phone keep working and can add one in the profile", async () => {
@@ -234,12 +187,28 @@ describe("phones, notifications, removal, ranking, content (PostgreSQL)", () => 
     });
   });
 
-  describe("duplicate-phone notifications", () => {
-    it("owner and admins see the attempt with only safe fields; customers can't", async () => {
-      const attempt = registerBody({ phone: "050-9990004", firstName: "מירב", lastName: "כץ", password: "Secret-pass-99", confirmPassword: "Secret-pass-99" });
-      const res = await request(server, { method: "POST", path: "/api/auth/register", body: attempt });
-      assert.equal(res.status, 409);
+  describe("admin notifications", () => {
+    before(async () => {
+      // Sign-up by phone is gone, but notifications it created earlier stay readable.
+      await db.query(
+        `INSERT INTO admin_notifications (type, related_user_id, dedupe_key, metadata)
+         VALUES ('duplicate_phone_signup', $1, 'duplicate_phone_signup:+972509990004', $2::jsonb)`,
+        [
+          customer.id,
+          JSON.stringify({
+            reason: "ניסיון הרשמה עם מספר טלפון שכבר קיים",
+            firstName: "מירב",
+            lastName: "כץ",
+            username: "old_attempt",
+            phoneE164: "+972509990004",
+            phoneDisplay: "050-999-0004",
+            attempts: 2,
+          }),
+        ]
+      );
+    });
 
+    it("owner and admins see older notifications with only safe fields; customers can't", async () => {
       for (const viewer of [owner, admin]) {
         const list = await request(server, { path: "/api/admin/notifications", cookies: [viewer.cookie] });
         assert.equal(list.status, 200);
@@ -248,17 +217,11 @@ describe("phones, notifications, removal, ranking, content (PostgreSQL)", () => 
         assert.equal(n.status, "new");
         assert.equal(n.metadata.reason, "ניסיון הרשמה עם מספר טלפון שכבר קיים");
         assert.equal(n.metadata.firstName, "מירב");
-        assert.equal(n.metadata.lastName, "כץ");
-        assert.equal(n.metadata.username, attempt.username);
-        assert.equal(n.metadata.phoneDisplay, "050-999-0004");
+        assert.equal(n.metadata.attempts, 2);
         assert.equal(n.relatedUser.id, customer.id);
         assert.ok(list.json.unread >= 1);
-        assert.ok(!list.raw.includes("Secret-pass-99"));
         assert.ok(!/password|token|hash/i.test(list.raw));
       }
-
-      const stored = await db.query(`SELECT metadata::text AS m FROM admin_notifications`);
-      assert.ok(stored.rows.every((r) => !r.m.includes("Secret-pass-99")));
 
       const denied = await request(server, { path: "/api/admin/notifications", cookies: [customer.cookie] });
       assert.equal(denied.status, 403);
@@ -266,33 +229,27 @@ describe("phones, notifications, removal, ranking, content (PostgreSQL)", () => 
       assert.equal(anon.status, 401);
     });
 
-    it("repeat attempts merge into one notification and a flood is capped", async () => {
-      const again = await request(server, {
+    it("signing up with an email that's already registered creates no notification and no account", async () => {
+      const before = await userCount();
+      const notesBefore = (await db.query(`SELECT count(*)::int AS n FROM admin_notifications`)).rows[0].n;
+      const res = await request(server, {
         method: "POST",
         path: "/api/auth/register",
-        body: registerBody({ phone: "0509990004" }),
+        body: {
+          username: `dup_${Date.now().toString(36)}`,
+          email: customer.email.toUpperCase(),
+          password: "Secret-pass-99",
+          confirmPassword: "Secret-pass-99",
+          firstName: "מירב",
+          lastName: "כץ",
+        },
       });
-      assert.equal(again.status, 409);
-      const { rows } = await db.query(
-        `SELECT metadata FROM admin_notifications WHERE dedupe_key = 'duplicate_phone_signup:+972509990004'`
-      );
-      assert.equal(rows.length, 1);
-      assert.equal(rows[0].metadata.attempts, 2);
-
-      for (let i = 0; i < 40; i += 1) {
-        await notifyDuplicatePhoneSignup(db, {
-          firstName: "x",
-          lastName: "y",
-          username: `flood${i}`,
-          phoneE164: `+97258${String(i).padStart(7, "0")}`,
-          phoneDisplay: "",
-          existingUserId: null,
-        });
-      }
-      const created = await db.query(
-        `SELECT count(*)::int AS n FROM admin_notifications WHERE created_at > now() - interval '1 hour'`
-      );
-      assert.equal(created.rows[0].n, 30);
+      assert.ok([202, 429].includes(res.status), res.raw);
+      assert.ok(!res.raw.includes(customer.username));
+      assert.equal(await userCount(), before);
+      assert.equal((await db.query(`SELECT count(*)::int AS n FROM admin_notifications`)).rows[0].n, notesBefore);
+      const stored = await db.query(`SELECT metadata::text AS m FROM admin_notifications`);
+      assert.ok(stored.rows.every((r) => !r.m.includes("Secret-pass-99")));
     });
 
     it("marking as read updates status, unread count and the new-only filter", async () => {
@@ -361,7 +318,7 @@ describe("phones, notifications, removal, ranking, content (PostgreSQL)", () => 
       const list = await request(server, { path: "/api/admin/customers?pageSize=50", cookies: [owner.cookie] });
       assert.ok(!list.json.customers.some((c) => c.id === removable));
 
-      const reuse = await request(server, { method: "POST", path: "/api/auth/register", body: registerBody({ phone: "050-4440001" }) });
+      const reuse = await request(server, { method: "PATCH", path: "/api/profile/phone", cookies: [admin.cookie], body: { phone: "050-4440001" } });
       assert.equal(reuse.status, 409, "phone stays reserved after removal");
     });
 
@@ -722,7 +679,7 @@ describe("phones, notifications, removal, ranking, content (PostgreSQL)", () => 
       assert.equal(res.json.user.themeColor, "#1e3a8a");
       assert.deepEqual(await storedTheme(customer.id), { theme_color: "#1e3a8a", theme_palette_version: 1 });
 
-      const again = await login(server, customer.username);
+      const again = await login(server, customer.email);
       assert.equal(again.res.status, 200);
       assert.equal(again.res.json.user.themeColor, "#1e3a8a");
       assert.equal((await me(again.cookie)).themeColor, "#1e3a8a");

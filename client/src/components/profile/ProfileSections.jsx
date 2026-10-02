@@ -1,6 +1,41 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { formatCalendarDay, formatDate, formatMoney } from "../../lib/format.js";
+import { confirmMyAppointment } from "../../lib/authApi.js";
+import { getApiErrorMessage } from "../../lib/authErrors.js";
 import AppointmentStatusBadge from "../AppointmentStatusBadge.jsx";
+
+/** The customer's final "אישור ההזמנה" after the owner approved, the same step as the email button. */
+function ConfirmBookingButton({ appointment, onConfirmed }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function confirm() {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const { appointment: updated } = await confirmMyAppointment(appointment.id);
+      onConfirmed?.(updated || { ...appointment, status: "confirmed", canConfirm: false });
+    } catch (err) {
+      setError(getApiErrorMessage(err, "לא הצלחתי לאשר את ההזמנה כרגע. אפשר לנסות שוב בעוד רגע."));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="w-full sm:w-auto flex flex-col items-stretch sm:items-end gap-1">
+      <button type="button" className="btn-violet text-sm" disabled={busy} onClick={() => void confirm()}>
+        {busy ? "מאשרת…" : "אישור ההזמנה"}
+      </button>
+      {error && (
+        <p className="text-xs text-red-300" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function AppointmentsSection({
   appointments,
@@ -8,6 +43,7 @@ export function AppointmentsSection({
   title = "התורים שלי",
   emptyText = "עדיין לא שלחת בקשה לתור.",
   showBookingLink = true,
+  onAppointmentUpdated,
 }) {
   return (
     <section className="glass-panel p-6 space-y-4">
@@ -35,9 +71,13 @@ export function AppointmentsSection({
                 <p className="text-white/90">{a.serviceLabel}</p>
                 <p className="text-sm text-white/55">
                   {formatCalendarDay(a.date)} · {a.time}
+                  {a.priceIls != null && ` · ₪${a.priceIls}`}
                 </p>
               </div>
               <AppointmentStatusBadge status={a.status} />
+              {a.canConfirm && onAppointmentUpdated && (
+                <ConfirmBookingButton appointment={a} onConfirmed={onAppointmentUpdated} />
+              )}
             </li>
           ))}
         </ul>

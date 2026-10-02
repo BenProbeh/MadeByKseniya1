@@ -238,15 +238,20 @@ export default function AdminCustomerProfile() {
         </div>
 
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Detail label="טלפון">
-            {customer.phone ? (
+          <Detail label="אימייל">
+            {customer.email ? (
               <>
-                <span dir="ltr">{customer.phone}</span>
-                <span className="text-white/40"> · {customer.phoneVerified ? "מאומת" : "לא מאומת"}</span>
+                <bdi dir="ltr" className="break-all">
+                  {customer.email}
+                </bdi>
+                <span className="text-white/40"> · {customer.emailVerified ? "מאומת" : "לא מאומת"}</span>
               </>
             ) : (
-              "לא נשמר"
+              "עדיין לא נוסף"
             )}
+          </Detail>
+          <Detail label="טלפון ליצירת קשר">
+            {customer.phone ? <span dir="ltr">{customer.phone}</span> : "לא נשמר"}
           </Detail>
           <Detail label="הזמנות">{customer.ordersCount}</Detail>
           <Detail label="התחברות אחרונה">

@@ -4,6 +4,9 @@ const STATUS_CHANGE_ERRORS = Object.freeze({
   ALREADY_HANDLED: [409, "הבקשה הזו כבר טופלה."],
   INVALID_TRANSITION: [409, "אי אפשר לבצע את הפעולה הזו על תור במצב הנוכחי."],
   IN_PAST: [409, "מועד התור כבר עבר, אי אפשר לאשר אותו."],
+  NOTHING_TO_RESEND: [409, "אין מייל לשלוח שוב לתור במצב הזה."],
+  NO_EMAIL: [409, "אין כתובת אימייל מאומתת ללקוחה הזו."],
+  ALREADY_SENT: [409, "המייל כבר נשלח. אפשר לשלוח שוב רק אחרי שליחה שנכשלה."],
 });
 
 /** Sends the response for a known status-change error; returns false for anything unexpected. */

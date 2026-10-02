@@ -13,6 +13,9 @@ import NailSizing from "./pages/NailSizing.jsx";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import ForgotPassword from "./pages/ForgotPassword.jsx";
+import VerifyEmail from "./pages/VerifyEmail.jsx";
+import EmailSetup from "./pages/EmailSetup.jsx";
+import AppointmentConfirm from "./pages/AppointmentConfirm.jsx";
 import Profile from "./pages/Profile.jsx";
 import AdminCustomers from "./pages/AdminCustomers.jsx";
 import AdminCustomerProfile from "./pages/AdminCustomerProfile.jsx";
@@ -23,6 +26,7 @@ import AdminContentEditor from "./pages/AdminContentEditor.jsx";
 import ContentPage from "./pages/ContentPage.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
+import { AUTH_PAGES } from "./lib/authPaths.js";
 
 function AuthBoot({ children }) {
   const { loading } = useAuth();
@@ -45,7 +49,7 @@ function AuthBoot({ children }) {
 
 export default function App() {
   const { pathname } = useLocation();
-  const isAuthPage = pathname === "/login" || pathname === "/register" || pathname === "/forgot-password";
+  const isAuthPage = AUTH_PAGES.includes(pathname) || pathname === "/appointments/confirm";
 
   return (
     <AuthBoot>
@@ -57,6 +61,9 @@ export default function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/account/email" element={<EmailSetup />} />
+            <Route path="/appointments/confirm" element={<AppointmentConfirm />} />
             <Route path="/" element={<Navigate to="/services" replace />} />
             <Route path="/about" element={<Navigate to="/services" replace />} />
             <Route

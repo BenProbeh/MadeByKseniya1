@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import UserAvatar from "../components/UserAvatar.jsx";
 import ChangePasswordForm from "../components/ChangePasswordForm.jsx";
 import PhoneForm from "../components/PhoneForm.jsx";
+import EmailSection from "../components/profile/EmailSection.jsx";
 import SiteColorSection from "../components/theme/SiteColorSection.jsx";
 import {
   AppointmentsSection,
@@ -372,6 +373,10 @@ export default function Profile() {
         )}
 
         <div className="border-t border-white/[0.08] pt-5">
+          <EmailSection />
+        </div>
+
+        <div className="border-t border-white/[0.08] pt-5">
           <PhoneForm />
         </div>
 
@@ -382,7 +387,13 @@ export default function Profile() {
 
       <SiteColorSection />
 
-      <AppointmentsSection appointments={appointments} error={apptError} />
+      <AppointmentsSection
+        appointments={appointments}
+        error={apptError}
+        onAppointmentUpdated={(updated) =>
+          setAppointments((list) => (list || []).map((a) => (a.id === updated.id ? updated : a)))
+        }
+      />
       <MeasurementsSection measurement={measurement} error={measError} />
       <OrdersSection orders={orders} error={ordersError} />
       <ShipmentsSection shipments={shipments} error={shipsError} />

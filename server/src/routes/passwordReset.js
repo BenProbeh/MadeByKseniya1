@@ -1,38 +1,29 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
-import { SESSION_COOKIE, cookieOptions, hashToken, validateNewPassword } from "../auth.js";
-import { normalizePhone } from "../phone.js";
-import { isSmsConfigured, isSmsHealthy } from "../sms.js";
+import { SESSION_COOKIE, cookieOptions, validateNewPassword } from "../auth.js";
+import { normalizeEmail } from "../emailAddress.js";
+import { isEmailConfigured } from "../email/mailer.js";
 import { asyncRoute, sendServiceUnavailable } from "../http.js";
 import {
-  MAX_CODE_ATTEMPTS,
-  MAX_CODES_PER_HOUR,
+  ACTION_TOKEN_TTL_MINUTES,
+  CODE_PURPOSES,
+  CODE_TTL_MINUTES,
   RESEND_COOLDOWN_SECONDS,
-  RESET_CODE_TTL_MINUTES,
-  RESET_TOKEN_TTL_MINUTES,
-  VERIFY_LOCK_MINUTES,
-  completePasswordReset,
-  createWindowCounter,
-  dispatchResetCode,
-  isResetCodeFormat,
-  isResetTokenFormat,
-  verifyResetCode,
-} from "../passwordReset.js";
+  isActionTokenFormat,
+  isCodeFormat,
+} from "../emailCodes.js";
+import { completePasswordReset, dispatchResetCode, verifyResetCode } from "../passwordReset.js";
+import { lockedResponse } from "../codeLimits.js";
 
 export const RESET_MESSAGES = Object.freeze({
-  sent: "אם המספר קיים במערכת, אשלח אליו קוד להמשך.",
-  smsUnavailable: "לא הצלחתי לשלוח את הקוד כרגע. נסי שוב בעוד כמה דקות.",
-  invalidPhone: "מספר הטלפון לא נראה תקין. אפשר לכתוב נייד ישראלי, למשל 050-1234567.",
+  sent: "אם קיים חשבון עם כתובת האימייל הזאת, שלחתי אליו קוד לאיפוס הסיסמה.",
+  emailUnavailable: "לא הצלחתי לשלוח את הקוד כרגע. נסי שוב בעוד כמה דקות.",
   codeFormat: "הקוד צריך להכיל 6 ספרות.",
   invalidCode: "הקוד לא נכון או שפג תוקפו. אפשר לבדוק ולנסות שוב, או לבקש קוד חדש.",
   resetExpired: "פג הזמן להשלמת השינוי. אפשר להתחיל שוב ולבקש קוד חדש.",
   done: "הסיסמה עודכנה בהצלחה. אפשר להתחבר עם הסיסמה החדשה.",
   tooMany: "יותר מדי ניסיונות. אפשר לנסות שוב בעוד כמה דקות.",
 });
-
-const resendTooSoon = (s) => `כבר שלחתי קוד לפני רגע. אפשר לבקש קוד חדש בעוד ${s} שניות.`;
-const hourlyCap = (m) => `ביקשת הרבה קודים בזמן קצר. אפשר לנסות שוב בעוד ${m} דקות.`;
-const verifyLocked = (m) => `היו יותר מדי ניסיונות עם הקוד, אז נעלתי את האימות למספר הזה. אפשר לנסות שוב בעוד ${m} דקות.`;
 
 function fail(res, status, code, message, extra = {}) {
   return res.status(status).json({ success: false, error: { code, message }, errorMessage: message, ...extra });
@@ -47,54 +38,35 @@ const ipLimiter = (limit, windowMs) =>
     message: { success: false, error: { code: "RATE_LIMITED", message: RESET_MESSAGES.tooMany } },
   });
 
-const phoneFrom = (body) => (typeof body?.phone === "string" ? normalizePhone(body.phone) : { ok: false });
-const seconds = (ms) => Math.max(1, Math.ceil(ms / 1000));
-const minutes = (ms) => Math.max(1, Math.ceil(ms / 60_000));
+const PURPOSE = CODE_PURPOSES.RESET_PASSWORD;
 
 /**
- * POST /request  { phone }                       -> always the same answer for any valid number
- * POST /verify   { phone, code }                 -> { resetToken } for a correct, live code
+ * POST /request  { email }                       -> always the same answer for any valid address
+ * POST /verify   { email, code }                 -> { resetToken } for a correct, live code
  * POST /complete { resetToken, newPassword, confirmPassword }
- * Limits are per IP (express-rate-limit) and per phone number (hashed, in memory), identical for numbers
- * with and without an account, so the answers never reveal whether a number is registered.
+ * Limits are per IP and per address (hashed), identical for addresses with and without an account.
  */
-export function createPasswordResetRouter() {
+export function createPasswordResetRouter(limits) {
   const router = Router();
-  const resendCooldown = createWindowCounter({ windowMs: RESEND_COOLDOWN_SECONDS * 1000, limit: 1 });
-  const hourlyRequests = createWindowCounter({ windowMs: 60 * 60 * 1000, limit: MAX_CODES_PER_HOUR });
-  const verifyFailures = createWindowCounter({ windowMs: VERIFY_LOCK_MINUTES * 60 * 1000, limit: MAX_CODE_ATTEMPTS });
 
   router.post(
     "/request",
     ipLimiter(10, 60 * 60 * 1000),
     asyncRoute(async (req, res) => {
-      if (!isSmsConfigured() || !isSmsHealthy()) {
-        return fail(res, 503, "SMS_UNAVAILABLE", RESET_MESSAGES.smsUnavailable);
-      }
-      const phone = phoneFrom(req.body);
-      if (!phone.ok) return fail(res, 400, "VALIDATION_ERROR", RESET_MESSAGES.invalidPhone);
+      if (!isEmailConfigured()) return fail(res, 503, "EMAIL_UNAVAILABLE", RESET_MESSAGES.emailUnavailable);
+      const email = normalizeEmail(req.body?.email);
+      if (!email.ok) return fail(res, 400, "VALIDATION_ERROR", email.error);
 
-      const key = hashToken(phone.e164);
-      const cooldownMs = resendCooldown.blockedForMs(key);
-      if (cooldownMs) {
-        return fail(res, 429, "RESEND_TOO_SOON", resendTooSoon(seconds(cooldownMs)), {
-          retryAfterSeconds: seconds(cooldownMs),
-        });
-      }
-      const hourlyMs = hourlyRequests.blockedForMs(key);
-      if (hourlyMs) {
-        return fail(res, 429, "TOO_MANY_REQUESTS", hourlyCap(minutes(hourlyMs)), { retryAfterSeconds: seconds(hourlyMs) });
-      }
-      resendCooldown.hit(key);
-      hourlyRequests.hit(key);
+      const limited = limits.takeSend(PURPOSE, email.email);
+      if (limited) return fail(res, limited.status, limited.code, limited.message, { retryAfterSeconds: limited.retryAfterSeconds });
 
       res.json({
         success: true,
         message: RESET_MESSAGES.sent,
         resendAfterSeconds: RESEND_COOLDOWN_SECONDS,
-        expiresInSeconds: RESET_CODE_TTL_MINUTES * 60,
+        expiresInSeconds: CODE_TTL_MINUTES * 60,
       });
-      dispatchResetCode(phone.e164);
+      dispatchResetCode(email.email);
     })
   );
 
@@ -102,38 +74,29 @@ export function createPasswordResetRouter() {
     "/verify",
     ipLimiter(30, 15 * 60 * 1000),
     asyncRoute(async (req, res) => {
-      const phone = phoneFrom(req.body);
-      if (!phone.ok) return fail(res, 400, "VALIDATION_ERROR", RESET_MESSAGES.invalidPhone);
+      const email = normalizeEmail(req.body?.email);
+      if (!email.ok) return fail(res, 400, "VALIDATION_ERROR", email.error);
       const code = typeof req.body?.code === "string" ? req.body.code.replace(/\s+/g, "") : "";
-      if (!isResetCodeFormat(code)) return fail(res, 400, "VALIDATION_ERROR", RESET_MESSAGES.codeFormat);
+      if (!isCodeFormat(code)) return fail(res, 400, "VALIDATION_ERROR", RESET_MESSAGES.codeFormat);
 
-      const key = hashToken(phone.e164);
-      const lockedMs = verifyFailures.blockedForMs(key);
-      if (lockedMs) {
-        return fail(res, 429, "CODE_LOCKED", verifyLocked(minutes(lockedMs)), {
-          retryAfterSeconds: seconds(lockedMs),
-          attemptsLeft: 0,
-        });
-      }
+      const locked = limits.verifyLock(PURPOSE, email.email);
+      if (locked) return fail(res, locked.status, locked.code, locked.message, { retryAfterSeconds: locked.retryAfterSeconds, attemptsLeft: 0 });
 
       try {
-        const result = await verifyResetCode(phone.e164, code);
+        const result = await verifyResetCode(email.email, code);
         if (result.ok) {
-          verifyFailures.clear(key);
-          return res.json({ success: true, resetToken: result.token, expiresInSeconds: RESET_TOKEN_TTL_MINUTES * 60 });
+          limits.clearFailures(PURPOSE, email.email);
+          return res.json({ success: true, resetToken: result.token, expiresInSeconds: ACTION_TOKEN_TTL_MINUTES * 60 });
         }
       } catch (err) {
         if (err?.code === "DB_UNAVAILABLE") return sendServiceUnavailable(res);
         throw err;
       }
 
-      verifyFailures.hit(key);
-      const attemptsLeft = Math.max(0, MAX_CODE_ATTEMPTS - verifyFailures.count(key));
+      const attemptsLeft = limits.recordFailure(PURPOSE, email.email);
       if (!attemptsLeft) {
-        return fail(res, 429, "CODE_LOCKED", verifyLocked(VERIFY_LOCK_MINUTES), {
-          retryAfterSeconds: VERIFY_LOCK_MINUTES * 60,
-          attemptsLeft,
-        });
+        const lock = lockedResponse();
+        return fail(res, lock.status, lock.code, lock.message, { retryAfterSeconds: lock.retryAfterSeconds, attemptsLeft });
       }
       return fail(res, 400, "INVALID_CODE", RESET_MESSAGES.invalidCode, { attemptsLeft });
     })
@@ -144,7 +107,7 @@ export function createPasswordResetRouter() {
     ipLimiter(20, 15 * 60 * 1000),
     asyncRoute(async (req, res) => {
       const token = req.body?.resetToken;
-      if (!isResetTokenFormat(token)) return fail(res, 400, "RESET_EXPIRED", RESET_MESSAGES.resetExpired);
+      if (!isActionTokenFormat(token)) return fail(res, 400, "RESET_EXPIRED", RESET_MESSAGES.resetExpired);
       const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
       const confirmPassword = typeof req.body?.confirmPassword === "string" ? req.body.confirmPassword : "";
       const problem = validateNewPassword(newPassword, confirmPassword);
@@ -154,7 +117,7 @@ export function createPasswordResetRouter() {
         const result = await completePasswordReset(token, newPassword);
         if (!result.ok) return fail(res, 400, "RESET_EXPIRED", RESET_MESSAGES.resetExpired);
         res.clearCookie(SESSION_COOKIE, cookieOptions(false, null));
-        return res.json({ success: true, message: RESET_MESSAGES.done, username: result.username });
+        return res.json({ success: true, message: RESET_MESSAGES.done, email: result.email });
       } catch (err) {
         if (err?.code === "DB_UNAVAILABLE") return sendServiceUnavailable(res);
         console.error("password reset completion failed:", err?.code || "", err?.message);

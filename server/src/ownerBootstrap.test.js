@@ -7,55 +7,16 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { createApp } from "./app.js";
 import db, { closeDb, startDb } from "./db.js";
-import { SESSION_COOKIE } from "./auth.js";
 import { ensureOwner } from "./roles.js";
 import { config } from "./config.js";
+import { registerVerified, request } from "./testSupport.js";
 
 const PASSWORD = "strong-pass-1";
 const AVATAR = "/api/uploads/avatars/0123456789abcdef0123456789abcdef.png";
 
-function request(server, { method = "GET", path = "/", body, cookies = [] }) {
-  return new Promise((resolve, reject) => {
-    const payload = body != null ? JSON.stringify(body) : null;
-    const req = http.request(
-      {
-        host: "127.0.0.1",
-        port: server.address().port,
-        method,
-        path,
-        headers: {
-          "Content-Type": "application/json",
-          ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
-          ...(cookies.length ? { Cookie: cookies.join("; ") } : {}),
-        },
-      },
-      (res) => {
-        const chunks = [];
-        res.on("data", (c) => chunks.push(c));
-        res.on("end", () => {
-          const raw = Buffer.concat(chunks).toString("utf8");
-          resolve({ status: res.statusCode, setCookie: res.headers["set-cookie"] || [], json: raw ? JSON.parse(raw) : null, raw });
-        });
-      }
-    );
-    req.on("error", reject);
-    if (payload) req.write(payload);
-    req.end();
-  });
-}
-
-let phoneCounter = 0;
 async function register(server, { username, firstName, lastName }) {
-  phoneCounter += 1;
-  const phone = `054${String(phoneCounter).padStart(7, "0")}`;
-  const res = await request(server, {
-    method: "POST",
-    path: "/api/auth/register",
-    body: { username, password: PASSWORD, confirmPassword: PASSWORD, firstName, lastName, phone },
-  });
-  assert.equal(res.status, 201, res.raw);
-  const line = res.setCookie.find((c) => c.startsWith(`${SESSION_COOKIE}=`));
-  return { id: res.json.user.id, cookie: line.split(";")[0] };
+  const user = await registerVerified(server, { username, password: PASSWORD, firstName, lastName });
+  return { id: user.id, cookie: user.cookie };
 }
 
 const FUTURE = "2999-01-01T00:00:00Z";
@@ -79,6 +40,7 @@ describe("owner bootstrap by username (PostgreSQL)", () => {
     process.env.NODE_ENV = "test";
     process.env.DATABASE_URL = "";
     process.env.PGLITE_DIR = "memory://";
+    process.env.EMAIL_PROVIDER = "memory";
     delete process.env.OWNER_USER_ID;
     delete process.env.OWNER_USERNAME;
     await startDb();

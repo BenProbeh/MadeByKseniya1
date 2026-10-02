@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import db from "./db.js";
 import { config } from "./config.js";
-import { normalizePhone } from "./phone.js";
+import { normalizeEmail } from "./emailAddress.js";
 import { storedThemeColor } from "./themeColor.js";
 
 export const SESSION_COOKIE = "mbk_session";
@@ -29,6 +29,14 @@ export async function verifyPassword(password, passwordHash) {
   return bcrypt.compare(String(password), passwordHash);
 }
 
+let dummyPasswordHash = null;
+/** Same bcrypt cost when no account matched, so response time doesn't reveal which addresses exist. */
+export async function verifyAgainstNothing(password) {
+  dummyPasswordHash ??= await bcrypt.hash("no-account-placeholder", BCRYPT_ROUNDS);
+  await bcrypt.compare(String(password), dummyPasswordHash);
+  return false;
+}
+
 export function hashToken(token) {
   return crypto.createHash("sha256").update(String(token)).digest("hex");
 }
@@ -46,8 +54,11 @@ export function publicUser(row) {
     lastName: row.last_name,
     avatarUrl: row.avatar_url || null,
     role: row.role || "customer",
+    email: row.email || null,
+    emailVerified: Boolean(row.email_verified),
+    accountStatus: row.account_status || "active",
     phone: row.phone_display || null,
-    phoneVerified: Boolean(row.phone_verified),
+    notifyBookingEmails: row.notify_booking_emails !== false,
     themeColor: storedThemeColor(row.theme_color),
     themePaletteVersion: storedThemeColor(row.theme_color) ? row.theme_palette_version ?? null : null,
     createdAt: row.created_at,
@@ -67,6 +78,11 @@ export async function findUserByUsername(username, executor = db) {
   const u = normalizeUsername(username);
   if (!u) return null;
   const { rows } = await executor.query(`SELECT * FROM users WHERE username = $1`, [u]);
+  return rows[0] || null;
+}
+
+export async function findUserByEmail(email, executor = db) {
+  const { rows } = await executor.query(`SELECT * FROM users WHERE lower(email_normalized) = $1`, [email]);
   return rows[0] || null;
 }
 
@@ -123,6 +139,7 @@ export async function getSessionUser(token) {
         AND s.expires_at > now()
         AND u.id = s.user_id
         AND u.deleted_at IS NULL
+        AND u.account_status = 'active'
      RETURNING s.id AS session_id, s.expires_at, s.remember_me, u.*`,
     [hashToken(token)]
   );
@@ -152,7 +169,7 @@ export function validateRegisterInput(body) {
   const username = normalizeUsername(body?.username);
   const password = String(body?.password || "");
   const confirmPassword = String(body?.confirmPassword || "");
-  const phone = normalizePhone(body?.phone);
+  const email = normalizeEmail(body?.email);
 
   if (!firstName || firstName.length < 2) errors.push("יש להזין שם פרטי.");
   if (firstName.length > 60) errors.push("שם פרטי ארוך מדי.");
@@ -163,7 +180,7 @@ export function validateRegisterInput(body) {
   if (!/^[a-z0-9._-]+$/.test(username)) {
     errors.push("שם משתמש יכול להכיל אותיות באנגלית, מספרים, נקודה, מקף וקו תחתון.");
   }
-  if (!phone.ok) errors.push(phone.error);
+  if (!email.ok) errors.push(email.error);
   if (password.length < 8) errors.push("הסיסמה חייבת להכיל לפחות 8 תווים.");
   if (password.length > 128) errors.push("הסיסמה ארוכה מדי.");
   if (password !== confirmPassword) errors.push("אימות הסיסמה אינו תואם.");
@@ -175,8 +192,7 @@ export function validateRegisterInput(body) {
       firstName,
       lastName,
       username,
-      phoneE164: phone.ok ? phone.e164 : null,
-      phoneDisplay: phone.ok ? phone.display : null,
+      email: email.ok ? email.email : null,
       password,
       rememberMe: Boolean(body?.rememberMe),
     },

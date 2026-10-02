@@ -49,6 +49,15 @@ function AppointmentRequestItem({ item, busy, onRead }) {
 
       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="שם">{name}</Field>
+        <Field label="אימייל">
+          {m.email ? (
+            <bdi dir="ltr" className="break-all">
+              {m.email}
+            </bdi>
+          ) : (
+            "—"
+          )}
+        </Field>
         <Field label="טלפון">
           <span dir="ltr" className="inline-block">
             {m.phoneDisplay || "—"}

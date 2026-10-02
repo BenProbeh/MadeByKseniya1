@@ -64,6 +64,15 @@ function CustomerRow({ customer, removedView }) {
         </div>
         <p className="text-xs text-white/45 text-right">
           <span dir="ltr">@{customer.username}</span>
+          {customer.email && (
+            <>
+              {" · "}
+              <bdi dir="ltr" className="break-all">
+                {customer.email}
+              </bdi>
+              {!customer.emailVerified && " (לא מאומת)"}
+            </>
+          )}
         </p>
         {customer.phoneE164 && (
           <div className="relative z-10 w-fit">
@@ -267,7 +276,7 @@ export default function AdminCustomers() {
 
         <div className="space-y-4">
           <label className="block space-y-2 text-sm text-white/70">
-            <span>חיפוש לפי שם, שם משתמש או טלפון</span>
+            <span>חיפוש לפי שם, שם משתמש, אימייל או טלפון</span>
             <input
               type="search"
               value={searchInput}

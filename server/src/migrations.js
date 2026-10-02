@@ -423,6 +423,105 @@ export const migrations = [
       CREATE INDEX IF NOT EXISTS idx_appointments_status_starts ON appointments (status, starts_at);
     `,
   },
+  {
+    id: "008_email_identity",
+    sql: `
+      -- Email becomes the sign-in identity. Phone columns stay untouched as optional contact details.
+      -- Existing accounts keep working ('active'); new sign-ups start as 'pending_verification'.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email_normalized TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status TEXT NOT NULL DEFAULT 'active';
+      ALTER TABLE users ALTER COLUMN account_status SET DEFAULT 'pending_verification';
+      ALTER TABLE users ADD CONSTRAINT users_account_status_check
+        CHECK (account_status IN ('pending_verification', 'active'));
+      ALTER TABLE users ADD CONSTRAINT users_email_pair CHECK ((email IS NULL) = (email_normalized IS NULL));
+      ALTER TABLE users ADD CONSTRAINT users_email_normalized_format
+        CHECK (email_normalized IS NULL OR (email_normalized = lower(btrim(email_normalized)) AND email_normalized ~ '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'));
+      ALTER TABLE users ADD CONSTRAINT users_email_verified_has_email
+        CHECK (NOT email_verified OR email_normalized IS NOT NULL);
+      ALTER TABLE users ADD CONSTRAINT users_pending_has_email
+        CHECK (account_status = 'active' OR email_normalized IS NOT NULL);
+      -- One account per address whatever the letter case, enforced by PostgreSQL (also under races).
+      CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_key ON users (lower(email_normalized)) WHERE email_normalized IS NOT NULL;
+      -- Owner/admin opt-in for "new booking request" emails.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_booking_emails BOOLEAN NOT NULL DEFAULT true;
+
+      -- One-time email codes for every purpose. Only hashes are stored: never the code or the follow-up token.
+      CREATE TABLE IF NOT EXISTS email_codes (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        purpose TEXT NOT NULL CHECK (purpose IN ('verify_email', 'reset_password')),
+        email_normalized TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+        verified_at TIMESTAMPTZ,
+        action_token_hash TEXT,
+        action_expires_at TIMESTAMPTZ,
+        used_at TIMESTAMPTZ,
+        invalidated_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_email_codes_lookup ON email_codes (email_normalized, purpose, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_email_codes_user ON email_codes (user_id, purpose, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_email_codes_created ON email_codes (created_at);
+      CREATE UNIQUE INDEX IF NOT EXISTS email_codes_token_key ON email_codes (action_token_hash) WHERE action_token_hash IS NOT NULL;
+      -- At most one live code per account and purpose: a new code must retire the previous one first.
+      CREATE UNIQUE INDEX IF NOT EXISTS email_codes_one_live ON email_codes (user_id, purpose)
+        WHERE used_at IS NULL AND invalidated_at IS NULL;
+
+      -- SMS reset codes can no longer be used; the rows stay as history.
+      UPDATE password_resets SET invalidated_at = now() WHERE used_at IS NULL AND invalidated_at IS NULL;
+
+      -- Bookings: the owner/admin approval ('manager_approved') holds the slot until the customer confirms by email.
+      ALTER TABLE appointments DROP CONSTRAINT appointments_status_check;
+      ALTER TABLE appointments ADD CONSTRAINT appointments_status_check
+        CHECK (status IN ('pending', 'manager_approved', 'confirmed', 'rejected', 'cancelled'));
+      ALTER TABLE appointments ALTER COLUMN phone DROP NOT NULL;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS approved_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS customer_confirmed_at TIMESTAMPTZ;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS confirmation_token_hash TEXT;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS confirmation_token_expires_at TIMESTAMPTZ;
+      CREATE UNIQUE INDEX IF NOT EXISTS appointments_confirmation_token_key
+        ON appointments (confirmation_token_hash) WHERE confirmation_token_hash IS NOT NULL;
+
+      ALTER TABLE appointments DROP CONSTRAINT appointments_no_overlap;
+      ALTER TABLE appointments ADD CONSTRAINT appointments_no_overlap
+        EXCLUDE USING gist (tstzrange(starts_at, ends_at) WITH &&)
+        WHERE (status IN ('pending', 'manager_approved', 'confirmed') AND starts_at IS NOT NULL AND ends_at IS NOT NULL AND NOT overlap_exempt);
+      DROP INDEX IF EXISTS appointments_one_active_start;
+      CREATE UNIQUE INDEX appointments_one_active_start ON appointments (starts_at)
+        WHERE status IN ('pending', 'manager_approved', 'confirmed') AND starts_at IS NOT NULL AND NOT overlap_exempt;
+
+      -- Every email the site sends: who, which kind, provider message id and delivery status. Never the content.
+      CREATE TABLE IF NOT EXISTS email_deliveries (
+        id SERIAL PRIMARY KEY,
+        type TEXT NOT NULL,
+        recipient_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        recipient_email TEXT NOT NULL,
+        appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
+        idempotency_key TEXT,
+        attempts INTEGER NOT NULL DEFAULT 1 CHECK (attempts >= 1),
+        provider TEXT,
+        provider_message_id TEXT,
+        status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'sent', 'delivered', 'failed')),
+        error_code TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        sent_at TIMESTAMPTZ,
+        delivered_at TIMESTAMPTZ,
+        failed_at TIMESTAMPTZ
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS email_deliveries_idempotency_key
+        ON email_deliveries (idempotency_key) WHERE idempotency_key IS NOT NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS email_deliveries_provider_message
+        ON email_deliveries (provider_message_id) WHERE provider_message_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_email_deliveries_appointment ON email_deliveries (appointment_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_email_deliveries_created ON email_deliveries (created_at DESC);
+    `,
+  },
 ];
 
 const LOCK_KEY = 4815162342;

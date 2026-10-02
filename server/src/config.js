@@ -64,30 +64,28 @@ export const config = {
   get openaiModel() {
     return read("OPENAI_MODEL") || "gpt-4o-mini";
   },
-  /**
-   * "twilio", or "console" (prints locally) / "memory" (tests) outside production. Unset with Twilio values
-   * present means Twilio; "off" turns SMS off.
-   */
-  get smsProvider() {
-    return read("SMS_PROVIDER").toLowerCase();
+  /** "memory" captures emails in-process (tests only, never in production); otherwise Resend when configured. */
+  get emailProvider() {
+    return read("EMAIL_PROVIDER").toLowerCase();
   },
-  get twilioAccountSid() {
-    return read("TWILIO_ACCOUNT_SID");
+  get resendApiKey() {
+    return read("RESEND_API_KEY");
   },
-  get twilioAuthToken() {
-    return read("TWILIO_AUTH_TOKEN");
+  /** Sender address on a domain verified in Resend, e.g. noreply@madebykseniya.co.il ("Name <addr>" also accepted). */
+  get resendFromEmail() {
+    return read("RESEND_FROM_EMAIL");
   },
-  /** Sender: an approved alphanumeric sender ID (e.g. MadeByKsen) or a Twilio number in E.164. */
-  get twilioFrom() {
-    return read("TWILIO_FROM") || read("TWILIO_PHONE_NUMBER");
+  get resendFromName() {
+    return read("RESEND_FROM_NAME") || "MadeByKseniya";
   },
-  /** Preferred over TWILIO_FROM: a Twilio Messaging Service (MG...) that holds the sender. */
-  get twilioMessagingServiceSid() {
-    return read("TWILIO_MESSAGING_SERVICE_SID");
+  /** Signing secret of the Resend webhook (delivery status updates). Optional. */
+  get resendWebhookSecret() {
+    return read("RESEND_WEBHOOK_SECRET");
   },
-  /** Not used for sending (codes are generated here); read only to explain a Verify SID put in the wrong place. */
-  get twilioVerifyServiceSid() {
-    return read("TWILIO_VERIFY_SERVICE_SID");
+  /** Public site address used in email links and the email logo; falls back to the first FRONTEND_URL. */
+  get appPublicUrl() {
+    const explicit = read("APP_PUBLIC_URL").replace(/\/+$/, "");
+    return explicit || this.frontendOrigins.find((o) => /^https?:\/\//.test(o)) || "";
   },
 };
 
