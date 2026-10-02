@@ -172,6 +172,26 @@ export async function markNotificationRead(id) {
   return { notification: data.notification, unread: Number(data.unread) || 0 };
 }
 
+/** `status`: pending | confirmed | rejected | cancelled | "" (all); `scope`: upcoming | past | all. */
+export async function fetchAdminAppointments({ status = "", scope = "upcoming" } = {}) {
+  const params = { scope };
+  if (status) params.status = status;
+  const { data } = await api.get("/admin/appointments", { params });
+  return {
+    appointments: data.appointments || [],
+    counts: { pending: Number(data.counts?.pending) || 0, confirmed: Number(data.counts?.confirmed) || 0 },
+  };
+}
+
+const APPOINTMENT_ACTIONS = { confirmed: "confirm", rejected: "reject", cancelled: "cancel" };
+
+export async function setAppointmentStatus(id, status) {
+  const action = APPOINTMENT_ACTIONS[status];
+  if (!action) throw new Error("unknown appointment status");
+  const { data } = await api.post(`/admin/appointments/${encodeURIComponent(id)}/${action}`);
+  return data.appointment;
+}
+
 export async function fetchContentPages() {
   const { data } = await api.get("/admin/content/pages");
   return data.pages || [];

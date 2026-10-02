@@ -6,7 +6,12 @@ import RoleBadge from "../components/admin/RoleBadge.jsx";
 import WeeklySummaryCard from "../components/admin/WeeklySummaryCard.jsx";
 import DialButton from "../components/admin/DialButton.jsx";
 import { SCORE_TIERS, ScoreBadge, ScoreLegend } from "../components/admin/CustomerScore.jsx";
-import { fetchAdminCustomers, fetchCustomerStats, fetchUnreadNotificationCount } from "../lib/authApi.js";
+import {
+  fetchAdminAppointments,
+  fetchAdminCustomers,
+  fetchCustomerStats,
+  fetchUnreadNotificationCount,
+} from "../lib/authApi.js";
 import { getApiErrorMessage } from "../lib/authErrors.js";
 import { formatDate } from "../lib/format.js";
 import { isOwner } from "../lib/roles.js";
@@ -102,6 +107,7 @@ export default function AdminCustomers() {
   const [statsLoading, setStatsLoading] = useState(true);
   const [statsError, setStatsError] = useState("");
   const [unread, setUnread] = useState(0);
+  const [pendingAppointments, setPendingAppointments] = useState(0);
 
   const requestId = useRef(0);
   const removedView = status === "removed";
@@ -164,6 +170,9 @@ export default function AdminCustomers() {
     fetchUnreadNotificationCount()
       .then(setUnread)
       .catch(() => setUnread(0));
+    fetchAdminAppointments({ status: "pending", scope: "upcoming" })
+      .then((data) => setPendingAppointments(data.counts.pending))
+      .catch(() => setPendingAppointments(0));
   }, []);
 
   const customers = result?.customers || [];
@@ -190,6 +199,17 @@ export default function AdminCustomers() {
           <Link to="/profile" className="btn-text text-sm">
             <span aria-hidden="true">→</span>
             חזרה לפרופיל
+          </Link>
+          <Link to="/admin/appointments" className="btn-ghost px-5 py-2.5 text-sm">
+            ניהול תורים
+            {pendingAppointments > 0 && (
+              <span
+                className="ms-2 inline-flex min-w-[1.5rem] justify-center rounded-full bg-violet-400 px-1.5 text-xs text-oled-950 font-semibold"
+                aria-label={`${pendingAppointments} בקשות ממתינות לאישור`}
+              >
+                {pendingAppointments}
+              </span>
+            )}
           </Link>
           <Link to="/admin/notifications" className="btn-ghost px-5 py-2.5 text-sm">
             התראות

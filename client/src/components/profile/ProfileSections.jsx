@@ -1,5 +1,50 @@
 import { Link } from "react-router-dom";
-import { formatDate, formatMoney } from "../../lib/format.js";
+import { formatCalendarDay, formatDate, formatMoney } from "../../lib/format.js";
+import AppointmentStatusBadge from "../AppointmentStatusBadge.jsx";
+
+export function AppointmentsSection({
+  appointments,
+  error,
+  title = "התורים שלי",
+  emptyText = "עדיין לא שלחת בקשה לתור.",
+  showBookingLink = true,
+}) {
+  return (
+    <section className="glass-panel p-6 space-y-4">
+      <h2 className="font-serif text-2xl md:text-3xl text-white text-center">{title}</h2>
+      {appointments === undefined && <p className="text-sm text-white/45 text-center">התורים נטענים…</p>}
+      {error && <p className="text-sm text-amber-200 text-center">{error}</p>}
+      {appointments && appointments.length === 0 && !error && (
+        <div className="text-center space-y-4 py-2">
+          <p className="font-serif text-sm text-white/55">{emptyText}</p>
+          {showBookingLink && (
+            <Link to="/booking" className="btn-violet inline-flex">
+              לקביעת תור
+            </Link>
+          )}
+        </div>
+      )}
+      {appointments && appointments.length > 0 && (
+        <ul className="space-y-3">
+          {appointments.map((a) => (
+            <li
+              key={a.id}
+              className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] last:border-0 pb-3 last:pb-0"
+            >
+              <div className="min-w-0">
+                <p className="text-white/90">{a.serviceLabel}</p>
+                <p className="text-sm text-white/55">
+                  {formatCalendarDay(a.date)} · {a.time}
+                </p>
+              </div>
+              <AppointmentStatusBadge status={a.status} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
 
 export function MeasurementsSection({
   measurement,

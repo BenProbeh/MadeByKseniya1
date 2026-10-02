@@ -356,6 +356,73 @@ export const migrations = [
         ON password_resets (user_id) WHERE used_at IS NULL AND invalidated_at IS NULL;
     `,
   },
+  {
+    id: "007_appointment_requests",
+    sql: `
+      -- Bookings become requests: a new booking waits as 'pending' until the owner or an admin decides.
+      -- Existing rows keep their meaning; anything outside the four statuses used to block its slot, so it stays blocking.
+      UPDATE appointments SET status = lower(btrim(status)) WHERE status IS DISTINCT FROM lower(btrim(status));
+      UPDATE appointments SET status = 'confirmed'
+        WHERE status IS NULL OR status NOT IN ('pending', 'confirmed', 'rejected', 'cancelled');
+      ALTER TABLE appointments ALTER COLUMN status SET DEFAULT 'pending';
+      ALTER TABLE appointments ADD CONSTRAINT appointments_status_check
+        CHECK (status IN ('pending', 'confirmed', 'rejected', 'cancelled'));
+
+      -- Exact instants in Israel time (DST-safe); date/time stay as the studio's wall-clock values.
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS duration_min INTEGER;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS starts_at TIMESTAMPTZ;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS ends_at TIMESTAMPTZ;
+      ALTER TABLE appointments ADD CONSTRAINT appointments_time_order
+        CHECK (starts_at IS NULL OR ends_at IS NULL OR ends_at > starts_at);
+      -- Who changed the status last, and when (full history lives in audit_log).
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS status_changed_at TIMESTAMPTZ;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS status_changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+      -- One submission per form attempt, so a double click never creates two requests.
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS request_key TEXT;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS overlap_exempt BOOLEAN NOT NULL DEFAULT false;
+
+      CREATE OR REPLACE FUNCTION mbk_israel_instant(d TEXT, t TEXT) RETURNS TIMESTAMPTZ AS $$
+      BEGIN
+        IF d !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' OR t !~ '^[0-9]{2}:[0-9]{2}$' THEN
+          RETURN NULL;
+        END IF;
+        RETURN (d || ' ' || t)::timestamp AT TIME ZONE 'Asia/Jerusalem';
+      EXCEPTION WHEN others THEN
+        RETURN NULL;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      UPDATE appointments a
+         SET duration_min = s.duration_min,
+             starts_at = mbk_israel_instant(a.date, a.time),
+             ends_at = mbk_israel_instant(a.date, a.time) + make_interval(mins => s.duration_min)
+        FROM services s
+       WHERE s.id = a.service_id AND a.starts_at IS NULL;
+
+      DROP FUNCTION mbk_israel_instant(TEXT, TEXT);
+
+      -- Bookings that already overlapped before this guard existed are left as they are (never cancelled here).
+      UPDATE appointments a SET overlap_exempt = true
+       WHERE a.status IN ('pending', 'confirmed') AND a.starts_at IS NOT NULL AND a.ends_at IS NOT NULL
+         AND EXISTS (
+           SELECT 1 FROM appointments b
+            WHERE b.id < a.id AND b.status IN ('pending', 'confirmed')
+              AND b.starts_at IS NOT NULL AND b.ends_at IS NOT NULL
+              AND tstzrange(b.starts_at, b.ends_at) && tstzrange(a.starts_at, a.ends_at)
+         );
+
+      -- The database itself refuses two active bookings whose time ranges overlap (also under concurrent requests).
+      ALTER TABLE appointments ADD CONSTRAINT appointments_no_overlap
+        EXCLUDE USING gist (tstzrange(starts_at, ends_at) WITH &&)
+        WHERE (status IN ('pending', 'confirmed') AND starts_at IS NOT NULL AND ends_at IS NOT NULL AND NOT overlap_exempt);
+      CREATE UNIQUE INDEX IF NOT EXISTS appointments_one_active_start ON appointments (starts_at)
+        WHERE status IN ('pending', 'confirmed') AND starts_at IS NOT NULL AND NOT overlap_exempt;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS appointments_request_key
+        ON appointments (user_id, request_key) WHERE request_key IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_appointments_status_starts ON appointments (status, starts_at);
+    `,
+  },
 ];
 
 const LOCK_KEY = 4815162342;

@@ -17,6 +17,7 @@ import Profile from "./pages/Profile.jsx";
 import AdminCustomers from "./pages/AdminCustomers.jsx";
 import AdminCustomerProfile from "./pages/AdminCustomerProfile.jsx";
 import AdminNotifications from "./pages/AdminNotifications.jsx";
+import AdminAppointments from "./pages/AdminAppointments.jsx";
 import AdminContent from "./pages/AdminContent.jsx";
 import AdminContentEditor from "./pages/AdminContentEditor.jsx";
 import ContentPage from "./pages/ContentPage.jsx";
@@ -127,6 +128,14 @@ export default function App() {
               element={
                 <AdminRoute>
                   <AdminCustomerProfile />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/appointments"
+              element={
+                <AdminRoute>
+                  <AdminAppointments />
                 </AdminRoute>
               }
             />

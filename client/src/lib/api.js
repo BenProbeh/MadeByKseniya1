@@ -1,5 +1,5 @@
 import axios from "axios";
-import { MOCK_SERVICES, mockAvailability, mockCreateAppointment, mockUpdateAppointment } from "./mockData.js";
+import { MOCK_SERVICES } from "./mockData.js";
 
 // Default "/api" is same-origin: Vite proxies it in dev, and on Vercel the
 // api/proxy.js function forwards it to the backend (first-party cookies,
@@ -42,32 +42,17 @@ const isNoBackend = (err) => !err.response || err.response.status === 404;
 // fully browsable without a backend attached.
 export const getServices = () => api.get("/services").then((r) => r.data).catch(() => MOCK_SERVICES);
 
+// Booking is shared state owned by the server: no mock fallbacks, so nobody
+// ever sees a slot as free (or a request as sent) that the server didn't confirm.
 export const getAvailability = (date, serviceId) =>
   api
     .get("/appointments/availability", { params: { date, serviceId } })
-    .then((r) => r.data)
-    .catch(() => mockAvailability(date));
+    .then((r) => r.data);
 
-export const createAppointment = (payload) =>
-  api
-    .post("/appointments", payload)
-    .then((r) => r.data)
-    .catch((err) => {
-      if (isNoBackend(err)) return mockCreateAppointment(payload);
-      throw err;
-    });
+/** Resolves to `{ appointment, duplicate }`; the appointment is always a pending request. */
+export const createAppointmentRequest = (payload) => api.post("/appointments", payload).then((r) => r.data);
 
-export const findAppointmentsByPhone = (phone) =>
-  api.get("/appointments", { params: { phone } }).then((r) => r.data).catch(() => []);
-
-export const updateAppointment = (id, payload) =>
-  api
-    .patch(`/appointments/${id}`, payload)
-    .then((r) => r.data)
-    .catch((err) => {
-      if (isNoBackend(err)) return mockUpdateAppointment(id, payload);
-      throw err;
-    });
+export const fetchMyAppointments = () => api.get("/appointments/mine").then((r) => r.data?.appointments || []);
 
 export const sendChatMessage = (messages) =>
   api.post("/chat", { messages }).then((r) => r.data);

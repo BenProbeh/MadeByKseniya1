@@ -66,8 +66,9 @@ export function computeCustomerScore({ appointments = [], orders = [] }, now = n
   const appts = appointments
     .map((a) => ({ ...a, t: new Date(a.startsAt).getTime() }))
     .filter((a) => Number.isFinite(a.t));
+  // Requests still waiting for a decision, and rejected ones, don't count as bookings.
   const cancelled = appts.filter((a) => a.status === "cancelled");
-  const active = appts.filter((a) => a.status !== "cancelled");
+  const active = appts.filter((a) => a.status === "confirmed");
   const completed = active.filter((a) => a.t <= nowMs);
 
   const since = (days) => nowMs - days * DAY_MS;

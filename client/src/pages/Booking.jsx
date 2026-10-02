@@ -1,14 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { format } from "date-fns";
 import Calendar from "../components/Calendar.jsx";
-import {
-  getServices,
-  getAvailability,
-  createAppointment,
-  findAppointmentsByPhone,
-  updateAppointment,
-} from "../lib/api.js";
+import { getServices, getAvailability, createAppointmentRequest, fetchMyAppointments } from "../lib/api.js";
+import { useAuth } from "../context/AuthContext.jsx";
+import AppointmentStatusBadge from "../components/AppointmentStatusBadge.jsx";
+import { AppointmentsSection } from "../components/profile/ProfileSections.jsx";
+import { formatCalendarDay } from "../lib/format.js";
 import WazeIcon from "../components/WazeIcon.jsx";
 import {
   STUDIO_ADDRESS_LINE_1,
@@ -16,6 +14,13 @@ import {
   STUDIO_WAZE_URL,
   openStudioInWaze,
 } from "../lib/studioAddress.js";
+
+/** How often an open booking page re-reads the shared schedule. */
+const REFRESH_MS = 30_000;
+
+const SLOT_TAKEN_NOTICE = "השעה שבחרת נתפסה בינתיים. אפשר לבחור שעה אחרת.";
+
+const SLOT_STATE_TEXT = { free: "פנוי", pending: "ממתין לאישור", booked: "תפוס" };
 
 /** Israeli phone: digits only after stripping spaces/dashes; 9–10 local digits, or 972 + 8–9. */
 function isValidPhone(phone) {
@@ -26,18 +31,101 @@ function isValidPhone(phone) {
   return /^0\d{8,9}$/.test(digits);
 }
 
-function BookingForm({ services, initialNotes, skipServiceSelect = false, packageLabel = "", packageKey = "" }) {
+function newRequestKey() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function SlotButton({ slot, selected, onSelect }) {
+  const base =
+    "min-h-[3.25rem] rounded-2xl px-2 py-2 text-sm border flex flex-col items-center justify-center leading-tight transition-colors";
+  if (slot.state === "pending" || slot.state === "booked") {
+    const style =
+      slot.state === "booked"
+        ? "border-red-400/50 bg-red-500/15 text-red-300"
+        : "border-white/10 bg-white/[0.07] text-white/45";
+    return (
+      <button
+        type="button"
+        disabled
+        aria-disabled="true"
+        aria-label={`${slot.time} — ${SLOT_STATE_TEXT[slot.state]}`}
+        className={`${base} ${style} cursor-not-allowed`}
+      >
+        <span className={slot.state === "booked" ? "line-through decoration-1" : ""}>{slot.time}</span>
+        <span className="text-[11px] mt-0.5">{SLOT_STATE_TEXT[slot.state]}</span>
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(slot.time)}
+      aria-pressed={selected}
+      aria-label={`${slot.time} — ${SLOT_STATE_TEXT.free}`}
+      className={`${base} ${
+        selected
+          ? "bg-violet-gradient text-oled-950 font-bold border-transparent shadow-glow"
+          : "border-white/15 text-white/70 hover:border-violet-400/50"
+      }`}
+    >
+      {slot.time}
+    </button>
+  );
+}
+
+function SlotLegend() {
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-white/55 mb-3" aria-hidden="true">
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-3 w-3 rounded-full border border-white/30" />
+        פנוי
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-3 w-3 rounded-full border border-white/10 bg-white/20" />
+        ממתין לאישור
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-3 w-3 rounded-full border border-red-400/60 bg-red-500/40" />
+        תפוס
+      </span>
+    </div>
+  );
+}
+
+function BookingForm({
+  services,
+  user,
+  initialNotes,
+  skipServiceSelect = false,
+  packageLabel = "",
+  packageKey = "",
+  onRequested,
+}) {
   const [serviceId, setServiceId] = useState("");
   const [date, setDate] = useState(null);
-  const [slots, setSlots] = useState([]);
+  const [times, setTimes] = useState([]);
   const [slotsOpen, setSlotsOpen] = useState(true);
   const [time, setTime] = useState(null);
   const [loadingSlots, setLoadingSlots] = useState(false);
-  const [form, setForm] = useState({ clientName: "", phone: "", email: "", notes: initialNotes || "" });
+  const [form, setForm] = useState(() => ({
+    clientName: [user?.firstName, user?.lastName].filter(Boolean).join(" "),
+    phone: user?.phone || "",
+    email: "",
+    notes: initialNotes || "",
+  }));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const [confirmed, setConfirmed] = useState(null);
+  const [notice, setNotice] = useState("");
+  const [requested, setRequested] = useState(null);
   const [slotsError, setSlotsError] = useState(false);
+  const [loadedKey, setLoadedKey] = useState("");
+  const fetchSeq = useRef(0);
+  const submittingRef = useRef(false);
+  const requestKeyRef = useRef(newRequestKey());
+
+  const dateStr = date ? format(date, "yyyy-MM-dd") : "";
+  const slotKey = `${dateStr}|${serviceId}`;
 
   useEffect(() => {
     if (!skipServiceSelect || !services.length || serviceId) return;
@@ -45,69 +133,148 @@ function BookingForm({ services, initialNotes, skipServiceSelect = false, packag
   }, [skipServiceSelect, services, serviceId]);
 
   useEffect(() => {
-    if (!confirmed) return;
+    if (!requested) return;
     window.scrollTo({ top: 0, left: 0, behavior: "instant" in window ? "instant" : "auto" });
-  }, [confirmed]);
+  }, [requested]);
+
+  /** Re-reads the schedule from the server; resolves to the fresh slot list, or null if it failed or went stale. */
+  const loadSlots = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!dateStr || !serviceId) return null;
+      const seq = ++fetchSeq.current;
+      if (!silent) setLoadingSlots(true);
+      try {
+        const data = await getAvailability(dateStr, serviceId);
+        if (seq !== fetchSeq.current) return null;
+        const list = Array.isArray(data?.times)
+          ? data.times
+          : (data?.slots || []).map((t) => ({ time: t, state: "free" }));
+        setTimes(list);
+        setSlotsOpen(data?.open !== false);
+        setSlotsError(false);
+        return list;
+      } catch {
+        if (seq !== fetchSeq.current) return null;
+        if (!silent) {
+          setTimes([]);
+          setSlotsError(true);
+        }
+        return null;
+      } finally {
+        if (seq === fetchSeq.current) {
+          setLoadingSlots(false);
+          setLoadedKey(`${dateStr}|${serviceId}`);
+        }
+      }
+    },
+    [dateStr, serviceId]
+  );
 
   useEffect(() => {
     setTime(null);
+    setNotice("");
     setSlotsError(false);
-    if (!date || !serviceId) {
-      setSlots([]);
-      return;
-    }
-    setLoadingSlots(true);
-    getAvailability(format(date, "yyyy-MM-dd"), serviceId)
-      .then((data) => {
-        setSlots(data.slots);
-        setSlotsOpen(data.open);
-      })
-      .catch(() => {
-        setSlots([]);
-        setSlotsError(true);
-      })
-      .finally(() => setLoadingSlots(false));
-  }, [date, serviceId]);
+    setTimes([]);
+    if (!dateStr || !serviceId) return;
+    loadSlots();
+  }, [dateStr, serviceId, loadSlots]);
+
+  useEffect(() => {
+    if (!dateStr || !serviceId || requested) return undefined;
+    const refresh = () => {
+      if (document.visibilityState === "visible") loadSlots({ silent: true });
+    };
+    const timer = window.setInterval(refresh, REFRESH_MS);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [dateStr, serviceId, requested, loadSlots]);
+
+  // Someone else took the selected time while the form was open.
+  useEffect(() => {
+    if (!time || requested || submittingRef.current) return;
+    if (times.find((t) => t.time === time)?.state === "free") return;
+    setTime(null);
+    setNotice(SLOT_TAKEN_NOTICE);
+  }, [times, time, requested]);
+
+  // A new slot is a new request; a retry of the same slot reuses the key so it can never be stored twice.
+  useEffect(() => {
+    requestKeyRef.current = newRequestKey();
+  }, [dateStr, serviceId, time]);
+
+  function selectTime(next) {
+    setTime(next);
+    setNotice("");
+    setError(null);
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!serviceId || !date || !time) return;
+    if (submittingRef.current || !serviceId || !dateStr || !time) return;
     if (!isValidPhone(form.phone)) {
       setError("נא להזין מספר טלפון תקין (ספרות בלבד).");
       return;
     }
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
+    setNotice("");
     try {
-      const appt = await createAppointment({
+      const latest = await loadSlots({ silent: true });
+      if (latest && latest.find((t) => t.time === time)?.state !== "free") {
+        setTime(null);
+        setNotice(SLOT_TAKEN_NOTICE);
+        return;
+      }
+      const { appointment } = await createAppointmentRequest({
         clientName: form.clientName,
         phone: form.phone,
         email: form.email || undefined,
         serviceId: Number(serviceId),
-        date: format(date, "yyyy-MM-dd"),
+        date: dateStr,
         time,
         notes: form.notes || undefined,
         packageKey: packageKey || undefined,
+        requestKey: requestKeyRef.current,
       });
-      setConfirmed(appt);
+      setRequested(appointment);
+      onRequested?.();
     } catch (err) {
-      setError(err?.response?.data?.error || "לא הצלחתי לקבוע את התור, נסי שוב.");
+      const data = err?.response?.data;
+      const message = typeof data?.error === "string" ? data.error : "";
+      if (data?.code === "SLOT_TAKEN") {
+        setTime(null);
+        setNotice(message || SLOT_TAKEN_NOTICE);
+        loadSlots({ silent: true });
+      } else {
+        setError(message || "לא הצלחתי לשלוח את הבקשה, נסי שוב.");
+      }
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
 
-  if (confirmed) {
+  if (requested) {
     const service = services.find((s) => s.id === Number(serviceId));
-    const label = packageLabel || service?.name_he;
+    const label = requested.serviceLabel || packageLabel || service?.name_he;
     return (
-      <div className="glass-panel p-8 text-center shadow-glow">
-        <p className="text-4xl mb-4">✓</p>
-        <h3 className="text-xl font-bold mb-2">התור נקבע בהצלחה!</h3>
-        <p className="text-white/60">
-          {label} · {confirmed.date} בשעה {confirmed.time}
+      <div className="glass-panel p-8 text-center shadow-glow" role="status" aria-live="polite">
+        <AppointmentStatusBadge status="pending" className="mb-5" />
+        <p className="font-serif text-xl md:text-2xl text-white leading-relaxed">
+          קיבלתי את הפרטים שלך, מיד אעבור עליהם ואשתדל לאשר את התור.
+          <br />
+          נתראה!
         </p>
-        <p className="text-white/40 text-sm mt-4">מספר אישור: #{confirmed.id}</p>
+        <p className="text-white/60 mt-4">
+          {label} · {formatCalendarDay(requested.date)} בשעה {requested.time}
+        </p>
+        <p className="text-white/45 text-sm mt-2">הבקשה ממתינה לאישור. אפשר לראות את הסטטוס שלה בפרופיל.</p>
 
         <div className="mt-8 pt-6 border-t border-white/[0.08] flex flex-col items-center gap-3">
           <a
@@ -132,6 +299,8 @@ function BookingForm({ services, initialNotes, skipServiceSelect = false, packag
       </div>
     );
   }
+
+  const hasFree = times.some((t) => t.state === "free");
 
   return (
     <div className="grid lg:grid-cols-2 gap-8">
@@ -163,36 +332,34 @@ function BookingForm({ services, initialNotes, skipServiceSelect = false, packag
 
       <div className="space-y-6">
         <div>
-          <p className="text-sm font-medium text-white/70 mb-3">שעות פנויות</p>
+          <p className="text-sm font-medium text-white/70 mb-3">שעות</p>
+          {notice && (
+            <p className="text-sm text-red-300 mb-3" role="alert">
+              {notice}
+            </p>
+          )}
           {!serviceId || !date ? (
             <p className="text-white/40 text-sm">
               {skipServiceSelect ? "בחרי תאריך כדי לראות שעות פנויות." : "בחרי שירות ותאריך כדי לראות שעות פנויות."}
             </p>
-          ) : loadingSlots ? (
+          ) : (loadingSlots || loadedKey !== slotKey) && times.length === 0 ? (
             <p className="text-white/40 text-sm">טוען שעות...</p>
           ) : slotsError ? (
             <p className="text-white/40 text-sm">לא ניתן לטעון שעות פנויות כרגע, נסי שוב מאוחר יותר.</p>
           ) : !slotsOpen ? (
             <p className="text-white/40 text-sm">הסטודיו סגור בתאריך זה.</p>
-          ) : slots.length === 0 ? (
+          ) : times.length === 0 ? (
             <p className="text-white/40 text-sm">אין שעות פנויות בתאריך זה, נסי תאריך אחר.</p>
           ) : (
-            <div className="flex flex-wrap gap-2">
-              {slots.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setTime(s)}
-                  className={`px-4 py-2 rounded-full text-sm border transition-colors ${
-                    time === s
-                      ? "bg-violet-gradient text-oled-950 font-bold border-transparent"
-                      : "border-white/15 text-white/70 hover:border-violet-400/50"
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
+            <>
+              <SlotLegend />
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {times.map((slot) => (
+                  <SlotButton key={slot.time} slot={slot} selected={time === slot.time} onSelect={selectTime} />
+                ))}
+              </div>
+              {!hasFree && <p className="text-white/40 text-sm mt-3">אין שעות פנויות בתאריך זה, נסי תאריך אחר.</p>}
+            </>
           )}
         </div>
 
@@ -238,9 +405,14 @@ function BookingForm({ services, initialNotes, skipServiceSelect = false, packag
               rows={2}
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
             />
-            {error && <p className="text-sm text-red-300">{error}</p>}
+            {error && (
+              <p className="text-sm text-red-300" role="alert">
+                {error}
+              </p>
+            )}
+            <p className="text-xs text-white/45">התור ייקבע רק אחרי שאאשר את הבקשה.</p>
             <button type="submit" disabled={submitting} className="btn-violet w-full disabled:opacity-50">
-              {submitting ? "קובעת תור..." : "אישור קביעת תור"}
+              {submitting ? "שולחת בקשה..." : "שליחת בקשה לתור"}
             </button>
           </form>
         )}
@@ -249,168 +421,45 @@ function BookingForm({ services, initialNotes, skipServiceSelect = false, packag
   );
 }
 
-function ManageAppointments() {
-  const [phone, setPhone] = useState("");
-  const [results, setResults] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [newDate, setNewDate] = useState(null);
-  const [newSlots, setNewSlots] = useState([]);
-  const [newTime, setNewTime] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-
-  async function handleSearch(e) {
-    e.preventDefault();
-    if (!phone.trim()) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await findAppointmentsByPhone(phone.trim());
-      setResults(Array.isArray(data) ? data : []);
-    } catch {
-      setError("לא ניתן להתחבר לשרת כרגע, נסי שוב מאוחר יותר.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function startEdit(appt) {
-    setEditingId(appt.id);
-    setNewDate(null);
-    setNewTime(null);
-    setNewSlots([]);
-  }
+function MyAppointments({ refreshKey }) {
+  const [appointments, setAppointments] = useState(undefined);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!editingId || !newDate) return;
-    const appt = results.find((a) => a.id === editingId);
-    if (!appt) return;
-    getAvailability(format(newDate, "yyyy-MM-dd"), appt.service_id)
-      .then((d) => setNewSlots(d.slots))
-      .catch(() => setNewSlots([]));
-  }, [newDate, editingId, results]);
-
-  async function confirmReschedule(appt) {
-    setBusy(true);
-    setError(null);
-    try {
-      await updateAppointment(appt.id, { date: format(newDate, "yyyy-MM-dd"), time: newTime });
-      const data = await findAppointmentsByPhone(phone.trim());
-      setResults(Array.isArray(data) ? data : []);
-      setEditingId(null);
-    } catch {
-      setError("לא הצלחתי להזיז את התור, נסי שוב מאוחר יותר.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function cancelAppointment(appt) {
-    setBusy(true);
-    setError(null);
-    try {
-      await updateAppointment(appt.id, { status: "cancelled" });
-      const data = await findAppointmentsByPhone(phone.trim());
-      setResults(Array.isArray(data) ? data : []);
-    } catch {
-      setError("לא הצלחתי לבטל את התור, נסי שוב מאוחר יותר.");
-    } finally {
-      setBusy(false);
-    }
-  }
+    let cancelled = false;
+    fetchMyAppointments()
+      .then((list) => {
+        if (!cancelled) {
+          setAppointments(list);
+          setError("");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAppointments([]);
+          setError("לא הצלחתי לטעון את התורים.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
 
   return (
-    <div className="glass-panel p-6 md:p-8">
-      <h3 className="text-lg font-bold mb-4">איתור וניהול תור קיים</h3>
-      <form onSubmit={handleSearch} className="flex gap-2 mb-6">
-        <input
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          placeholder="הזיני מספר טלפון"
-          className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
-        />
-        <button type="submit" disabled={loading} className="btn-ghost px-6 shrink-0">
-          {loading ? "מחפשת..." : "חיפוש"}
-        </button>
-      </form>
-
-      {error && <p className="text-sm text-red-300 mb-4">{error}</p>}
-
-      {results && results.length === 0 && (
-        <p className="text-white/40 text-sm">לא נמצאו תורים פעילים למספר זה.</p>
-      )}
-
-      <div className="space-y-4">
-        {results?.map((appt) => (
-          <div key={appt.id} className="border border-white/10 rounded-xl p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="font-semibold">{appt.service_name}</p>
-                <p className="text-sm text-white/50">
-                  {appt.date} · {appt.time}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => startEdit(appt)}
-                  className="btn-ghost text-xs px-4 py-2"
-                >
-                  הזזת תור
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => cancelAppointment(appt)}
-                  className="text-xs px-4 py-2 rounded-full border border-red-400/30 text-red-300 hover:bg-red-400/10 disabled:opacity-50"
-                >
-                  ביטול
-                </button>
-              </div>
-            </div>
-
-            {editingId === appt.id && (
-              <div className="mt-4 grid md:grid-cols-2 gap-4">
-                <Calendar selectedDate={newDate} onSelectDate={setNewDate} />
-                <div>
-                  <p className="text-sm text-white/60 mb-2">שעות פנויות</p>
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {newSlots.map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => setNewTime(s)}
-                        className={`px-3 py-1.5 rounded-full text-xs border ${
-                          newTime === s
-                            ? "bg-violet-gradient text-oled-950 font-bold border-transparent"
-                            : "border-white/15 text-white/70 hover:border-violet-400/50"
-                        }`}
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    disabled={!newDate || !newTime || busy}
-                    onClick={() => confirmReschedule(appt)}
-                    className="btn-violet text-sm w-full disabled:opacity-50"
-                  >
-                    אישור הזזת תור
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
+    <AppointmentsSection
+      appointments={appointments}
+      error={error}
+      title="הבקשות והתורים שלי"
+      emptyText="עדיין לא שלחת בקשה לתור."
+      showBookingLink={false}
+    />
   );
 }
 
 export default function Booking() {
   const [services, setServices] = useState([]);
+  const [requestsVersion, setRequestsVersion] = useState(0);
+  const { user } = useAuth();
   const location = useLocation();
   const prefillNotes = location.state?.prefillNotes ?? "";
   const skipServiceSelect = Boolean(location.state?.skipServiceSelect);
@@ -432,20 +481,22 @@ export default function Booking() {
         </h1>
         <p className="text-white/60">
           {skipServiceSelect
-            ? "בחרי תאריך ושעה פנויה — התור נשמר אצלי אונליין."
-            : "בחרי שירות, תאריך ושעה פנויה — התור נשמר אצלי אונליין."}
+            ? "בחרי תאריך ושעה פנויה ושלחי בקשה — אעבור עליה ואאשר את התור."
+            : "בחרי שירות, תאריך ושעה פנויה ושלחי בקשה — אעבור עליה ואאשר את התור."}
         </p>
       </div>
 
       <BookingForm
         services={services}
+        user={user}
         initialNotes={prefillNotes}
         skipServiceSelect={skipServiceSelect}
         packageLabel={packageLabel}
         packageKey={packageKey}
+        onRequested={() => setRequestsVersion((v) => v + 1)}
       />
 
-      <ManageAppointments />
+      <MyAppointments refreshKey={requestsVersion} />
     </div>
   );
 }

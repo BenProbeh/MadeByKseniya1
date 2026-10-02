@@ -2,9 +2,8 @@ import OpenAI from "openai";
 import {
   listServices,
   getAvailability,
-  createAppointment,
-  findAppointmentsByPhone,
-  updateAppointment,
+  createAppointmentRequest,
+  listAppointmentsForUser,
 } from "./appointmentsService.js";
 import { config } from "./config.js";
 
@@ -31,8 +30,10 @@ async function buildSystemPrompt() {
 קטלוג השירותים הנוכחי:
 ${catalog}
 
-את/ה יכול/ה להשתמש בכלים כדי לבדוק זמינות, לאתר תורים קיימים לפי טלפון, לקבוע תור חדש או להזיז/לבטל תור קיים.
-לפני קביעת או הזזת תור, ודאי תמיד שיש לך את פרטי הלקוחה (שם מלא וטלפון) ואת השירות המבוקש.
+את/ה יכול/ה להשתמש בכלים כדי לבדוק זמינות, להציג ללקוחה את הבקשות והתורים שלה, ולשלוח בקשה לתור חדש.
+כל תור נשלח כבקשה שממתינה לאישור שלי. אחרי שליחה אמרי שהבקשה התקבלה ושאעבור עליה ואשתדל לאשר — לעולם אל תגידי שהתור נקבע או אושר.
+שינוי מועד או ביטול של תור קיים נעשים רק דרכי ישירות; אל תבטיחי לבצע אותם בצ'אט.
+לפני שליחת בקשה, ודאי תמיד שיש לך את פרטי הלקוחה (שם מלא וטלפון) ואת השירות המבוקש.
 אם משהו לא ברור, שאלי שאלת המשך קצרה במקום לנחש.`;
 }
 
@@ -55,22 +56,17 @@ const tools = [
   {
     type: "function",
     function: {
-      name: "find_appointments",
-      description: "Find existing upcoming appointments for a client by phone number.",
-      parameters: {
-        type: "object",
-        properties: {
-          phone: { type: "string" },
-        },
-        required: ["phone"],
-      },
+      name: "my_appointments",
+      description: "List the signed-in customer's own booking requests and appointments with their status.",
+      parameters: { type: "object", properties: {} },
     },
   },
   {
     type: "function",
     function: {
       name: "book_appointment",
-      description: "Create a new appointment. Only call once slot availability has been confirmed and all client details are known.",
+      description:
+        "Send a booking request (it waits for the studio's approval). Only call once slot availability has been confirmed and all client details are known.",
       parameters: {
         type: "object",
         properties: {
@@ -86,53 +82,37 @@ const tools = [
       },
     },
   },
-  {
-    type: "function",
-    function: {
-      name: "reschedule_appointment",
-      description: "Move an existing appointment to a new date/time, or cancel it.",
-      parameters: {
-        type: "object",
-        properties: {
-          appointmentId: { type: "number" },
-          newDate: { type: "string", description: "YYYY-MM-DD" },
-          newTime: { type: "string", description: "HH:MM" },
-          cancel: { type: "boolean", description: "Set true to cancel instead of reschedule" },
-        },
-        required: ["appointmentId"],
-      },
-    },
-  },
 ];
 
-function executeTool(name, args) {
+async function executeTool(name, args, { userId }) {
   switch (name) {
     case "check_availability":
       return getAvailability(args.date, args.serviceId);
-    case "find_appointments":
-      return findAppointmentsByPhone(args.phone);
-    case "book_appointment":
-      return createAppointment({
-        clientName: args.clientName,
-        phone: args.phone,
-        email: args.email,
-        serviceId: args.serviceId,
-        date: args.date,
-        time: args.time,
-        notes: args.notes,
-      });
-    case "reschedule_appointment":
-      return updateAppointment(args.appointmentId, {
-        date: args.newDate,
-        time: args.newTime,
-        status: args.cancel ? "cancelled" : undefined,
-      });
+    case "my_appointments":
+      if (!userId) return { error: "LOGIN_REQUIRED" };
+      return listAppointmentsForUser(userId, { limit: 10 });
+    case "book_appointment": {
+      if (!userId) return { error: "LOGIN_REQUIRED" };
+      const { appointment } = await createAppointmentRequest(
+        {
+          clientName: args.clientName,
+          phone: args.phone,
+          email: args.email,
+          serviceId: args.serviceId,
+          date: args.date,
+          time: args.time,
+          notes: args.notes,
+        },
+        { userId }
+      );
+      return appointment;
+    }
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
 }
 
-export async function runChat(messages) {
+export async function runChat(messages, { userId = null } = {}) {
   const client = getClient();
   const conversation = [{ role: "system", content: await buildSystemPrompt() }, ...messages];
 
@@ -154,7 +134,7 @@ export async function runChat(messages) {
       let result;
       try {
         const args = JSON.parse(call.function.arguments || "{}");
-        result = await executeTool(call.function.name, args);
+        result = await executeTool(call.function.name, args, { userId });
       } catch (err) {
         result = { error: err.message };
       }

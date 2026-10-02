@@ -5,7 +5,13 @@ import UserAvatar from "../components/UserAvatar.jsx";
 import ChangePasswordForm from "../components/ChangePasswordForm.jsx";
 import PhoneForm from "../components/PhoneForm.jsx";
 import SiteColorSection from "../components/theme/SiteColorSection.jsx";
-import { MeasurementsSection, OrdersSection, ShipmentsSection } from "../components/profile/ProfileSections.jsx";
+import {
+  AppointmentsSection,
+  MeasurementsSection,
+  OrdersSection,
+  ShipmentsSection,
+} from "../components/profile/ProfileSections.jsx";
+import { fetchMyAppointments } from "../lib/api.js";
 import {
   deleteAvatar,
   fetchProfileMeasurements,
@@ -177,6 +183,25 @@ export default function Profile() {
   const [measError, setMeasError] = useState("");
   const [ordersError, setOrdersError] = useState("");
   const [shipsError, setShipsError] = useState("");
+  const [appointments, setAppointments] = useState(undefined);
+  const [apptError, setApptError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchMyAppointments()
+      .then((list) => {
+        if (!cancelled) setAppointments(list);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAppointments([]);
+          setApptError("לא הצלחתי לטעון את התורים.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -286,6 +311,9 @@ export default function Profile() {
             )}
             {isStaff(user) && (
               <div className="pt-3 flex flex-wrap gap-2 justify-center sm:justify-start">
+                <Link to="/admin/appointments" className="btn-ghost px-5 py-2.5 text-sm">
+                  ניהול תורים
+                </Link>
                 <Link to="/admin/customers" className="btn-ghost px-5 py-2.5 text-sm">
                   ניהול לקוחות
                 </Link>
@@ -354,6 +382,7 @@ export default function Profile() {
 
       <SiteColorSection />
 
+      <AppointmentsSection appointments={appointments} error={apptError} />
       <MeasurementsSection measurement={measurement} error={measError} />
       <OrdersSection orders={orders} error={ordersError} />
       <ShipmentsSection shipments={shipments} error={shipsError} />

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchNotifications, markNotificationRead } from "../lib/authApi.js";
 import { getApiErrorMessage } from "../lib/authErrors.js";
-import { formatDateTime } from "../lib/format.js";
+import { formatCalendarDay, formatDateTime } from "../lib/format.js";
 
 const FILTERS = [
   { value: "new", label: "חדשות" },
@@ -25,7 +25,61 @@ function Field({ label, children }) {
   );
 }
 
+function AppointmentRequestItem({ item, busy, onRead }) {
+  const m = item.metadata;
+  const name = `${m.firstName} ${m.lastName}`.trim() || m.clientName || "—";
+  const isNew = item.status === "new";
+
+  return (
+    <li
+      className={`rounded-xl border p-4 sm:p-5 space-y-4 ${
+        isNew ? "border-violet-400/40 bg-violet-400/[0.04]" : "border-white/[0.08]"
+      }`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1 min-w-0">
+          <p className="font-serif text-white">
+            {isNew && <span className="me-2 inline-block h-2 w-2 rounded-full bg-violet-400 align-middle" aria-hidden="true" />}
+            בקשה חדשה לתור ממתינה לאישור
+          </p>
+          <p className="text-xs text-white/45">{formatDateTime(m.requestedAt)}</p>
+        </div>
+        <span className="text-[11px] text-white/45 shrink-0">{isNew ? "חדשה" : `טופלה ${formatDateTime(item.readAt)}`}</span>
+      </div>
+
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="שם">{name}</Field>
+        <Field label="טלפון">
+          <span dir="ltr" className="inline-block">
+            {m.phoneDisplay || "—"}
+          </span>
+        </Field>
+        <Field label="מועד מבוקש">
+          {formatCalendarDay(m.date)} · {m.time}
+        </Field>
+        <Field label="שירות">
+          {m.serviceLabel || "—"}
+          {m.priceIls != null ? ` · ${m.priceIls} ₪` : ""}
+        </Field>
+        {m.notes && <Field label="הערות">{m.notes}</Field>}
+      </dl>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Link to="/admin/appointments" className="btn-ghost px-4 py-2 text-sm">
+          לניהול התורים
+        </Link>
+        {isNew && (
+          <button type="button" className="btn-text text-sm" onClick={() => onRead(item.id)} disabled={busy}>
+            {busy ? "רגע אחד…" : "סימון כנקראה"}
+          </button>
+        )}
+      </div>
+    </li>
+  );
+}
+
 function NotificationItem({ item, busy, onRead }) {
+  if (item.type === "appointment_request") return <AppointmentRequestItem item={item} busy={busy} onRead={onRead} />;
   const m = item.metadata;
   const typedName = `${m.firstName} ${m.lastName}`.trim() || "—";
   const related = item.relatedUser;

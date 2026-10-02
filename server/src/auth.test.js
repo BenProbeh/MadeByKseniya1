@@ -362,20 +362,29 @@ describe("auth + profile API (PostgreSQL)", () => {
     assert.ok(res.status === 400 || res.status === 413);
   });
 
-  it("books an appointment and blocks the same slot", async () => {
+  it("a booking becomes a pending request and holds the slot", async () => {
+    const { cookie } = await register(server);
     const date = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const avail = await request(server, { path: `/api/appointments/availability?date=${date}&serviceId=1` });
     assert.equal(avail.status, 200);
     assert.ok(avail.json.slots.includes("10:00"));
 
     const body = { clientName: "בדיקה", phone: "0509999999", serviceId: 1, date, time: "10:00" };
-    const first = await request(server, { method: "POST", path: "/api/appointments", body });
+    const anonymous = await request(server, { method: "POST", path: "/api/appointments", body });
+    assert.equal(anonymous.status, 401);
+
+    const first = await request(server, { method: "POST", path: "/api/appointments", body, cookies: [cookie] });
     assert.equal(first.status, 201);
-    const second = await request(server, { method: "POST", path: "/api/appointments", body });
+    assert.equal(first.json.appointment.status, "pending");
+    const second = await request(server, { method: "POST", path: "/api/appointments", body, cookies: [cookie] });
     assert.equal(second.status, 409);
 
-    const mine = await request(server, { path: "/api/appointments?phone=0509999999" });
+    const mine = await request(server, { path: "/api/appointments/mine", cookies: [cookie] });
     assert.equal(mine.status, 200);
-    assert.equal(mine.json.length, 1);
+    assert.equal(mine.json.appointments.length, 1);
+    assert.equal(mine.json.appointments[0].statusHe, "ממתין לאישור");
+
+    const byPhone = await request(server, { path: "/api/appointments?phone=0509999999" });
+    assert.equal(byPhone.status, 404, "no public lookup of bookings by phone number");
   });
 });

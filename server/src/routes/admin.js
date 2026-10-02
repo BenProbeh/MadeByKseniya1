@@ -13,6 +13,13 @@ import { loadMeasurement, loadOrders, loadShipments } from "../profileData.js";
 import { ROLES, isStaffRole, recordAudit } from "../roles.js";
 import { ensureScoresFresh } from "../customerScore.js";
 import { countUnreadNotifications, listNotifications, markNotificationRead } from "../notifications.js";
+import {
+  APPOINTMENT_STATUSES,
+  STAFF_SCOPES,
+  changeAppointmentStatus,
+  listAppointmentsForStaff,
+} from "../appointmentsService.js";
+import { sendStatusChangeError } from "./appointmentStatus.js";
 
 const router = Router();
 
@@ -192,6 +199,37 @@ router.get(
   asyncRoute(async (_req, res) => {
     return res.json({ success: true, unread: await countUnreadNotifications() });
   })
+);
+
+router.get(
+  "/appointments",
+  asyncRoute(async (req, res) => {
+    const status = typeof req.query.status === "string" ? req.query.status : "";
+    if (status && !APPOINTMENT_STATUSES.includes(status)) return badRequest(res, "סינון סטטוס לא חוקי.");
+    const scope = typeof req.query.scope === "string" && req.query.scope ? req.query.scope : "upcoming";
+    if (!STAFF_SCOPES.includes(scope)) return badRequest(res, "סינון תאריכים לא חוקי.");
+    return res.json({ success: true, ...(await listAppointmentsForStaff({ status, scope })) });
+  })
+);
+
+async function applyStatus(req, res, nextStatus) {
+  const id = parseUserId(req.params.id);
+  if (!id) return badRequest(res, "מזהה תור לא חוקי.");
+  try {
+    const appointment = await changeAppointmentStatus(id, nextStatus, req.user.id);
+    return res.json({ success: true, appointment });
+  } catch (err) {
+    if (sendStatusChangeError(res, err)) return undefined;
+    throw err;
+  }
+}
+
+router.post("/appointments/:id/confirm", asyncRoute((req, res) => applyStatus(req, res, "confirmed")));
+router.post("/appointments/:id/reject", asyncRoute((req, res) => applyStatus(req, res, "rejected")));
+router.post("/appointments/:id/cancel", asyncRoute((req, res) => applyStatus(req, res, "cancelled")));
+router.patch(
+  "/appointments/:id/status",
+  asyncRoute((req, res) => applyStatus(req, res, typeof req.body?.status === "string" ? req.body.status : ""))
 );
 
 router.patch(

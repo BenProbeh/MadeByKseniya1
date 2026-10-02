@@ -472,33 +472,58 @@ describe("phones, notifications, removal, ranking, content (PostgreSQL)", () => 
 
       const services = (await request(server, { path: "/api/services" })).json;
       const base = { clientName: "נועה בר", phone: "050-999-0004", serviceId: services[0].id, time: "10:00" };
-      const booked = [];
-      for (let i = 0; i < 6; i += 1) {
-        const res = await request(server, {
-          method: "POST",
-          path: "/api/appointments",
-          cookies: [customer.cookie],
-          body: { ...base, date: ymd(Date.now() - (2 + i * 14) * DAY), packageKey: "bad-bitch:build:L", priceIls: 1 },
-        });
-        assert.equal(res.status, 201, res.raw);
-        booked.push(res.json);
-      }
-      assert.equal(booked[0].service_kind, "build");
-      assert.equal(booked[0].price_ils, 340, "price comes from the catalog, not the request");
-      assert.equal(booked[0].user_id, customer.id);
-      assert.equal(booked[0].phone_e164, "+972509990004");
+      const booked = await request(server, {
+        method: "POST",
+        path: "/api/appointments",
+        cookies: [customer.cookie],
+        body: { ...base, date: ymd(Date.now() + 20 * DAY), packageKey: "bad-bitch:build:L", priceIls: 1 },
+      });
+      assert.equal(booked.status, 201, booked.raw);
+      assert.equal(booked.json.appointment.priceIls, 340, "price comes from the catalog, not the request");
+      const row = (await db.query(`SELECT * FROM appointments WHERE id = $1`, [booked.json.appointment.id])).rows[0];
+      assert.equal(row.service_kind, "build");
+      assert.equal(row.price_ils, 340);
+      assert.equal(row.user_id, customer.id);
+      assert.equal(row.phone_e164, "+972509990004");
+      assert.equal(row.status, "pending");
 
       const bogus = await request(server, {
         method: "POST",
         path: "/api/appointments",
-        body: { ...base, date: ymd(Date.now() - 200 * DAY), packageKey: "fake:thing" },
+        cookies: [customer.cookie],
+        body: { ...base, date: ymd(Date.now() + 21 * DAY), packageKey: "fake:thing" },
       });
       assert.equal(bogus.status, 201);
-      assert.equal(bogus.json.package_key, null);
-      assert.equal(bogus.json.service_kind, null);
+      const bogusRow = (await db.query(`SELECT * FROM appointments WHERE id = $1`, [bogus.json.appointment.id])).rows[0];
+      assert.equal(bogusRow.package_key, null);
+      assert.equal(bogusRow.service_kind, null);
 
-      const cancel = await request(server, { method: "PATCH", path: `/api/appointments/${booked[5].id}`, body: { status: "cancelled" } });
+      // Past visits (already confirmed by the studio) feed the score; the API itself never accepts past dates.
+      for (let i = 0; i < 6; i += 1) {
+        await db.query(
+          `INSERT INTO appointments (client_name, phone, phone_e164, service_id, date, time, user_id,
+                                     package_key, package_label, service_kind, price_ils, status)
+           VALUES ($1, $2, '+972509990004', $3, $4, '10:00', $5, 'bad-bitch:build:L', 'בניות · L', 'build', 340,
+                   $6)`,
+          [base.clientName, base.phone, base.serviceId, ymd(Date.now() - (2 + i * 14) * DAY), customer.id, i === 5 ? "cancelled" : "confirmed"]
+        );
+      }
+
+      const denied = await request(server, {
+        method: "PATCH",
+        path: `/api/appointments/${bogus.json.appointment.id}`,
+        cookies: [customer.cookie],
+        body: { status: "cancelled" },
+      });
+      assert.equal(denied.status, 403);
+      const cancel = await request(server, {
+        method: "PATCH",
+        path: `/api/appointments/${bogus.json.appointment.id}`,
+        cookies: [owner.cookie],
+        body: { status: "cancelled" },
+      });
       assert.equal(cancel.status, 200);
+      assert.equal(cancel.json.appointment.status, "cancelled");
     });
 
     it("staff list sorts and filters by score; customers never see scores", async () => {
