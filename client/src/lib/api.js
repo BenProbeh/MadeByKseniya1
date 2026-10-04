@@ -21,6 +21,11 @@ const api = axios.create({
   timeout: 20000,
 });
 
+/** Full URL of an API path, for links the browser opens itself (e.g. a sign-in redirect). */
+export function apiUrl(path) {
+  return `${apiBase}/${String(path).replace(/^\/+/, "")}`;
+}
+
 /** Resolve server media paths (/api/uploads/...) against the API origin. */
 export function resolveMediaUrl(url) {
   if (!url) return null;

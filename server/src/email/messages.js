@@ -67,6 +67,19 @@ export function addressInUseMessage({ firstName }) {
   });
 }
 
+/** One-off check of the sending mailbox, sent only to the owner from the profile page. */
+export function mailTestMessage() {
+  return renderEmail({
+    subject: "בדיקת מערכת המיילים של MadeByKseniya",
+    preheader: "מייל בדיקה ממערכת MadeByKseniya",
+    blocks: [
+      { type: "p", text: "היי Ben," },
+      { type: "p", text: "זהו מייל בדיקה ממערכת MadeByKseniya." },
+      { type: "p", text: "אם המייל הזה הגיע אליך, החיבור בין האתר, Railway ו־Outlook עובד בהצלחה." },
+    ],
+  });
+}
+
 function bookingRows(appt) {
   const { weekday, date } = formatBookingDate(appt.date);
   return [

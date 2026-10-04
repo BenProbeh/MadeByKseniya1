@@ -5,6 +5,7 @@ import UserAvatar from "../components/UserAvatar.jsx";
 import ChangePasswordForm from "../components/ChangePasswordForm.jsx";
 import PhoneForm from "../components/PhoneForm.jsx";
 import EmailSection from "../components/profile/EmailSection.jsx";
+import MailConnectionSection from "../components/profile/MailConnectionSection.jsx";
 import SiteColorSection from "../components/theme/SiteColorSection.jsx";
 import {
   AppointmentsSection,
@@ -22,7 +23,7 @@ import {
   uploadAvatarFile,
 } from "../lib/authApi.js";
 import { formatDate } from "../lib/format.js";
-import { isStaff } from "../lib/roles.js";
+import { isOwner, isStaff } from "../lib/roles.js";
 
 /** Isolated selfie capture — does not share stream with nail sizing. */
 function AvatarCameraModal({ open, onClose, onCaptured }) {
@@ -375,6 +376,12 @@ export default function Profile() {
         <div className="border-t border-white/[0.08] pt-5">
           <EmailSection />
         </div>
+
+        {isOwner(user) && (
+          <div className="border-t border-white/[0.08] pt-5">
+            <MailConnectionSection />
+          </div>
+        )}
 
         <div className="border-t border-white/[0.08] pt-5">
           <PhoneForm />

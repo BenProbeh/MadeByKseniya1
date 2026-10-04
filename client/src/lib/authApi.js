@@ -1,4 +1,4 @@
-import api, { resolveMediaUrl } from "./api.js";
+import api, { apiUrl, resolveMediaUrl } from "./api.js";
 import { assertUser } from "./authErrors.js";
 import { normalizeHex } from "./theme/color.js";
 import { PALETTE_VERSION } from "./theme/palette.js";
@@ -88,6 +88,23 @@ export async function updateBookingEmailsRequest(notifyBookingEmails) {
   const { data } = await api.patch("/profile/notifications", { notifyBookingEmails: Boolean(notifyBookingEmails) });
   return mapUser(data?.user);
 }
+
+// Owner only: the site's sending mailbox (Outlook through Microsoft Graph).
+export async function fetchMailStatus() {
+  const { data } = await api.get("/owner/mail/status");
+  return data;
+}
+
+export async function sendMailTest() {
+  const { data } = await api.post("/owner/mail/test");
+  return data;
+}
+
+export async function disconnectMicrosoftMail() {
+  await api.post("/owner/mail/microsoft/disconnect");
+}
+
+export const microsoftConnectUrl = () => apiUrl("/owner/mail/microsoft/connect");
 
 export async function logoutRequest() {
   await api.post("/auth/logout");

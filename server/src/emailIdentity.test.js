@@ -382,7 +382,8 @@ describe("email sign-up, verification and password reset (PostgreSQL)", () => {
       const reset = await request(server, { method: "POST", path: "/api/auth/password-reset/request", body: { email: uniqueEmail("off") } });
       assert.equal(reset.status, 503);
       const health = await request(server, { path: "/api/health" });
-      assert.equal(health.json.email, "off");
+      assert.equal(health.json.mailProvider, "off");
+      assert.equal(health.json.configured, false);
 
       const to = uniqueEmail("record");
       const result = await sendEmail({ type: "test", to, subject: "s", html: "<p>h</p>", text: "t" });

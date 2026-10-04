@@ -15,7 +15,8 @@ import ownerRouter from "./routes/owner.js";
 import { adminContentRouter, publicContentRouter } from "./routes/content.js";
 import db, { pingDb } from "./db.js";
 import { hasOwner } from "./roles.js";
-import { emailSetupProblems, emailStatus, handleResendWebhook } from "./email/mailer.js";
+import { handleResendWebhook, mailReadiness } from "./email/mailer.js";
+import { createMicrosoftCallbackRouter, createOwnerMailRouter } from "./routes/mailConnection.js";
 import { createCodeLimits } from "./codeLimits.js";
 import { asyncRoute, sendServiceUnavailable } from "./http.js";
 import { loadAvatar } from "./storage/avatarStorage.js";
@@ -61,14 +62,7 @@ export function createApp() {
     const connected = await pingDb();
     if (connected) {
       const ownerAssigned = await hasOwner(db).catch(() => null);
-      const emailSetup = emailSetupProblems();
-      return res.json({
-        ok: true,
-        database: "connected",
-        ownerAssigned,
-        email: emailStatus(),
-        ...(emailSetup.length ? { emailSetup } : {}),
-      });
+      return res.json({ ok: true, database: "connected", ownerAssigned, ...mailReadiness() });
     }
     return res.status(503).json({ ok: false, database: "disconnected" });
   });
@@ -85,7 +79,7 @@ export function createApp() {
     })
   );
 
-  app.use(["/api/auth", "/api/profile", "/api/admin", "/api/owner", "/api/content"], (_req, res, next) => {
+  app.use(["/api/auth", "/api/profile", "/api/admin", "/api/owner", "/api/content", "/api/mail"], (_req, res, next) => {
     res.set("Cache-Control", "no-store");
     next();
   });
@@ -98,6 +92,8 @@ export function createApp() {
   app.use("/api/admin/content", adminContentRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api/content", publicContentRouter);
+  app.use("/api/owner/mail", createOwnerMailRouter());
+  app.use("/api/mail/microsoft", createMicrosoftCallbackRouter());
   app.use("/api/owner", ownerRouter);
   app.use("/api/services", servicesRouter);
   app.use("/api/appointments", appointmentsRouter);

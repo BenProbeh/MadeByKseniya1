@@ -55,7 +55,7 @@ describe("auth + profile API (PostgreSQL)", () => {
   it("health reports server + database connected", async () => {
     const res = await request(server, { path: "/api/health" });
     assert.equal(res.status, 200);
-    assert.deepEqual(res.json, { ok: true, database: "connected", ownerAssigned: false, email: "ready" });
+    assert.deepEqual(res.json, { ok: true, database: "connected", ownerAssigned: false, mailProvider: "memory", configured: true });
   });
 
   it("unknown /api route returns JSON 404, not HTML", async () => {

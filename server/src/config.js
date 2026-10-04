@@ -64,9 +64,30 @@ export const config = {
   get openaiModel() {
     return read("OPENAI_MODEL") || "gpt-4o-mini";
   },
-  /** "memory" captures emails in-process (tests only, never in production); otherwise Resend when configured. */
+  /**
+   * "microsoft" (Outlook via Microsoft Graph) | "resend" | "off"; "memory" captures emails in-process (tests only,
+   * never in production). MAIL_PROVIDER wins over the older EMAIL_PROVIDER name; unset keeps Resend.
+   */
   get emailProvider() {
-    return read("EMAIL_PROVIDER").toLowerCase();
+    return (read("MAIL_PROVIDER") || read("EMAIL_PROVIDER")).toLowerCase();
+  },
+  /** The mailbox the site sends from when MAIL_PROVIDER=microsoft. */
+  get mailFromAddress() {
+    return read("MAIL_FROM_ADDRESS").toLowerCase();
+  },
+  get mailFromName() {
+    return read("MAIL_FROM_NAME") || "MadeByKseniya";
+  },
+  /** Microsoft Entra app registration (Application (client) ID and a client secret value). */
+  get microsoftClientId() {
+    return read("MICROSOFT_CLIENT_ID");
+  },
+  get microsoftClientSecret() {
+    return read("MICROSOFT_CLIENT_SECRET");
+  },
+  /** "consumers" for a personal Outlook.com account. */
+  get microsoftTenant() {
+    return read("MICROSOFT_TENANT_ID") || "consumers";
   },
   get resendApiKey() {
     return read("RESEND_API_KEY");

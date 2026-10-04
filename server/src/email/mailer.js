@@ -1,27 +1,22 @@
 import { Resend } from "resend";
 import db from "../db.js";
 import { config } from "../config.js";
+import { EMAIL_RE, brandSenderName, maskEmail } from "./sender.js";
+import { isMicrosoftConnected, microsoftConnection, microsoftSettings, sendViaMicrosoft } from "./microsoft.js";
 
 /**
- * Outgoing email behind one interface: Resend in production, an in-memory outbox in tests.
+ * Outgoing email behind one interface: Outlook (Microsoft Graph) or Resend in production, an in-memory outbox in
+ * tests. Exactly one provider is active at a time (MAIL_PROVIDER), so a message can't go out twice.
  * Every send is recorded in email_deliveries (type, recipient, provider id, status) — never the content.
  * A missing provider means email is off: the send is recorded as failed, never reported as a success.
  */
 
+export { maskEmail };
+
 const SEND_TIMEOUT_MS = 15_000;
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const BRAND_NAME = "MadeByKseniya";
-const TECHNICAL_SENDER_NAMES = /resend|railway|vercel|noreply|no-reply/i;
 
 /** Emails captured by the "memory" provider (tests only). */
 export const emailTestOutbox = [];
-
-/** k***@gmail.com for logs. */
-export function maskEmail(email) {
-  const [local, domain] = String(email || "").split("@");
-  if (!local || !domain) return "***";
-  return `${local[0]}***@${domain}`;
-}
 
 function senderAddress() {
   const raw = config.resendFromEmail;
@@ -29,10 +24,14 @@ function senderAddress() {
   return (bracketed ? bracketed[1] : raw).trim();
 }
 
-/** Display name customers see: always the brand, never a provider or a technical name. */
-function senderName() {
-  const name = config.resendFromName.replace(/["<>]/g, "").trim();
-  return name && !TECHNICAL_SENDER_NAMES.test(name) ? name : BRAND_NAME;
+const senderName = () => brandSenderName(config.resendFromName);
+
+/** The provider chosen in Railway, whether or not it is ready: "microsoft" | "resend" | "memory" | "off". */
+export function selectedEmailProvider() {
+  const chosen = config.emailProvider;
+  if (chosen === "memory") return config.isProduction ? "off" : "memory";
+  if (chosen === "off" || chosen === "microsoft") return chosen;
+  return "resend";
 }
 
 /**
@@ -56,36 +55,79 @@ export function emailSettings() {
   return { key, from: `${senderName()} <${address}>`, address, problems, warnings };
 }
 
+/** Blocking problems and non-blocking warnings of the selected provider, by variable name only (never values). */
+function setupIssues() {
+  const selected = selectedEmailProvider();
+  if (selected === "off") {
+    const why = config.emailProvider === "memory" ? "MAIL_PROVIDER=memory is for tests only" : "MAIL_PROVIDER is set to off";
+    return { problems: [why], warnings: [] };
+  }
+  if (selected === "memory") return { problems: [], warnings: [] };
+  if (selected === "microsoft") return { problems: microsoftSettings().problems, warnings: [] };
+  const { problems, warnings } = emailSettings();
+  return { problems, warnings };
+}
+
+export function emailSetupProblems() {
+  const { problems, warnings } = setupIssues();
+  return [...problems, ...warnings];
+}
+
+/** The provider that sends right now, or null. Outlook also needs the owner's one-time connection. */
 export function activeEmailProvider() {
-  if (config.emailProvider === "memory" && !config.isProduction) return "memory";
-  if (config.emailProvider === "off") return null;
-  return emailSettings().problems.length ? null : "resend";
+  const selected = selectedEmailProvider();
+  if (selected === "off" || setupIssues().problems.length) return null;
+  if (selected === "microsoft") return isMicrosoftConnected() ? "microsoft" : null;
+  return selected;
 }
 
 export const isEmailConfigured = () => activeEmailProvider() !== null;
 
-/** "ready" | "incomplete" (Resend values missing or wrong) | "off". */
-export function emailStatus() {
-  if (activeEmailProvider()) return "ready";
-  if (config.emailProvider === "off") return "off";
-  return "incomplete";
+/**
+ * Public readiness: provider name and whether its variables are present. Not proof that sending works,
+ * and never a secret, a token or an address.
+ */
+export function mailReadiness() {
+  const selected = selectedEmailProvider();
+  return { mailProvider: selected, configured: selected !== "off" && setupIssues().problems.length === 0 };
 }
 
-/** What is missing for email in production, by variable name only. */
-export function emailSetupProblems() {
-  if (!config.isProduction) return [];
-  if (config.emailProvider === "off") return ["EMAIL_PROVIDER is set to off"];
-  const { problems, warnings } = emailSettings();
-  return [...problems, ...warnings];
+/** "Name <address>" the selected provider sends as. */
+export function senderLine() {
+  const selected = selectedEmailProvider();
+  if (selected === "microsoft") {
+    const s = microsoftSettings();
+    return s.fromAddress ? `${s.fromName} <${s.fromAddress}>` : "";
+  }
+  if (selected === "resend") return senderAddress() ? emailSettings().from : "";
+  return "";
 }
 
 /** Startup log line for Railway: secret-free. */
 export function reportEmailSetup() {
   if (!config.isProduction) return;
-  const { problems, warnings } = emailSettings();
-  if (problems.length) console.error(`[email] sending is off: ${problems.join("; ")}.`);
-  else console.log(`[email] Resend ready (sender ${maskEmail(emailSettings().address)}).`);
-  for (const warning of warnings) console.warn(`[email] ${warning}.`);
+  const selected = selectedEmailProvider();
+  const problems = emailSetupProblems();
+  if (selected === "off") console.error(`[email] sending is off: ${problems.join("; ")}.`);
+  else if (selected === "microsoft") {
+    if (problems.length) console.error(`[email] Outlook sending is not set up: ${problems.join("; ")}.`);
+    else console.log(`[email] Outlook (Microsoft Graph) selected, sender ${maskEmail(microsoftSettings().fromAddress)}.`);
+  } else {
+    const { problems: missing, warnings } = emailSettings();
+    if (missing.length) console.error(`[email] sending is off: ${missing.join("; ")}.`);
+    else console.log(`[email] Resend ready (sender ${maskEmail(emailSettings().address)}).`);
+    for (const warning of warnings) console.warn(`[email] ${warning}.`);
+  }
+}
+
+/** After the database is up: whether the Outlook mailbox is connected (secret-free log line). */
+export function reportMicrosoftConnection() {
+  if (selectedEmailProvider() !== "microsoft") return;
+  const current = microsoftConnection();
+  if (isMicrosoftConnected()) console.log(`[email] Outlook connected (${maskEmail(current.account)}).`);
+  else if (current?.needsReconnect) console.error("[email] Outlook needs to be reconnected by the owner (profile page).");
+  else if (current) console.error("[email] the connected Outlook account is not MAIL_FROM_ADDRESS - reconnect it from the profile page.");
+  else console.error("[email] Outlook is not connected yet - the owner connects it once from the profile page.");
 }
 
 let resendClient = null;
@@ -116,6 +158,7 @@ async function deliver(provider, message, idempotencyKey) {
     emailTestOutbox.push({ ...message, idempotencyKey, at: Date.now() });
     return { id: `memory-${emailTestOutbox.length}` };
   }
+  if (provider === "microsoft") return sendViaMicrosoft(message);
   const client = getResendClient();
   const { from } = emailSettings();
   const { data, error } = await withTimeout(

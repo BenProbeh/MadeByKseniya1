@@ -522,6 +522,26 @@ export const migrations = [
       CREATE INDEX IF NOT EXISTS idx_email_deliveries_created ON email_deliveries (created_at DESC);
     `,
   },
+  {
+    id: "009_mail_connection",
+    sql: `
+      -- The Outlook mailbox the site sends from (Microsoft Graph, delegated OAuth). Only the refresh token is kept,
+      -- encrypted with AES-256-GCM under a key derived from MICROSOFT_CLIENT_SECRET; access tokens are never stored.
+      CREATE TABLE IF NOT EXISTS mail_connections (
+        provider TEXT PRIMARY KEY CHECK (provider IN ('microsoft')),
+        account_address TEXT NOT NULL,
+        display_name TEXT,
+        refresh_token_enc TEXT NOT NULL,
+        scopes TEXT NOT NULL,
+        connected_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        connected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        refreshed_at TIMESTAMPTZ,
+        needs_reconnect BOOLEAN NOT NULL DEFAULT false,
+        last_error TEXT,
+        last_error_at TIMESTAMPTZ
+      );
+    `,
+  },
 ];
 
 const LOCK_KEY = 4815162342;
