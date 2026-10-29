@@ -48,7 +48,7 @@ export default function AppointmentConfirm() {
   const appointment = state.appointment;
 
   return (
-    <div className="max-w-md mx-auto px-6 py-12 md:py-16 space-y-6">
+    <div className="max-w-md mx-auto pt-6 space-y-6">
       <div className="flex flex-col items-center text-center overflow-visible">
         <img
           src="/logo.png"

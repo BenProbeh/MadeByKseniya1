@@ -74,8 +74,8 @@ export async function resendVerificationRequest(email) {
 }
 
 /** Signed-in: send a code to a new address (accounts from before email sign-in, or a change of address). */
-export async function startEmailChangeRequest(email) {
-  const { data } = await api.post("/profile/email", { email });
+export async function startEmailChangeRequest(email, currentPassword) {
+  const { data } = await api.post("/profile/email", currentPassword ? { email, currentPassword } : { email });
   return { email: data?.email || email, resendAfterSeconds: Number(data?.resendAfterSeconds) || 60 };
 }
 
@@ -263,6 +263,12 @@ export async function confirmBookingByToken(id, token) {
 export async function confirmMyAppointment(id) {
   const { data } = await api.post(`/appointments/${encodeURIComponent(id)}/confirm`);
   return { alreadyConfirmed: Boolean(data?.alreadyConfirmed), appointment: data?.appointment || null };
+}
+
+/** The customer withdraws her own request or upcoming booking. */
+export async function cancelMyAppointment(id) {
+  const { data } = await api.post(`/appointments/${encodeURIComponent(id)}/cancel`);
+  return data?.appointment || null;
 }
 
 export async function fetchContentPages() {

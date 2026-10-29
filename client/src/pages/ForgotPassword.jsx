@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
-import CodeStep, { AUTH_INPUT_CLASS, Feedback } from "../components/auth/CodeStep.jsx";
+import CodeStep, { Feedback } from "../components/auth/CodeStep.jsx";
+import AuthLayout from "../components/auth/AuthLayout.jsx";
+import TextField from "../components/ui/TextField.jsx";
 import {
   completePasswordResetRequest,
   requestPasswordResetCode,
@@ -13,37 +15,33 @@ import { normalizeEmail } from "../lib/email.js";
 
 const SENT_MESSAGE = "אם קיים חשבון עם כתובת האימייל הזאת, שלחתי אליו קוד לאיפוס הסיסמה.";
 
-function PasswordField({ id, label, autoComplete, value, onChange, describedBy }) {
+function PasswordField({ label, autoComplete, value, onChange, hint, error }) {
   const [visible, setVisible] = useState(false);
   return (
-    <label className="block space-y-2 text-sm text-white/70" htmlFor={id}>
-      <span>{label}</span>
-      <div className="relative">
-        <input
-          id={id}
-          type={visible ? "text" : "password"}
-          autoComplete={autoComplete}
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          aria-describedby={describedBy}
-          className={`${AUTH_INPUT_CLASS} pe-12`}
-          maxLength={128}
-          required
-        />
-        <PasswordVisibilityToggle visible={visible} onToggle={() => setVisible((v) => !v)} />
-      </div>
-    </label>
+    <TextField
+      label={label}
+      type={visible ? "text" : "password"}
+      autoComplete={autoComplete}
+      autoCapitalize="none"
+      autoCorrect="off"
+      spellCheck={false}
+      ltr
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      maxLength={128}
+      hint={hint}
+      error={error}
+      trailing={<PasswordVisibilityToggle visible={visible} onToggle={() => setVisible((v) => !v)} />}
+    />
   );
 }
 
 export default function ForgotPassword() {
-  const { authenticated, loading: authLoading } = useAuth();
+  const { authenticated } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
   const [step, setStep] = useState("email");
-  const [emailInput, setEmailInput] = useState("");
+  const [emailInput, setEmailInput] = useState(() => (typeof location.state?.email === "string" ? location.state.email : ""));
   const [sent, setSent] = useState(null);
   const [resetToken, setResetToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -51,13 +49,6 @@ export default function ForgotPassword() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  if (authLoading) {
-    return (
-      <div className="min-h-[50vh] flex items-center justify-center">
-        <p className="font-serif text-white/60 text-sm">רגע אחד…</p>
-      </div>
-    );
-  }
   if (authenticated) return <Navigate to="/profile" replace />;
 
   async function onEmailSubmit(e) {
@@ -128,50 +119,48 @@ export default function ForgotPassword() {
   }
 
   return (
-    <div className="max-w-md mx-auto px-6 py-12 md:py-16 space-y-6">
-      <div className="flex flex-col items-center text-center overflow-visible">
-        <Link to="/login" aria-label="חזרה להתחברות">
-          <img
-            src="/logo.png"
-            alt="MadeByKseniya"
-            className="w-44 md:w-52 h-auto object-contain drop-shadow-[0_0_10px_rgba(176,38,255,0.65)]"
-          />
-        </Link>
-        <h1 className="font-serif text-2xl text-white mt-4">שכחתי סיסמה</h1>
-        <p className="font-serif text-sm text-white/60 mt-2">
-          {step === "email" && "אין בעיה. אשלח לך קוד לכתובת האימייל שאיתה נרשמת."}
-          {step === "code" && "הקלידי את הקוד בן 6 הספרות ששלחתי לך במייל."}
-          {step === "password" && "הקוד אומת. נשאר רק לבחור סיסמה חדשה."}
-        </p>
-      </div>
-
+    <AuthLayout
+      compactLogo
+      back={step === "email" ? "/login" : undefined}
+      title={step === "password" ? "סיסמה חדשה" : "שכחתי סיסמה"}
+      subtitle={
+        step === "email"
+          ? "אין בעיה. אשלח קוד לכתובת שאיתה נרשמת."
+          : step === "code"
+            ? "הקלידי את הקוד ששלחתי לך במייל."
+            : "הקוד אומת. נשאר לבחור סיסמה חדשה."
+      }
+      footer={
+        <>
+          נזכרת?{" "}
+          <Link to="/login" className="text-violet-300 font-medium inline-flex min-h-[2.75rem] items-center">
+            חזרה להתחברות
+          </Link>
+        </>
+      }
+    >
       {step === "email" && (
-        <form onSubmit={onEmailSubmit} className="glass-panel p-6 md:p-8 space-y-5" noValidate>
-          <label className="block space-y-2 text-sm text-white/70" htmlFor="reset-email">
-            <span>אימייל</span>
-            <input
-              id="reset-email"
-              type="email"
-              inputMode="email"
-              autoComplete="email"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              dir="ltr"
-              placeholder="name@example.com"
-              value={emailInput}
-              onChange={(e) => {
-                setEmailInput(e.target.value);
-                if (error) setError("");
-              }}
-              className={`${AUTH_INPUT_CLASS} text-right`}
-              maxLength={254}
-              required
-            />
-          </label>
+        <form onSubmit={onEmailSubmit} className="space-y-4" noValidate>
+          <TextField
+            label="אימייל"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            ltr
+            placeholder="name@example.com"
+            value={emailInput}
+            onChange={(e) => {
+              setEmailInput(e.target.value);
+              if (error) setError("");
+            }}
+            maxLength={254}
+          />
           <Feedback error={error} />
-          <button type="submit" className="btn-violet w-full" disabled={busy}>
-            {busy ? "שולחת…" : "שליחת קוד לאיפוס"}
+          <button type="submit" className="btn-violet btn-block" disabled={busy}>
+            {busy ? "שולחת…" : "שליחת קוד"}
           </button>
         </form>
       )}
@@ -193,42 +182,27 @@ export default function ForgotPassword() {
       )}
 
       {step === "password" && (
-        <form onSubmit={onPasswordSubmit} className="glass-panel p-6 md:p-8 space-y-5" noValidate>
+        <form onSubmit={onPasswordSubmit} className="space-y-4" noValidate>
           <PasswordField
-            id="reset-new-password"
             label="סיסמה חדשה"
             autoComplete="new-password"
             value={newPassword}
             onChange={setNewPassword}
-            describedBy="reset-password-policy"
+            hint="לפחות 8 תווים. אחרי העדכון, מכשירים אחרים שהיו מחוברים יתנתקו."
           />
           <PasswordField
-            id="reset-confirm-password"
-            label="אימות סיסמה חדשה"
+            label="שוב, לאימות"
             autoComplete="new-password"
             value={confirmPassword}
             onChange={setConfirmPassword}
-            describedBy="reset-password-match"
+            error={mismatch ? "הסיסמאות עדיין לא תואמות." : ""}
           />
-          <p id="reset-password-policy" className="text-xs text-white/40">
-            לפחות 8 תווים. אחרי העדכון, כל המכשירים שהיו מחוברים לחשבון יתנתקו.
-          </p>
-          <p id="reset-password-match" className="text-xs text-amber-200 min-h-[1rem]" aria-live="polite">
-            {mismatch ? "הסיסמאות עדיין לא תואמות." : ""}
-          </p>
           <Feedback error={error} />
-          <button type="submit" className="btn-violet w-full" disabled={busy}>
+          <button type="submit" className="btn-violet btn-block" disabled={busy}>
             {busy ? "מעדכנת…" : "עדכון הסיסמה"}
           </button>
         </form>
       )}
-
-      <p className="text-center text-sm text-white/55">
-        נזכרת בסיסמה?{" "}
-        <Link to="/login" className="text-violet-200 hover:text-violet-100">
-          חזרה להתחברות
-        </Link>
-      </p>
-    </div>
+    </AuthLayout>
   );
 }

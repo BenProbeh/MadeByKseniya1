@@ -1,23 +1,24 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import AuthLayout from "../components/auth/AuthLayout.jsx";
+import TextField from "../components/ui/TextField.jsx";
 import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
 import { resendVerificationRequest } from "../lib/authApi.js";
 import { apiErrorCode, getApiErrorMessage, isLatinUsername } from "../lib/authErrors.js";
 import { safeInternalPath } from "../lib/authPaths.js";
 
-const LATIN_MESSAGE = "האימייל נכתב באותיות באנגלית. כדאי לבדוק שהמקלדת באנגלית ולנסות שוב.";
+const LATIN_MESSAGE = "האימייל נכתב באותיות בעברית. כדאי להחליף את המקלדת לאנגלית ולנסות שוב.";
 
 export default function Login() {
-  const { login, authenticated, loading: authLoading } = useAuth();
+  const { login, authenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = safeInternalPath(location.state?.from);
+  const passwordRef = useRef(null);
 
   const resetDone = typeof location.state?.resetDone === "string" ? location.state.resetDone : "";
-  const [identifier, setIdentifier] = useState(() =>
-    typeof location.state?.email === "string" ? location.state.email : ""
-  );
+  const [identifier, setIdentifier] = useState(() => (typeof location.state?.email === "string" ? location.state.email : ""));
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -26,27 +27,25 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
 
-  if (authLoading) {
-    return (
-      <div className="min-h-[50vh] flex items-center justify-center">
-        <p className="font-serif text-white/60 text-sm">רגע אחד…</p>
-      </div>
-    );
-  }
-
-  if (authenticated) {
-    return <Navigate to={from} replace />;
-  }
+  if (authenticated) return <Navigate to={from} replace />;
 
   async function onSubmit(e) {
     e.preventDefault();
-    e.stopPropagation();
     if (submitting || resending) return;
     setError("");
     setUnverifiedEmail("");
     const value = identifier.trim();
+    if (!value) {
+      setError("נשאר להקליד את האימייל.");
+      return;
+    }
     if (!isLatinUsername(value)) {
       setError(LATIN_MESSAGE);
+      return;
+    }
+    if (!password) {
+      setError("נשאר להקליד את הסיסמה.");
+      passwordRef.current?.focus();
       return;
     }
     setSubmitting(true);
@@ -59,7 +58,6 @@ export default function Login() {
         setUnverifiedEmail(err.response.data.email || (value.includes("@") ? value.toLowerCase() : ""));
       }
       setError(getApiErrorMessage(err, "האימייל או הסיסמה אינם נכונים."));
-    } finally {
       setSubmitting(false);
     }
   }
@@ -83,121 +81,90 @@ export default function Login() {
       info = "שלחתי לך קוד לפני רגע, הוא מחכה במייל.";
     }
     navigate("/verify-email", {
-      state: {
-        email: unverifiedEmail,
-        expiresAt: start + 600 * 1000,
-        resendAt: start + resendAfterSeconds * 1000,
-        rememberMe,
-        from,
-        info,
-      },
+      state: { email: unverifiedEmail, expiresAt: start + 600 * 1000, resendAt: start + resendAfterSeconds * 1000, rememberMe, from, info },
     });
   }
 
   return (
-    <div className="max-w-md mx-auto px-6 py-12 md:py-16 space-y-6">
-      <h1 className="sr-only">התחברות ל-MadeByKseniya</h1>
-
-      <div className="flex flex-col items-center text-center overflow-visible">
-        <img
-          src="/logo.png"
-          alt="MadeByKseniya"
-          className="w-56 md:w-[16.8rem] h-auto object-contain drop-shadow-[0_0_10px_rgba(176,38,255,0.65)]"
+    <AuthLayout
+      title="ברוכה השבה"
+      subtitle="מתחברות כדי לקבוע תור ולראות את המידות שלך."
+      footer={
+        <>
+          עוד אין לך חשבון?{" "}
+          <Link to="/register" state={{ from }} className="text-violet-300 font-medium inline-flex min-h-[2.75rem] items-center">
+            להרשמה
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={onSubmit} className="space-y-4" noValidate>
+        <TextField
+          label="אימייל"
+          type="email"
+          name="email"
+          autoComplete="username"
+          inputMode="email"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          enterKeyHint="next"
+          ltr
+          placeholder="name@example.com"
+          value={identifier}
+          onChange={(e) => setIdentifier(e.target.value)}
+          maxLength={254}
+          hint="נרשמת לפני שהיה אימייל באתר? אפשר להתחבר פעם אחת עם שם המשתמש."
         />
-        <p className="font-serif text-sm text-white/60 mt-4">להתחברות:</p>
-      </div>
 
-      <form onSubmit={onSubmit} className="glass-panel p-6 md:p-8 space-y-5" noValidate>
-        <label className="block space-y-2 text-sm text-white/70">
-          <span>אימייל</span>
-          <input
-            type="email"
-            name="email"
-            autoComplete="username"
-            inputMode="email"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            dir="ltr"
-            placeholder="name@example.com"
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-            aria-describedby="login-email-help"
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base text-right outline-none focus:border-violet-400/60"
-            maxLength={254}
-            required
-          />
-          <span id="login-email-help" className="block text-xs text-white/40">
-            נרשמת לפני שהיה אימייל באתר? אפשר להתחבר פעם אחת עם שם המשתמש ולהוסיף כתובת.
-          </span>
-        </label>
+        <TextField
+          ref={passwordRef}
+          label="סיסמה"
+          type={showPassword ? "text" : "password"}
+          name="password"
+          autoComplete="current-password"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          enterKeyHint="go"
+          ltr
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          trailing={<PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((v) => !v)} />}
+        />
 
-        <label className="block space-y-2 text-sm text-white/70">
-          <span>סיסמה</span>
-          <div className="relative">
-            <input
-              type={showPassword ? "text" : "password"}
-              name="password"
-              autoComplete="current-password"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60 pe-12"
-              required
-            />
-            <PasswordVisibilityToggle
-              visible={showPassword}
-              onToggle={() => setShowPassword((v) => !v)}
-            />
-          </div>
-        </label>
-
-        <div className="flex justify-end -mt-2">
-          <Link to="/forgot-password" className="text-sm text-violet-200 hover:text-violet-100">
+        <div className="flex items-center justify-between">
+          <label className="flex items-center gap-3 text-sub text-white/75 cursor-pointer select-none min-h-[2.75rem]">
+            <input type="checkbox" className="check" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
+            להישאר מחוברת
+          </label>
+          <Link to="/forgot-password" state={{ email: identifier.includes("@") ? identifier.trim() : "" }} className="btn-text">
             שכחתי סיסמה
           </Link>
         </div>
 
-        <label className="flex items-center gap-3 text-sm text-white/65 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={rememberMe}
-            onChange={(e) => setRememberMe(e.target.checked)}
-            className="rounded border-white/30"
-          />
-          <span>זכרי אותי</span>
-        </label>
-
         {unverifiedEmail ? (
-          <div className="rounded-2xl border border-violet-400/30 bg-violet-500/10 p-4 space-y-3 text-center" role="status" aria-live="polite">
-            <p className="text-sm text-violet-100">{error}</p>
-            <button type="button" className="btn-violet w-full" disabled={submitting || resending} onClick={() => void continueVerification()}>
-              {resending ? "שולחת…" : "שליחת קוד חדש והשלמת האימות"}
+          <div className="notice-info flex-col" role="status">
+            <p>{error}</p>
+            <button type="button" className="btn-violet btn-block" disabled={submitting || resending} onClick={() => void continueVerification()}>
+              {resending ? "שולחת…" : "שליחת קוד והשלמת האימות"}
             </button>
           </div>
         ) : error ? (
-          <p className="text-sm text-red-300 text-center" role="alert" aria-live="assertive">
+          <p className="notice-error" role="alert">
             {String(error)}
           </p>
         ) : resetDone ? (
-          <p className="text-sm text-violet-200 text-center" role="status" aria-live="polite">
+          <p className="notice-success" role="status">
             {resetDone}
           </p>
         ) : null}
 
-        <button type="submit" className="btn-violet w-full" disabled={submitting || resending}>
+        <button type="submit" className="btn-violet btn-block" disabled={submitting || resending}>
+          {submitting && <span className="spinner" aria-hidden="true" />}
           {submitting ? "מתחברת…" : "התחברות"}
         </button>
       </form>
-
-      <p className="text-center text-sm text-white/55 mt-6">
-        עדיין אין לך חשבון?{" "}
-        <Link to="/register" className="text-violet-200 hover:text-violet-100">
-          הרשמי כאן
-        </Link>
-      </p>
-    </div>
+    </AuthLayout>
   );
 }

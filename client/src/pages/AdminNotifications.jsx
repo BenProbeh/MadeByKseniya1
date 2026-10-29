@@ -186,10 +186,10 @@ export default function AdminNotifications() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-16 space-y-8">
+    <div className="max-w-3xl mx-auto pt-2 pb-6 space-y-8">
       <div className="text-center space-y-3">
         <span className="section-eyebrow justify-center">Admin</span>
-        <h1 className="font-serif font-medium text-3xl md:text-5xl text-white">
+        <h1 className="t-large-title md:text-[2.5rem] text-white">
           <span className="violet-text">התראות</span> פנימיות
         </h1>
         <p className="font-serif text-white/60 text-sm md:text-base">

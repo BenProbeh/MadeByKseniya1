@@ -36,11 +36,6 @@ export function resolveMediaUrl(url) {
   return url;
 }
 
-// Only for the write endpoints: fall back to a mock result solely when
-// there's genuinely no backend to talk to (network failure, or a 404 because
-// no API route exists at all) — never for a real backend error like 409
-// "slot taken" or 400 validation, which callers must still see and handle.
-const isNoBackend = (err) => !err.response || err.response.status === 404;
 
 // Read endpoints: any failure (no backend deployed, a dead dev proxy, a
 // transient error) falls back to realistic mock data so the UI stays
@@ -62,21 +57,7 @@ export const fetchMyAppointments = () => api.get("/appointments/mine").then((r) 
 export const sendChatMessage = (messages) =>
   api.post("/chat", { messages }).then((r) => r.data);
 
-export const saveMeasurementProfile = (payload) =>
-  api
-    .post("/measurements/profile", payload)
-    .then((r) => r.data)
-    .catch((err) => {
-      if (isNoBackend(err)) {
-        return { id: `local-${Date.now()}`, phone: payload.phone, offline: true };
-      }
-      throw err;
-    });
-
-export const getMeasurementProfile = (phone) =>
-  api
-    .get("/measurements/profile", { params: { phone } })
-    .then((r) => r.data)
-    .catch(() => null);
+/** Saves measured fingers to the signed-in account. Never pretends: any failure reaches the caller. */
+export const saveMeasurementProfile = (payload) => api.post("/measurements/profile", payload).then((r) => r.data);
 
 export default api;

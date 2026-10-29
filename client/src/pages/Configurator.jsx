@@ -20,12 +20,12 @@ function ShadeSpotlight({ onBookLook }) {
   const colour = COLOURS.find((c) => c.id === colourId);
 
   return (
-    <section className="max-w-6xl mx-auto px-6 py-16">
+    <section className="max-w-6xl mx-auto pt-2 pb-6">
       <div className="grid lg:grid-cols-2 gap-10 items-center">
         <ShadePhoto colour={colour} />
 
         <div>
-          <h2 className="text-3xl md:text-5xl font-black mb-4">{colour.label}</h2>
+          <h2 className="t-large-title md:text-[2.5rem] mb-4">{colour.label}</h2>
           <p className="text-white/50 mb-8">{colour.tag} · גימור מבריק על צורת שקד קלאסית</p>
 
           <div className="grid grid-cols-3 gap-3 mb-8">
@@ -69,10 +69,10 @@ function FullConfigurator({ onBookSet }) {
   const colourLabel = COLOURS.find((c) => c.id === colourId).label;
 
   return (
-    <section className="max-w-6xl mx-auto px-6 py-16">
+    <section className="max-w-6xl mx-auto pt-2 pb-6">
       <div className="text-center max-w-2xl mx-auto mb-14">
         <span className="section-eyebrow">Build a set</span>
-        <h2 className="text-3xl md:text-5xl font-black mt-3">
+        <h2 className="t-large-title md:text-[2.5rem] mt-3">
           עצבי את זה.
           <br />
           <span className="font-neon text-violet-300 text-[1.3em] leading-none">וראי את המחיר.</span>
@@ -128,7 +128,7 @@ export default function Configurator() {
         className="max-w-3xl mx-auto px-6 pt-16 text-center"
       >
         <span className="section-eyebrow">Colours</span>
-        <h1 className="text-3xl md:text-5xl font-black mt-3">גלריית הגוונים שלי</h1>
+        <h1 className="t-large-title md:text-[2.5rem] mt-3">גלריית הגוונים שלי</h1>
         <p className="text-white/60 mt-4">
           עברי בין הגוונים, מצאי את המראה שמדבר אלייך, ואז עצבי את הסט המדויק שלך למטה.
         </p>

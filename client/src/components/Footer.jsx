@@ -8,45 +8,27 @@ const siteLinks = [
   { to: "/booking", label: "קביעת תור" },
 ];
 
+/** Desktop only: on phones the tab bar is the navigation and a footer would just be more scrolling. */
 export default function Footer() {
   return (
-    <footer className="border-t border-white/[0.08] mt-16">
-      <div className="max-w-content mx-auto px-6 md:px-10 py-16 grid md:grid-cols-[1.3fr_1fr_1fr] gap-12">
-        <div className="space-y-4">
-          <Link to="/services" className="font-serif text-2xl tracking-wide inline-block">
-            MadeBy<span className="violet-text">Kseniya</span>
-          </Link>
-          <p className="text-sm text-white/55 leading-relaxed max-w-xs">
-            סטודיו בוטיק לציפורניים — חוויה פרימיום מרגע שקבעת תור ועד הברק האחרון.
-          </p>
+    <footer className="hidden md:block border-t hairline mt-16">
+      <div className="max-w-content mx-auto px-8 py-12 flex flex-wrap items-start justify-between gap-10">
+        <div className="space-y-3 max-w-xs">
+          <p className="font-brand text-xl tracking-wide">MadeByKseniya</p>
+          <p className="t-sub">סטודיו בוטיק לציפורניים — מהמדידה הראשונה ועד הברק האחרון.</p>
         </div>
-
-        <div className="space-y-4">
-          <p className="section-eyebrow">Explore</p>
-          <ul className="space-y-2.5 text-sm text-white/55">
-            {siteLinks.map((l) => (
-              <li key={l.to}>
-                <Link to={l.to} className="transition-colors duration-300 hover:text-violet-200">
-                  {l.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="space-y-4">
-          <p className="section-eyebrow">Hours</p>
-          <ul className="space-y-2.5 text-sm text-white/55">
-            <li>ראשון–שבת · 09:00–20:00</li>
-          </ul>
-        </div>
+        <ul className="flex flex-wrap gap-x-8 gap-y-3 text-sub text-white/60">
+          {siteLinks.map((l) => (
+            <li key={l.to}>
+              <Link to={l.to} className="transition-colors hover:text-white">
+                {l.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
       </div>
-
-      <div className="border-t border-white/[0.08]">
-        <div className="max-w-content mx-auto px-6 md:px-10 py-6 flex flex-col md:flex-row items-center justify-between gap-3 text-xs tracking-wide text-white/35">
-          <p>&copy; {new Date().getFullYear()} MadeByKseniya · כל הזכויות שמורות</p>
-          <p>סטודיו ציפורניים פרימיום</p>
-        </div>
+      <div className="border-t hairline">
+        <p className="max-w-content mx-auto px-8 py-5 t-foot">&copy; {new Date().getFullYear()} MadeByKseniya · כל הזכויות שמורות</p>
       </div>
     </footer>
   );

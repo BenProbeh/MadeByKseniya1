@@ -93,10 +93,10 @@ export default function AdminContent() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-16 space-y-8">
+    <div className="max-w-4xl mx-auto pt-2 pb-6 space-y-8">
       <div className="text-center space-y-3">
         <span className="section-eyebrow justify-center">Admin</span>
-        <h1 className="font-serif font-medium text-3xl md:text-5xl text-white">
+        <h1 className="t-large-title md:text-[2.5rem] text-white">
           ניהול <span className="violet-text">תוכן</span>
         </h1>
         <p className="font-serif text-white/60 text-sm md:text-base max-w-xl mx-auto">

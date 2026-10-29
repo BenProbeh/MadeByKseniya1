@@ -113,7 +113,7 @@ export default function PackageDetail() {
   if (!pkg) return <Navigate to="/services" replace />;
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-16">
+    <div className="max-w-3xl mx-auto pt-2 pb-6">
       <Link to="/services" className="btn-text mb-10 inline-flex">
         <span className="btn-text-arrow">→</span>
         <span>חזרה למסלולים</span>
@@ -126,7 +126,7 @@ export default function PackageDetail() {
         className="text-center mb-12"
       >
         <span className="section-eyebrow justify-center">{pkg.eyebrow}</span>
-        <h1 className="font-serif text-3xl md:text-5xl text-white mt-3">{pkg.title}</h1>
+        <h1 className="t-large-title md:text-[2.5rem] mt-3">{pkg.title}</h1>
       </motion.div>
 
       <div className="space-y-14">

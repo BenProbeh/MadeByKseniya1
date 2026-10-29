@@ -252,8 +252,12 @@ describe("brand violet never changes", () => {
     const { colors, backgroundImage, boxShadow } = tailwindConfig.theme.extend;
     expect(colors.violet[400]).toBe(BRAND_VIOLET);
     expect(backgroundImage["violet-gradient"]).toBe(DEFAULT_VIOLET_GRADIENT);
-    expect(boxShadow.glow).toContain("rgba(176, 38, 255, 0.5)");
-    expect(css).toMatch(/\.btn-violet \{\s*@apply[^;]*bg-violet-gradient text-oled-950/);
+    expect(boxShadow.glow).toContain("rgba(176, 38, 255,");
+    // The primary button is painted with fixed brand values (white on a violet gradient), never theme variables.
+    const primary = css.match(/\.btn-violet,\s*\.btn-primary \{([^}]*)\}/)?.[1] || "";
+    expect(primary).toContain("color: #fff;");
+    expect(primary).toMatch(/linear-gradient\(180deg, #bc45ff 0%, #a114f5 55%, #8e00dd 100%\)/);
+    expect(primary).not.toContain("var(--");
   });
 
   it("dark ink on violet buttons stays black", () => {

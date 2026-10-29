@@ -1,36 +1,32 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { format } from "date-fns";
+import { addDays, format, isSameDay, startOfDay } from "date-fns";
+import { he } from "date-fns/locale";
+import { CalendarDays, CalendarSearch, Check, MapPin } from "lucide-react";
 import Calendar from "../components/Calendar.jsx";
-import { getServices, getAvailability, createAppointmentRequest, fetchMyAppointments } from "../lib/api.js";
+import Sheet from "../components/ui/Sheet.jsx";
+import TextField from "../components/ui/TextField.jsx";
+import PageHeader from "../components/ui/PageHeader.jsx";
+import EmptyState from "../components/ui/EmptyState.jsx";
+import api, { getAvailability, createAppointmentRequest } from "../lib/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import AppointmentStatusBadge from "../components/AppointmentStatusBadge.jsx";
-import { AppointmentsSection } from "../components/profile/ProfileSections.jsx";
 import { formatCalendarDay } from "../lib/format.js";
-import WazeIcon from "../components/WazeIcon.jsx";
-import {
-  STUDIO_ADDRESS_LINE_1,
-  STUDIO_ADDRESS_LINE_2,
-  STUDIO_WAZE_URL,
-  openStudioInWaze,
-} from "../lib/studioAddress.js";
+import { STUDIO_ADDRESS_LINE_1, STUDIO_ADDRESS_LINE_2, STUDIO_WAZE_URL, openStudioInWaze } from "../lib/studioAddress.js";
 
 /** How often an open booking page re-reads the shared schedule. */
 const REFRESH_MS = 30_000;
+const STRIP_DAYS = 21;
 
 const SLOT_TAKEN_NOTICE = "השעה שבחרת נתפסה בינתיים. אפשר לבחור שעה אחרת.";
-
 const SLOT_STATE_TEXT = { free: "פנוי", pending: "ממתין לאישור", booked: "תפוס" };
-
 const EMAIL_NOT_VERIFIED_TEXT = "כדי לשלוח בקשה לתור צריך קודם לאמת את כתובת האימייל בחשבון.";
 
 /** Optional contact phone; when given: 9–10 local digits, or 972 + 8–9. */
 function isValidPhone(phone) {
   const digits = String(phone).replace(/\D/g, "");
   if (!digits) return true;
-  if (digits.startsWith("972")) {
-    return digits.length >= 11 && digits.length <= 12;
-  }
+  if (digits.startsWith("972")) return digits.length >= 11 && digits.length <= 12;
   return /^0\d{8,9}$/.test(digits);
 }
 
@@ -39,24 +35,56 @@ function newRequestKey() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
-function SlotButton({ slot, selected, onSelect }) {
-  const base =
-    "min-h-[3.25rem] rounded-2xl px-2 py-2 text-sm border flex flex-col items-center justify-center leading-tight transition-colors";
-  if (slot.state === "pending" || slot.state === "booked") {
-    const style =
-      slot.state === "booked"
-        ? "border-red-400/50 bg-red-500/15 text-red-300"
-        : "border-white/10 bg-white/[0.07] text-white/45";
-    return (
+/** Next three weeks as a swipeable strip; later dates come from the month sheet. */
+function DayStrip({ selected, onSelect, onMore }) {
+  const today = startOfDay(new Date());
+  const days = useMemo(() => Array.from({ length: STRIP_DAYS }, (_, i) => addDays(today, i)), [today.getTime()]); // eslint-disable-line react-hooks/exhaustive-deps
+  const selectedOutside = selected && !days.some((d) => isSameDay(d, selected));
+  return (
+    <div className="chip-scroller gap-2 py-1" role="listbox" aria-label="בחירת יום">
+      {days.map((day, i) => {
+        const on = selected && isSameDay(day, selected);
+        return (
+          <button
+            key={day.toISOString()}
+            type="button"
+            role="option"
+            aria-selected={Boolean(on)}
+            onClick={() => onSelect(day)}
+            className={`flex flex-col items-center justify-center w-[3.75rem] h-[4.75rem] rounded-control border transition-colors ${
+              on ? "border-violet-400 bg-violet-400 text-white" : "border-white/[0.12] bg-white/[0.03] text-white/80 active:bg-white/[0.08]"
+            }`}
+            style={on ? { color: "#fff" } : undefined}
+          >
+            <span className={`text-cap ${on ? "" : "text-white/50"}`}>{i === 0 ? "היום" : i === 1 ? "מחר" : format(day, "EEEEEE", { locale: he })}</span>
+            <span className="font-display text-title tnum leading-none mt-1">{format(day, "d")}</span>
+            <span className={`text-cap ${on ? "" : "text-white/40"}`}>{format(day, "MMM", { locale: he })}</span>
+          </button>
+        );
+      })}
       <button
         type="button"
-        disabled
-        aria-disabled="true"
-        aria-label={`${slot.time} — ${SLOT_STATE_TEXT[slot.state]}`}
-        className={`${base} ${style} cursor-not-allowed`}
+        onClick={onMore}
+        className={`flex flex-col items-center justify-center gap-1 w-[4.25rem] h-[4.75rem] rounded-control border border-dashed text-cap ${
+          selectedOutside ? "border-violet-400 text-white bg-violet-400/15" : "border-white/20 text-white/60"
+        }`}
       >
-        <span className={slot.state === "booked" ? "line-through decoration-1" : ""}>{slot.time}</span>
-        <span className="text-[11px] mt-0.5">{SLOT_STATE_TEXT[slot.state]}</span>
+        <CalendarSearch size={20} strokeWidth={1.8} aria-hidden="true" />
+        {selectedOutside ? format(selected, "d.M") : "תאריך אחר"}
+      </button>
+    </div>
+  );
+}
+
+function SlotButton({ slot, selected, onSelect }) {
+  const base = "min-h-[3.25rem] rounded-control px-2 border flex flex-col items-center justify-center leading-tight transition-colors tnum";
+  if (slot.state !== "free") {
+    // Kept from the calendar's meaning: pending = grey (held while waiting), booked = red (taken).
+    const style = slot.state === "booked" ? "border-red-400/30 bg-red-500/10 text-red-300/80" : "border-white/[0.06] bg-white/[0.05] text-white/40";
+    return (
+      <button type="button" disabled aria-label={`${slot.time} — ${SLOT_STATE_TEXT[slot.state]}`} className={`${base} ${style} cursor-not-allowed`}>
+        <span className={`text-body ${slot.state === "booked" ? "line-through decoration-1" : ""}`}>{slot.time}</span>
+        <span className="text-cap mt-0.5">{SLOT_STATE_TEXT[slot.state]}</span>
       </button>
     );
   }
@@ -66,11 +94,10 @@ function SlotButton({ slot, selected, onSelect }) {
       onClick={() => onSelect(slot.time)}
       aria-pressed={selected}
       aria-label={`${slot.time} — ${SLOT_STATE_TEXT.free}`}
-      className={`${base} ${
-        selected
-          ? "bg-violet-gradient text-oled-950 font-bold border-transparent shadow-glow"
-          : "border-white/15 text-white/70 hover:border-violet-400/50"
+      className={`${base} text-body ${
+        selected ? "border-violet-400 bg-violet-400 font-bold" : "border-white/[0.14] bg-white/[0.03] text-white/85 active:bg-white/[0.08]"
       }`}
+      style={selected ? { color: "#fff" } : undefined}
     >
       {slot.time}
     </button>
@@ -79,34 +106,112 @@ function SlotButton({ slot, selected, onSelect }) {
 
 function SlotLegend() {
   return (
-    <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-white/55 mb-3" aria-hidden="true">
+    <div className="flex flex-wrap gap-x-4 gap-y-1 t-foot" aria-hidden="true">
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-3 w-3 rounded-full border border-white/30" />
+        <span className="h-2.5 w-2.5 rounded-full border border-white/40" />
         פנוי
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-3 w-3 rounded-full border border-white/10 bg-white/20" />
+        <span className="h-2.5 w-2.5 rounded-full bg-white/25" />
         ממתין לאישור
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-3 w-3 rounded-full border border-red-400/60 bg-red-500/40" />
+        <span className="h-2.5 w-2.5 rounded-full bg-red-400/60" />
         תפוס
       </span>
     </div>
   );
 }
 
-function BookingForm({
-  services,
-  user,
-  initialNotes,
-  skipServiceSelect = false,
-  packageLabel = "",
-  packageKey = "",
-  onRequested,
-}) {
+function Step({ n, title, children, done }) {
+  return (
+    <section className="space-y-3" aria-label={title}>
+      <h2 className="flex items-center gap-2.5 t-headline">
+        <span
+          className={`grid place-items-center w-6 h-6 rounded-full text-cap font-bold tnum ${done ? "bg-violet-400" : "bg-white/10 text-white/70"}`}
+          style={done ? { color: "#fff" } : undefined}
+          aria-hidden="true"
+        >
+          {done ? <Check size={14} strokeWidth={3} /> : n}
+        </span>
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+function RequestSent({ appointment, label, email }) {
+  return (
+    <div className="max-w-md mx-auto pt-6 space-y-6 text-center" role="status" aria-live="polite">
+      <span className="mx-auto grid place-items-center w-16 h-16 rounded-full bg-violet-400/15 text-violet-200" aria-hidden="true">
+        <CalendarDays size={30} strokeWidth={1.7} />
+      </span>
+      <AppointmentStatusBadge status="pending" />
+      <div className="space-y-3">
+        <h1 className="t-title leading-snug">קיבלתי את הפרטים שלך, מיד אעבור עליהם ואשתדל לאשר את התור. נתראה!</h1>
+        <p className="t-sub">
+          {label} · {formatCalendarDay(appointment.date)} בשעה <span className="tnum">{appointment.time}</span>
+        </p>
+        {email && (
+          <p className="t-foot">
+            עדכון יגיע למייל{" "}
+            <bdi dir="ltr" className="break-all text-white/70">
+              {email}
+            </bdi>
+          </p>
+        )}
+      </div>
+
+      <div className="list-group text-start">
+      <a
+        href={STUDIO_WAZE_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => {
+          e.preventDefault();
+          openStudioInWaze();
+        }}
+        className="list-row"
+        aria-label="ניווט בוויז אל הסטודיו"
+      >
+        <span className="grid place-items-center w-10 h-10 rounded-full bg-white/[0.06] text-violet-200 shrink-0" aria-hidden="true">
+          <MapPin size={20} />
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block t-headline">ניווט לסטודיו</span>
+          <span className="block t-foot">
+            {STUDIO_ADDRESS_LINE_1} {STUDIO_ADDRESS_LINE_2}
+          </span>
+        </span>
+      </a>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Link to="/" className="btn-ghost">
+          לבית
+        </Link>
+        <Link to="/appointments" className="btn-violet">
+          לתורים שלי
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+export default function Booking() {
+  const { user } = useAuth();
+  const location = useLocation();
+  const initialNotes = location.state?.prefillNotes ?? "";
+  const skipServiceSelect = Boolean(location.state?.skipServiceSelect);
+  const packageLabel = location.state?.packageLabel ?? "";
+  const packageKey = typeof location.state?.packageKey === "string" ? location.state.packageKey : "";
+
+  const [services, setServices] = useState(null);
+  const [servicesError, setServicesError] = useState(false);
   const [serviceId, setServiceId] = useState("");
   const [date, setDate] = useState(null);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [times, setTimes] = useState([]);
   const [slotsOpen, setSlotsOpen] = useState(true);
   const [time, setTime] = useState(null);
@@ -126,18 +231,32 @@ function BookingForm({
   const fetchSeq = useRef(0);
   const submittingRef = useRef(false);
   const requestKeyRef = useRef(newRequestKey());
+  const timesRef = useRef(null);
+  const detailsRef = useRef(null);
 
   const dateStr = date ? format(date, "yyyy-MM-dd") : "";
   const slotKey = `${dateStr}|${serviceId}`;
 
+  // Real services only: a booking must never be sent for a placeholder catalogue.
+  const loadServices = useCallback(() => {
+    setServicesError(false);
+    api
+      .get("/services")
+      .then((r) => setServices(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {
+        setServices([]);
+        setServicesError(true);
+      });
+  }, []);
+  useEffect(() => loadServices(), [loadServices]);
+
   useEffect(() => {
-    if (!skipServiceSelect || !services.length || serviceId) return;
+    if (!skipServiceSelect || !services?.length || serviceId) return;
     setServiceId(String(services[0].id));
   }, [skipServiceSelect, services, serviceId]);
 
   useEffect(() => {
-    if (!requested) return;
-    window.scrollTo({ top: 0, left: 0, behavior: "instant" in window ? "instant" : "auto" });
+    if (requested) window.scrollTo({ top: 0, behavior: "auto" });
   }, [requested]);
 
   /** Re-reads the schedule from the server; resolves to the fresh slot list, or null if it failed or went stale. */
@@ -149,9 +268,7 @@ function BookingForm({
       try {
         const data = await getAvailability(dateStr, serviceId);
         if (seq !== fetchSeq.current) return null;
-        const list = Array.isArray(data?.times)
-          ? data.times
-          : (data?.slots || []).map((t) => ({ time: t, state: "free" }));
+        const list = Array.isArray(data?.times) ? data.times : (data?.slots || []).map((t) => ({ time: t, state: "free" }));
         setTimes(list);
         setSlotsOpen(data?.open !== false);
         setSlotsError(false);
@@ -210,23 +327,25 @@ function BookingForm({
     requestKeyRef.current = newRequestKey();
   }, [dateStr, serviceId, time]);
 
+  function pickDate(next) {
+    setDate(next);
+    setCalendarOpen(false);
+    window.setTimeout(() => timesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  }
+
   function selectTime(next) {
     setTime(next);
     setNotice("");
     setError(null);
+    window.setTimeout(() => detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (submittingRef.current || !serviceId || !dateStr || !time) return;
-    if (!emailReady) {
-      setError(EMAIL_NOT_VERIFIED_TEXT);
-      return;
-    }
-    if (!isValidPhone(form.phone)) {
-      setError("מספר הטלפון לא נראה תקין. אפשר גם להשאיר את השדה ריק.");
-      return;
-    }
+    if (!emailReady) return setError(EMAIL_NOT_VERIFIED_TEXT);
+    if (!form.clientName.trim()) return setError("נשאר להקליד שם.");
+    if (!isValidPhone(form.phone)) return setError("מספר הטלפון לא נראה תקין. אפשר גם להשאיר את השדה ריק.");
     submittingRef.current = true;
     setSubmitting(true);
     setError(null);
@@ -249,7 +368,6 @@ function BookingForm({
         requestKey: requestKeyRef.current,
       });
       setRequested(appointment);
-      onRequested?.();
     } catch (err) {
       const data = err?.response?.data;
       const message = typeof data?.error === "string" ? data.error : "";
@@ -258,7 +376,7 @@ function BookingForm({
         setNotice(message || SLOT_TAKEN_NOTICE);
         loadSlots({ silent: true });
       } else {
-        setError(message || "לא הצלחתי לשלוח את הבקשה, נסי שוב.");
+        setError(message || "לא הצלחתי לשלוח את הבקשה. אפשר לנסות שוב.");
       }
     } finally {
       submittingRef.current = false;
@@ -267,103 +385,104 @@ function BookingForm({
   }
 
   if (requested) {
-    const service = services.find((s) => s.id === Number(serviceId));
-    const label = requested.serviceLabel || packageLabel || service?.name_he;
-    return (
-      <div className="glass-panel p-8 text-center shadow-glow" role="status" aria-live="polite">
-        <AppointmentStatusBadge status="pending" className="mb-5" />
-        <p className="font-serif text-xl md:text-2xl text-white leading-relaxed">
-          קיבלתי את הפרטים שלך, מיד אעבור עליהם ואשתדל לאשר את התור.
-          <br />
-          נתראה!
-        </p>
-        <p className="text-white/60 mt-4">
-          {label} · {formatCalendarDay(requested.date)} בשעה {requested.time}
-        </p>
-        <p className="text-white/45 text-sm mt-2">הבקשה ממתינה לאישור. אפשר לראות את הסטטוס שלה בפרופיל.</p>
-        {user?.email && (
-          <p className="text-white/45 text-sm mt-1">
-            פרטי הבקשה נשלחים גם למייל{" "}
-            <bdi dir="ltr" className="break-all">
-              {user.email}
-            </bdi>
-          </p>
-        )}
-
-        <div className="mt-8 pt-6 border-t border-white/[0.08] flex flex-col items-center gap-3">
-          <a
-            href={STUDIO_WAZE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => {
-              e.preventDefault();
-              openStudioInWaze();
-            }}
-            className="inline-flex flex-col items-center gap-2 rounded-2xl px-4 py-3 transition-transform duration-300 hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50"
-            aria-label="ניווט בוויז אל הסטודיו"
-          >
-            <WazeIcon className="w-16 h-16 shadow-[0_0_18px_rgba(51,204,255,0.35)]" />
-            <span className="text-xs tracking-wide text-white/50">ניווט בוויז</span>
-          </a>
-          <div className="text-sm text-white/60 leading-relaxed">
-            <p>{STUDIO_ADDRESS_LINE_1}</p>
-            <p>{STUDIO_ADDRESS_LINE_2}</p>
-          </div>
-        </div>
-      </div>
-    );
+    const service = services?.find((s) => s.id === Number(serviceId));
+    return <RequestSent appointment={requested} label={requested.serviceLabel || packageLabel || service?.name_he} email={user?.email} />;
   }
 
   const hasFree = times.some((t) => t.state === "free");
+  const slotsLoading = (loadingSlots || loadedKey !== slotKey) && times.length === 0;
+  const selectedService = services?.find((s) => String(s.id) === serviceId);
+  let n = 0;
 
   return (
-    <div className="grid lg:grid-cols-2 gap-8">
-      <div className="space-y-6">
-        {!skipServiceSelect && (
-          <div>
-            <label className="block text-sm font-medium text-white/70 mb-2">בחירת שירות</label>
-            <select
-              value={serviceId}
-              onChange={(e) => setServiceId(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
-            >
-              <option value="">בחרי שירות...</option>
-              {services.map((s) => (
-                <option key={s.id} value={s.id} className="bg-oled-900">
-                  {s.name_he} — {s.price_ils}₪ ({s.duration_min} דק')
-                </option>
-              ))}
-            </select>
+    <form onSubmit={handleSubmit} className="max-w-xl mx-auto space-y-8 pt-2" noValidate>
+      <PageHeader title="קביעת תור" subtitle="בוחרות יום ושעה, ואני מאשרת את הבקשה בהקדם." />
+
+      {servicesError && (
+        <div className="notice-warning justify-between items-center">
+          <span>לא הצלחתי לטעון את רשימת הטיפולים.</span>
+          <button type="button" className="btn-text p-0" onClick={loadServices}>
+            לנסות שוב
+          </button>
+        </div>
+      )}
+
+      {skipServiceSelect && packageLabel ? (
+        <div className="card p-4 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="t-foot">המסלול שבחרת</p>
+            <p className="t-headline truncate">{packageLabel}</p>
           </div>
-        )}
+          <Link to="/services" className="btn-text shrink-0">
+            החלפה
+          </Link>
+        </div>
+      ) : (
+        <Step n={++n} title="טיפול" done={Boolean(serviceId)}>
+          {services === null ? (
+            <div className="skeleton h-32 rounded-card" aria-hidden="true" />
+          ) : (
+            <div className="list-group" role="radiogroup" aria-label="בחירת טיפול">
+              {services.map((s) => {
+                const on = String(s.id) === serviceId;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => setServiceId(String(s.id))}
+                    className="list-row"
+                  >
+                    <span
+                      className={`grid place-items-center w-5 h-5 rounded-full border-2 shrink-0 ${on ? "border-violet-400 bg-violet-400" : "border-white/30"}`}
+                      aria-hidden="true"
+                    >
+                      {on && <span className="w-2 h-2 rounded-full bg-white" />}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-body text-white">{s.name_he}</span>
+                      <span className="block t-foot tnum">{s.duration_min} דק׳</span>
+                    </span>
+                    <span className="font-display text-headline tnum shrink-0">{s.price_ils} ₪</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Step>
+      )}
 
-        {skipServiceSelect && packageLabel && (
-          <p className="text-sm text-violet-300 font-semibold">מסלול נבחר: {packageLabel}</p>
-        )}
+      <Step n={++n} title="יום" done={Boolean(date)}>
+        <DayStrip selected={date} onSelect={pickDate} onMore={() => setCalendarOpen(true)} />
+      </Step>
 
-        <Calendar selectedDate={date} onSelectDate={setDate} />
-      </div>
-
-      <div className="space-y-6">
-        <div>
-          <p className="text-sm font-medium text-white/70 mb-3">שעות</p>
+      <div ref={timesRef} className="scroll-mt-[calc(var(--safe-top)+var(--header-h)+1rem)]">
+        <Step n={++n} title="שעה" done={Boolean(time)}>
           {notice && (
-            <p className="text-sm text-red-300 mb-3" role="alert">
+            <p className="notice-warning" role="alert">
               {notice}
             </p>
           )}
           {!serviceId || !date ? (
-            <p className="text-white/40 text-sm">
-              {skipServiceSelect ? "בחרי תאריך כדי לראות שעות פנויות." : "בחרי שירות ותאריך כדי לראות שעות פנויות."}
-            </p>
-          ) : (loadingSlots || loadedKey !== slotKey) && times.length === 0 ? (
-            <p className="text-white/40 text-sm">טוען שעות...</p>
+            <p className="t-sub">{!serviceId ? "בחרי טיפול ויום, ואראה לך את השעות הפנויות." : "בחרי יום, ואראה לך את השעות הפנויות."}</p>
+          ) : slotsLoading ? (
+            <div className="grid grid-cols-3 gap-2" aria-hidden="true">
+              {Array.from({ length: 9 }, (_, i) => (
+                <div key={i} className="skeleton h-[3.25rem] rounded-control" />
+              ))}
+            </div>
           ) : slotsError ? (
-            <p className="text-white/40 text-sm">לא ניתן לטעון שעות פנויות כרגע, נסי שוב מאוחר יותר.</p>
+            <div className="notice-warning justify-between items-center">
+              <span>לא הצלחתי לטעון את השעות.</span>
+              <button type="button" className="btn-text p-0" onClick={() => loadSlots()}>
+                לנסות שוב
+              </button>
+            </div>
           ) : !slotsOpen ? (
-            <p className="text-white/40 text-sm">הסטודיו סגור בתאריך זה.</p>
-          ) : times.length === 0 ? (
-            <p className="text-white/40 text-sm">אין שעות פנויות בתאריך זה, נסי תאריך אחר.</p>
+            <EmptyState compact icon={CalendarDays} title="הסטודיו סגור ביום הזה" text="אפשר לבחור יום אחר." />
+          ) : times.length === 0 || !hasFree ? (
+            <EmptyState compact icon={CalendarDays} title="אין שעות פנויות ביום הזה" text="אפשר לנסות יום אחר בפס הימים." />
           ) : (
             <>
               <SlotLegend />
@@ -372,155 +491,87 @@ function BookingForm({
                   <SlotButton key={slot.time} slot={slot} selected={time === slot.time} onSelect={selectTime} />
                 ))}
               </div>
-              {!hasFree && <p className="text-white/40 text-sm mt-3">אין שעות פנויות בתאריך זה, נסי תאריך אחר.</p>}
             </>
           )}
+        </Step>
+      </div>
+
+      {time && (
+        <div ref={detailsRef} className="scroll-mt-[calc(var(--safe-top)+var(--header-h)+1rem)]">
+          <Step n={++n} title="פרטים">
+            <div className="space-y-4">
+              <TextField
+                label="שם מלא"
+                autoComplete="name"
+                value={form.clientName}
+                onChange={(e) => setForm((f) => ({ ...f, clientName: e.target.value }))}
+                maxLength={80}
+              />
+              <TextField
+                label="טלפון (לא חובה)"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                ltr
+                value={form.phone}
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, phone: e.target.value.replace(/[^\d\s\-+()]/g, "") }));
+                  if (error) setError(null);
+                }}
+                hint="רק אם נוח לך שאתקשר במקרה הצורך."
+              />
+              <TextField
+                as="textarea"
+                label="הערות (לא חובה)"
+                rows={2}
+                value={form.notes}
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                maxLength={500}
+              />
+              <p className="t-foot">התור נקבע אחרי שאאשר את הבקשה.</p>
+              {emailReady ? (
+                <p className="t-foot">
+                  עדכונים על התור יגיעו למייל{" "}
+                  <bdi dir="ltr" className="text-white/70 break-all">
+                    {user.email}
+                  </bdi>
+                </p>
+              ) : (
+                <p className="notice-warning" role="alert">
+                  <span>
+                    {EMAIL_NOT_VERIFIED_TEXT}{" "}
+                    <Link to="/account/email" state={{ from: "/booking" }} className="underline">
+                      לאימות האימייל
+                    </Link>
+                  </span>
+                </p>
+              )}
+            </div>
+          </Step>
         </div>
+      )}
 
-        {time && (
-          <form onSubmit={handleSubmit} className="glass-panel p-6 space-y-4">
-            <p className="text-sm text-violet-300 font-semibold">
-              {date && format(date, "dd/MM/yyyy")} · {time}
-            </p>
-            <input
-              required
-              placeholder="שם מלא"
-              value={form.clientName}
-              onChange={(e) => setForm((f) => ({ ...f, clientName: e.target.value }))}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
-            />
-            <input
-              type="tel"
-              inputMode="numeric"
-              autoComplete="tel"
-              placeholder="טלפון (אופציונלי)"
-              value={form.phone}
-              onChange={(e) => {
-                const next = e.target.value.replace(/[^\d\s\-+()]/g, "");
-                setForm((f) => ({ ...f, phone: next }));
-                if (error) setError(null);
-              }}
-              pattern="[\d\s\-+()]*"
-              title="נא להזין מספר טלפון תקין"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
-            />
-            {emailReady ? (
-              <p className="text-xs text-white/50">
-                העדכונים על התור יישלחו למייל{" "}
-                <bdi dir="ltr" className="text-white/75 break-all">
-                  {user.email}
-                </bdi>
-              </p>
-            ) : (
-              <p className="text-sm text-amber-200" role="alert">
-                {EMAIL_NOT_VERIFIED_TEXT}{" "}
-                <Link to="/account/email" state={{ from: "/booking" }} className="text-violet-200 underline">
-                  לאימות האימייל
-                </Link>
-              </p>
-            )}
-            <textarea
-              placeholder="הערות (אופציונלי)"
-              value={form.notes}
-              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-              rows={2}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
-            />
-            {error && (
-              <p className="text-sm text-red-300" role="alert">
-                {error}
-              </p>
-            )}
-            <p className="text-xs text-white/45">התור ייקבע רק אחרי שאאשר את הבקשה.</p>
-            <button type="submit" disabled={submitting || !emailReady} className="btn-violet w-full disabled:opacity-50">
-              {submitting ? "שולחת בקשה..." : "שליחת בקשה לתור"}
-            </button>
-          </form>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function MyAppointments({ refreshKey }) {
-  const [appointments, setAppointments] = useState(undefined);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchMyAppointments()
-      .then((list) => {
-        if (!cancelled) {
-          setAppointments(list);
-          setError("");
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setAppointments([]);
-          setError("לא הצלחתי לטעון את התורים.");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshKey]);
-
-  return (
-    <AppointmentsSection
-      appointments={appointments}
-      error={error}
-      title="הבקשות והתורים שלי"
-      emptyText="עדיין לא שלחת בקשה לתור."
-      showBookingLink={false}
-      onAppointmentUpdated={(updated) =>
-        setAppointments((list) => (list || []).map((a) => (a.id === updated.id ? updated : a)))
-      }
-    />
-  );
-}
-
-export default function Booking() {
-  const [services, setServices] = useState([]);
-  const [requestsVersion, setRequestsVersion] = useState(0);
-  const { user } = useAuth();
-  const location = useLocation();
-  const prefillNotes = location.state?.prefillNotes ?? "";
-  const skipServiceSelect = Boolean(location.state?.skipServiceSelect);
-  const packageLabel = location.state?.packageLabel ?? "";
-  const packageKey = typeof location.state?.packageKey === "string" ? location.state.packageKey : "";
-
-  useEffect(() => {
-    getServices()
-      .then((data) => setServices(Array.isArray(data) ? data : []))
-      .catch(() => setServices([]));
-  }, []);
-
-  return (
-    <div className="max-w-5xl mx-auto px-6 py-16 space-y-16">
-      <div className="text-center max-w-2xl mx-auto">
-        <span className="section-eyebrow">Booking</span>
-        <h1 className="text-3xl md:text-5xl font-black mt-3 mb-4">
-          קביעת <span className="violet-text">תור</span>
-        </h1>
-        <p className="text-white/60">
-          {skipServiceSelect
-            ? "בחרי תאריך ושעה פנויה ושלחי בקשה — אעבור עליה ואאשר את התור."
-            : "בחרי שירות, תאריך ושעה פנויה ושלחי בקשה — אעבור עליה ואאשר את התור."}
+      {error && (
+        <p className="notice-error" role="alert">
+          {error}
         </p>
-      </div>
+      )}
 
-      <BookingForm
-        services={services}
-        user={user}
-        initialNotes={prefillNotes}
-        skipServiceSelect={skipServiceSelect}
-        packageLabel={packageLabel}
-        packageKey={packageKey}
-        onRequested={() => setRequestsVersion((v) => v + 1)}
-      />
+      {time && date && (
+        <div className="sticky-cta">
+          <p className="text-center t-sub mb-2 tnum">
+            {selectedService?.name_he || packageLabel} · {formatCalendarDay(dateStr)} · {time}
+          </p>
+          <button type="submit" disabled={submitting || !emailReady} className="btn-violet btn-block">
+            {submitting && <span className="spinner" aria-hidden="true" />}
+            {submitting ? "שולחת בקשה…" : "שליחת בקשה לתור"}
+          </button>
+        </div>
+      )}
 
-      <MyAppointments refreshKey={requestsVersion} />
-    </div>
+      <Sheet open={calendarOpen} onClose={() => setCalendarOpen(false)} title="בחירת תאריך">
+        <Calendar selectedDate={date} onSelectDate={pickDate} />
+      </Sheet>
+    </form>
   );
 }

@@ -37,9 +37,9 @@ describe("server-worded errors", () => {
 describe("post-auth redirects", () => {
   it("only allows same-site paths that aren't auth screens", () => {
     expect(safeInternalPath("/booking")).toBe("/booking");
-    expect(safeInternalPath("//evil.example")).toBe("/services");
-    expect(safeInternalPath("https://evil.example")).toBe("/services");
-    expect(safeInternalPath("/verify-email")).toBe("/services");
-    expect(safeInternalPath(undefined)).toBe("/services");
+    expect(safeInternalPath("//evil.example")).toBe("/");
+    expect(safeInternalPath("https://evil.example")).toBe("/");
+    expect(safeInternalPath("/verify-email")).toBe("/");
+    expect(safeInternalPath(undefined)).toBe("/");
   });
 });

@@ -45,11 +45,11 @@ export default function ContentPage() {
     };
   }, [state]);
 
-  if (state.status === "missing") return <Navigate to="/services" replace />;
+  if (state.status === "missing") return <Navigate to="/" replace />;
 
   if (state.status === "error") {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-16 text-center">
+      <div className="max-w-3xl mx-auto pt-2 pb-6 text-center">
         <section className="glass-panel p-8 space-y-3">
           <p className="text-sm text-amber-200" role="alert">
             לא הצלחתי לטעון את הדף כרגע. אפשר לרענן ולנסות שוב.
@@ -61,7 +61,7 @@ export default function ContentPage() {
 
   if (state.status === "loading") {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-16">
+      <div className="max-w-3xl mx-auto pt-2 pb-6">
         <p className="text-sm text-white/45 text-center">הדף נטען…</p>
       </div>
     );

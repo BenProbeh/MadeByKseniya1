@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { getApiErrorMessage } from "../../lib/authErrors.js";
 import { cleanCode } from "../../lib/email.js";
+import { DevMailNotice } from "./AuthLayout.jsx";
 
-export const AUTH_INPUT_CLASS =
-  "w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60";
+export const AUTH_INPUT_CLASS = "input";
 
 export function useNow(active) {
   const [now, setNow] = useState(() => Date.now());
@@ -23,14 +23,14 @@ export const clock = (ms) => {
 export function Feedback({ error, info }) {
   if (error) {
     return (
-      <p className="text-sm text-red-300 text-center" role="alert" aria-live="assertive">
+      <p className="notice-error" role="alert" aria-live="assertive">
         {error}
       </p>
     );
   }
   if (info) {
     return (
-      <p className="text-sm text-violet-200 text-center" role="status" aria-live="polite">
+      <p className="notice-info" role="status" aria-live="polite">
         {info}
       </p>
     );
@@ -131,18 +131,21 @@ export default function CodeStep({
         e.preventDefault();
         void submit(code);
       }}
-      className="glass-panel p-6 md:p-8 space-y-5"
+      className="space-y-4"
       noValidate
     >
-      <p className="text-sm text-white/65 text-center">
-        שלחתי קוד אל{" "}
-        <bdi dir="ltr" className="text-white/90 break-all">
+      <p className="t-sub text-center">
+        שלחתי קוד בן 6 ספרות אל{" "}
+        <bdi dir="ltr" className="text-white break-all">
           {email}
         </bdi>
       </p>
+      <DevMailNotice />
       <Feedback info={!error ? notice : ""} />
-      <label className="block space-y-2 text-sm text-white/70 text-center" htmlFor="email-code">
-        <span>קוד אימות</span>
+      <div className="field">
+        <label className="field-label text-center" htmlFor="email-code">
+          קוד אימות
+        </label>
         <input
           id="email-code"
           ref={inputRef}
@@ -155,34 +158,32 @@ export default function CodeStep({
           onChange={onCodeChange}
           maxLength={12}
           aria-describedby="email-code-timer"
-          className={`${AUTH_INPUT_CLASS} text-center text-2xl tracking-[0.5em] font-semibold`}
+          aria-invalid={error ? true : undefined}
+          className="input text-center font-display text-[1.75rem] tracking-[0.45em] tnum min-h-[4rem]"
           disabled={expired}
+          placeholder="••••••"
           required
         />
-      </label>
-      <p id="email-code-timer" className="text-xs text-white/60 text-center" aria-live="polite">
-        {expired ? "תוקף הקוד הסתיים. אפשר לבקש קוד חדש." : `הקוד תקף עוד ${clock(codeExpiresAt - now)} דקות.`}
-      </p>
-      <p className="text-xs text-white/40 text-center">לא מוצאת את המייל? כדאי להציץ גם בתיקיית הספאם או בכרטיסיית קידומי מכירות.</p>
+        <p id="email-code-timer" className="field-hint text-center tnum" aria-live="polite">
+          {expired ? "תוקף הקוד הסתיים. אפשר לבקש קוד חדש." : `הקוד תקף עוד ${clock(codeExpiresAt - now)} דקות.`}
+        </p>
+      </div>
       <Feedback error={error} />
-      <button type="submit" className="btn-violet w-full" disabled={busy || expired || code.length !== 6}>
+      <button type="submit" className="btn-violet btn-block" disabled={busy || expired || code.length !== 6}>
+        {busy && <span className="spinner" aria-hidden="true" />}
         {busy ? "בודקת…" : submitLabel}
       </button>
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-        <button
-          type="button"
-          className="text-violet-200 hover:text-violet-100 disabled:text-white/40 disabled:cursor-not-allowed"
-          disabled={busy || resendIn > 0}
-          onClick={() => void resend()}
-        >
-          {resendIn > 0 ? `שליחת קוד מחדש בעוד ${clock(resendIn)}` : "שליחת קוד מחדש"}
+      <div className="flex flex-wrap items-center justify-between gap-x-3">
+        <button type="button" className="btn-text tnum" disabled={busy || resendIn > 0} onClick={() => void resend()}>
+          {resendIn > 0 ? `קוד חדש בעוד ${clock(resendIn)}` : "שליחת קוד חדש"}
         </button>
         {onChangeEmail && (
-          <button type="button" className="text-white/60 hover:text-white" disabled={busy} onClick={onChangeEmail}>
+          <button type="button" className="btn-text text-white/60" disabled={busy} onClick={onChangeEmail}>
             {changeEmailLabel}
           </button>
         )}
       </div>
+      <p className="t-foot text-center">לא מוצאת את המייל? כדאי להציץ גם בספאם או בקידומי מכירות.</p>
     </form>
   );
 }

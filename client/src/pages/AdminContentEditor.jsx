@@ -279,7 +279,7 @@ export default function AdminContentEditor() {
 
   if (loadError) {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-16 space-y-6 text-center">
+      <div className="max-w-3xl mx-auto pt-2 pb-6 space-y-6 text-center">
         <section className="glass-panel p-8 space-y-3">
           <p className="text-sm text-amber-200" role="alert">
             {loadError}
@@ -295,7 +295,7 @@ export default function AdminContentEditor() {
 
   if (!page) {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-16">
+      <div className="max-w-3xl mx-auto pt-2 pb-6">
         <p className="text-sm text-white/45 text-center">הדף נטען…</p>
       </div>
     );
@@ -304,10 +304,10 @@ export default function AdminContentEditor() {
   const published = meta?.status === "published";
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-16 space-y-8">
+    <div className="max-w-3xl mx-auto pt-2 pb-6 space-y-8">
       <div className="text-center space-y-3">
         <span className="section-eyebrow justify-center">Admin</span>
-        <h1 className="font-serif font-medium text-3xl md:text-5xl text-white">
+        <h1 className="t-large-title md:text-[2.5rem] text-white">
           {isNew ? (
             <>
               צור <span className="violet-text">דף</span>

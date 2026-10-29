@@ -1,117 +1,94 @@
-import { ALL_FINGERS } from "../../lib/nailSizing/constants.js";
-import { getQualityLevel } from "../../lib/nailSizing/photoQuality.js";
+import { Link } from "react-router-dom";
+import { AlertTriangle, CircleCheck } from "lucide-react";
+import PageHeader from "../ui/PageHeader.jsx";
+import { HANDS } from "../../lib/nailSizing/constants.js";
 import { NAIL_SIZING_COPY as C } from "../../lib/nailSizing/copy.js";
-import { useAuth } from "../../context/AuthContext.jsx";
 
-export default function SummaryStep({
-  measurements,
-  selectedFingerKeys,
-  phone,
-  onPhoneChange,
-  onRetake,
-  onSave,
-  saving,
-  saved,
-  onBack,
-}) {
-  const { authenticated } = useAuth();
-  const selected = new Set(selectedFingerKeys?.length ? selectedFingerKeys : ALL_FINGERS.map((f) => f.key));
-  const selectedList = ALL_FINGERS.filter((f) => selected.has(f.key));
-  const missing = selectedList.filter((f) => measurements[f.key]?.status !== "confirmed");
-  const canSave = missing.length === 0 && (authenticated || phone.trim()) && !saving;
+/**
+ * What was measured, per hand. A finger tile re-measures that finger. Saving is honest: the success
+ * state shows only after the server stored the sizes; a failure keeps everything and offers a retry.
+ */
+export default function SummaryStep({ results, remaining, saveState, saveError, onSave, onRemeasure, onContinue }) {
+  const measuredCount = Object.keys(results).length;
+  const saved = saveState === "saved";
 
   return (
-    <div className="space-y-6">
-      <div className="glass-panel p-6 text-center space-y-2">
-        <span className="section-eyebrow justify-center">{C.summary.eyebrow}</span>
-        <h2 className="font-serif text-2xl md:text-3xl text-white">{C.summary.title}</h2>
-        <p className="font-serif text-white/60 text-sm md:text-base max-w-xl mx-auto">{C.summary.subtitle}</p>
-      </div>
+    <div className="max-w-xl mx-auto space-y-6 pt-2">
+      {saved ? (
+        <div className="card-raised p-6 text-center space-y-3" role="status">
+          <CircleCheck size={40} strokeWidth={1.6} className="mx-auto text-emerald-300" aria-hidden="true" />
+          <h1 className="t-title">{C.summary.savedTitle}</h1>
+          <p className="t-sub">{C.summary.savedText}</p>
+        </div>
+      ) : (
+        <PageHeader title={C.summary.title} subtitle={C.summary.subtitle} />
+      )}
 
-      <div className="grid md:grid-cols-2 gap-4">
-        {["right", "left"].map((handId) => {
-          const label = handId === "right" ? "יד ימין" : "יד שמאל";
-          const rows = selectedList.filter((f) => f.handId === handId);
-          if (rows.length === 0) return null;
-          return (
-            <div key={handId} className="glass-panel p-5 space-y-3">
-              <h3 className="font-serif text-xl text-white">{label}</h3>
-              <ul className="space-y-3">
-                {rows.map((f) => {
-                  const m = measurements[f.key];
-                  const needs = m?.status !== "confirmed";
-                  const q =
-                    m?.photoQualityScore != null ? getQualityLevel(m.photoQualityScore) : null;
-                  return (
-                    <li
-                      key={f.key}
-                      className="flex items-center justify-between gap-3 border-b border-white/[0.08] last:border-0 pb-3 last:pb-0"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-white/90">{f.fingerLabelHe}</p>
-                        <p className="text-xs text-white/45">
-                          {m?.status === "confirmed"
-                            ? m?.photoQualityScore != null
-                              ? `${C.summary.captured} · ${m.photoQualityScore}/100 · ${q?.label || ""}`
-                              : C.summary.captured
-                            : C.summary.pending}
-                        </p>
-                      </div>
-                      <button type="button" className="btn-text text-xs shrink-0" onClick={() => onRetake(f.key)}>
-                        {needs ? C.summary.measure : C.summary.retake}
-                        <span className="btn-text-arrow">←</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          );
-        })}
-      </div>
+      {HANDS.map((hand) => (
+        <section key={hand.id} className="space-y-2" aria-label={hand.labelHe}>
+          <h2 className="section-title">{hand.labelHe}</h2>
+          <ul className="grid grid-cols-5 gap-2">
+            {hand.fingers.map((finger) => {
+              const key = `${hand.id}-${finger.id}`;
+              const r = results[key];
+              return (
+                <li key={key}>
+                  <button
+                    type="button"
+                    onClick={() => onRemeasure(key)}
+                    className={`w-full rounded-control border px-1 py-3 text-center transition-colors active:bg-white/[0.06] ${
+                      r ? "border-white/[0.12] bg-oled-900" : "border-dashed border-white/15"
+                    }`}
+                    aria-label={r ? `${finger.labelHe}: מידה ${r.size}, ${r.widthMm} מ״מ. מדידה מחדש` : `${finger.labelHe}: עוד לא נמדדה. למדידה`}
+                  >
+                    <span className={`block font-display text-title tnum ${r ? "text-white" : "text-white/30"}`}>{r ? r.size : C.summary.notMeasured}</span>
+                    <span className="block text-cap text-white/55 truncate">{finger.labelHe.replace("אצבע ", "")}</span>
+                    {r && (
+                      <span className="block text-cap text-white/35 tnum" dir="ltr">
+                        {r.widthMm.toFixed(1)}mm
+                      </span>
+                    )}
+                    {r && !r.plausible && <AlertTriangle size={13} className="mx-auto mt-0.5 text-amber-300" aria-hidden="true" />}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
 
-      {missing.length > 0 && (
-        <p className="text-sm text-amber-200 text-center" role="status">
-          {C.summary.missing(missing.length)}
+      {remaining > 0 && !saved && (
+        <div className="notice-info flex-col gap-2">
+          <p className="font-display">{C.summary.missingTitle(remaining)}</p>
+          <p className="text-foot text-violet-100/80">{C.summary.missingText}</p>
+          <button type="button" className="btn-text p-0" onClick={onContinue}>
+            {C.summary.continueMeasuring}
+          </button>
+        </div>
+      )}
+
+      {saveError && (
+        <p className="notice-error" role="alert">
+          {saveError}
         </p>
       )}
 
-      <div className="glass-panel p-5 space-y-4">
-        <label className="block text-sm text-white/60">
-          {C.summary.phoneLabel}
-          {authenticated && (
-            <span className="text-white/35"> (אופציונלי — החשבון כבר מחובר)</span>
-          )}
-          <input
-            type="tel"
-            inputMode="numeric"
-            value={phone}
-            onChange={(e) => onPhoneChange(e.target.value.replace(/[^\d\s\-+()]/g, ""))}
-            placeholder="05XXXXXXXX"
-            className="mt-2 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60"
-          />
-        </label>
-        <p className="font-serif text-xs text-white/40">{C.summary.phoneHint}</p>
-      </div>
-
-      {saved && (
-        <p className="text-center text-violet-200 font-medium" role="status">
-          {C.summary.saved}
-        </p>
-      )}
-
-      <div className="flex flex-wrap gap-3 justify-between">
-        <button type="button" className="btn-ghost" onClick={onBack}>
-          {C.summary.back}
-        </button>
-        <button
-          type="button"
-          className="btn-violet"
-          disabled={!canSave}
-          onClick={onSave}
-        >
-          {saving ? C.summary.saving : C.summary.save}
-        </button>
+      <div className="sticky-cta">
+        {saved ? (
+          <div className="grid grid-cols-2 gap-3">
+            <Link to="/" className="btn-ghost">
+              {C.summary.home}
+            </Link>
+            <Link to="/booking" className="btn-violet">
+              {C.summary.book}
+            </Link>
+          </div>
+        ) : (
+          <button type="button" className="btn-violet btn-block" disabled={!measuredCount || saveState === "saving"} onClick={onSave}>
+            {saveState === "saving" && <span className="spinner" aria-hidden="true" />}
+            {saveState === "saving" ? C.summary.saving : C.summary.save}
+          </button>
+        )}
       </div>
     </div>
   );

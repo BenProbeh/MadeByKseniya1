@@ -1,4 +1,4 @@
-export const AFTER_AUTH_PATH = "/services";
+export const AFTER_AUTH_PATH = "/";
 
 /** Sign-in, sign-up and verification screens; they never show the site navigation. */
 export const AUTH_PAGES = Object.freeze(["/login", "/register", "/forgot-password", "/verify-email", "/account/email"]);

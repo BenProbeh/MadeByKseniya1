@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { releaseCamera, stopStreamTracks } from "./cameraLifecycle.js";
 import { useCamera } from "./useCamera.js";
-import { CALIBRATION_COINS } from "./coins.js";
+import { REFERENCE_COIN } from "./measure.js";
 import { NAIL_SIZING_COPY } from "./copy.js";
 
 function makeTrack(readyState = "live") {
@@ -188,16 +188,35 @@ describe("useCamera lifecycle", () => {
   });
 });
 
+describe("late camera permission", () => {
+  it("releases a stream that arrives after the camera was stopped", async () => {
+    const track = makeTrack();
+    let resolve;
+    const getUserMedia = vi.fn(() => new Promise((r) => (resolve = r)));
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia } });
+    const { result } = renderHook(() => useCamera());
+    let pending;
+    act(() => {
+      pending = result.current.start();
+    });
+    act(() => result.current.stop());
+    await act(async () => {
+      resolve(makeStream([track]));
+      await pending;
+    });
+    expect(track.stop).toHaveBeenCalled();
+    expect(result.current.status).toBe("idle");
+  });
+});
+
 describe("copy + coins", () => {
   it("avoids robotic English terms in user-facing copy", () => {
     const blob = JSON.stringify(NAIL_SIZING_COPY);
     expect(blob.toLowerCase()).not.toMatch(/\bconfidence\b|\bvalidation\b|\bthreshold\b|\bdetected\b|request camera/i);
   });
 
-  it("maps each coin to a distinct local imageSrc", () => {
-    const srcs = CALIBRATION_COINS.map((c) => c.imageSrc);
-    expect(srcs.every((s) => typeof s === "string" && s.startsWith("/assets/coins/"))).toBe(true);
-    expect(new Set(srcs).size).toBe(CALIBRATION_COINS.length);
-    expect(CALIBRATION_COINS.every((c) => c.imageAlt && c.imageAlt.includes("מטבע"))).toBe(true);
+  it("uses only the 10 ₪ coin, with its local illustration", () => {
+    expect(REFERENCE_COIN.imageSrc).toBe("/assets/coins/ils-10-shekel.svg");
+    expect(JSON.stringify(NAIL_SIZING_COPY)).toContain("10 ₪");
   });
 });

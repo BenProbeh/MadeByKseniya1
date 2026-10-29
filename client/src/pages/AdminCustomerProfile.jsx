@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { Mail, MessageCircle, Phone, ShieldMinus, ShieldPlus, UserX } from "lucide-react";
+import EmptyState from "../components/ui/EmptyState.jsx";
+import { telHref } from "../lib/phone.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import UserAvatar from "../components/UserAvatar.jsx";
 import RoleBadge from "../components/admin/RoleBadge.jsx";
-import DialButton from "../components/admin/DialButton.jsx";
 import { ScoreBreakdown } from "../components/admin/CustomerScore.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import { MeasurementsSection, OrdersSection, ShipmentsSection } from "../components/profile/ProfileSections.jsx";
@@ -11,24 +13,6 @@ import { fetchAdminCustomer, removeCustomer, restoreCustomer, updateUserRole } f
 import { getApiErrorMessage } from "../lib/authErrors.js";
 import { formatDate, formatDateTime } from "../lib/format.js";
 import { isOwner } from "../lib/roles.js";
-
-function BackLink() {
-  return (
-    <Link to="/admin/customers" className="btn-text text-sm">
-      <span aria-hidden="true">→</span>
-      חזרה לרשימת הלקוחות
-    </Link>
-  );
-}
-
-function Detail({ label, children }) {
-  return (
-    <div className="border border-white/[0.08] rounded-xl px-4 py-3 space-y-1 min-w-0">
-      <dt className="text-[11px] text-white/40">{label}</dt>
-      <dd className="text-sm text-white/80 truncate">{children}</dd>
-    </div>
-  );
-}
 
 export default function AdminCustomerProfile() {
   const { id } = useParams();
@@ -141,36 +125,34 @@ export default function AdminCustomerProfile() {
 
   if (status === "loading" && !data) {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-16">
-        <p className="text-sm text-white/45 text-center">הפרופיל נטען…</p>
+      <div className="max-w-2xl mx-auto space-y-5 pt-4" aria-hidden="true">
+        <div className="skeleton h-24 w-24 rounded-full mx-auto" />
+        <div className="skeleton h-7 w-48 mx-auto" />
+        <div className="skeleton h-14 w-full rounded-card" />
+        <div className="skeleton h-40 w-full rounded-card" />
       </div>
     );
   }
 
   if (status === "notFound") {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-16 space-y-6 text-center">
-        <section className="glass-panel p-8 space-y-3">
-          <h1 className="font-serif text-2xl text-white">הלקוח לא נמצא</h1>
-          <p className="font-serif text-sm text-white/55">ייתכן שהקישור שגוי או שהחשבון כבר לא קיים.</p>
-        </section>
-        <BackLink />
+      <div className="max-w-2xl mx-auto pt-4">
+        <div className="card">
+          <EmptyState icon={UserX} title="הלקוחה לא נמצאה" text="ייתכן שהקישור שגוי או שהחשבון כבר לא קיים." />
+        </div>
       </div>
     );
   }
 
   if (status === "error" && !data) {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-16 space-y-6 text-center">
-        <section className="glass-panel p-8 space-y-4">
-          <p className="text-sm text-amber-200" role="alert">
-            {error}
-          </p>
-          <button type="button" className="btn-ghost" onClick={() => void load()}>
-            לנסות שוב
-          </button>
-        </section>
-        <BackLink />
+      <div className="max-w-2xl mx-auto pt-4 space-y-4">
+        <p className="notice-warning" role="alert">
+          {error}
+        </p>
+        <button type="button" className="btn-ghost btn-block" onClick={() => void load()}>
+          לנסות שוב
+        </button>
       </div>
     );
   }
@@ -182,141 +164,158 @@ export default function AdminCustomerProfile() {
   const removed = Boolean(customer.removedAt);
   const canRemove = Boolean(permissions?.canRemove) && !isSelf && customer.role !== "owner";
   const canRestore = Boolean(permissions?.canRestore) && isOwner(user);
+  const tel = telHref(customer.phoneE164);
+  const whatsapp = customer.phoneE164 ? `https://wa.me/${customer.phoneE164.replace(/\D/g, "")}` : null;
+  const mail = customer.email && customer.emailVerified ? `mailto:${customer.email}` : null;
+  const contacts = [
+    { href: tel, icon: Phone, label: "שיחה" },
+    { href: whatsapp, icon: MessageCircle, label: "וואטסאפ", external: true },
+    { href: mail, icon: Mail, label: "מייל" },
+  ];
+  const facts = [
+    [
+      "אימייל",
+      customer.email ? (
+        <>
+          <bdi dir="ltr" className="break-all">
+            {customer.email}
+          </bdi>
+          <span className="text-white/40"> · {customer.emailVerified ? "מאומת" : "לא מאומת"}</span>
+        </>
+      ) : (
+        "עדיין לא נוסף"
+      ),
+    ],
+    ["טלפון", customer.phone ? <span dir="ltr">{customer.phone}</span> : "לא נשמר"],
+    ["הזמנות", <span className="tnum">{customer.ordersCount}</span>],
+    ["התחברות אחרונה", customer.lastLoginAt ? formatDateTime(customer.lastLoginAt) : "—"],
+    ["פעילות אחרונה", customer.lastActiveAt ? formatDateTime(customer.lastActiveAt) : "—"],
+  ];
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-16 space-y-8">
-      <div className="flex justify-center">
-        <BackLink />
-      </div>
+    <div className="max-w-2xl mx-auto space-y-7 pt-2">
+      <header className="flex flex-col items-center text-center gap-3">
+        <UserAvatar user={customer} className="h-24 w-24 text-3xl" />
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <h1 className="t-large-title">{fullName}</h1>
+            <RoleBadge role={customer.role} />
+          </div>
+          <p className="t-foot">
+            <span dir="ltr">@{customer.username}</span> · הצטרפה ב־{formatDate(customer.createdAt)}
+          </p>
+        </div>
+      </header>
+
+      {(tel || whatsapp || mail) && !removed && (
+        <div className="grid grid-cols-3 gap-3" aria-label="יצירת קשר">
+          {contacts.map(({ href, icon: Icon, label, external }) =>
+            href ? (
+              <a
+                key={label}
+                href={href}
+                target={external ? "_blank" : undefined}
+                rel={external ? "noopener noreferrer" : undefined}
+                className="card flex flex-col items-center justify-center gap-1.5 min-h-[4.5rem] text-violet-200 active:bg-oled-800"
+                aria-label={`${label} עם ${fullName}`}
+              >
+                <Icon size={22} strokeWidth={1.8} aria-hidden="true" />
+                <span className="text-foot text-white/80">{label}</span>
+              </a>
+            ) : (
+              <span key={label} className="card flex flex-col items-center justify-center gap-1.5 min-h-[4.5rem] text-white/20" aria-hidden="true">
+                <Icon size={22} strokeWidth={1.8} />
+                <span className="text-foot">{label}</span>
+              </span>
+            )
+          )}
+        </div>
+      )}
 
       {removed && (
-        <div role="note" className="glass-panel border-white/20 px-5 py-4 text-center font-serif text-sm text-white/75 space-y-3">
-          <p>
-            החשבון הזה הוסר ב־{formatDateTime(customer.removedAt)}. הוא לא יכול להתחבר ולא מופיע ברשימת הלקוחות.
-          </p>
+        <div role="note" className="notice-warning flex-col">
+          <p>החשבון הוסר ב־{formatDateTime(customer.removedAt)}. הוא לא יכול להתחבר ולא מופיע ברשימת הלקוחות.</p>
           {canRestore && (
-            <button type="button" className="btn-violet" onClick={onRestore} disabled={restoreBusy}>
+            <button type="button" className="btn-violet btn-sm" onClick={onRestore} disabled={restoreBusy}>
               {restoreBusy ? "רגע אחד…" : "שחזור החשבון"}
             </button>
           )}
         </div>
       )}
       {restoreMsg && (
-        <p className="text-sm text-violet-200 text-center" role="status" aria-live="polite">
+        <p className="notice-info" role="status">
           {restoreMsg}
         </p>
       )}
-
-      {!isSelf && (
-        <div
-          role="note"
-          className="glass-panel border-violet-400/40 px-5 py-4 text-center font-serif text-sm text-violet-100"
-        >
-          מצב צפייה בפרופיל של <strong className="text-white">{fullName}</strong>. תצוגה לקריאה בלבד — ללא כניסה
-          לחשבון וללא גישה לסיסמה.
-        </div>
+      {roleOk && (
+        <p className="notice-success" role="status">
+          {roleOk}
+        </p>
       )}
 
-      <section className="glass-panel p-6 md:p-8 space-y-6">
-        <div className="flex flex-col sm:flex-row items-center gap-5 text-center sm:text-right">
-          <UserAvatar user={customer} className="h-24 w-24 md:h-28 md:w-28 text-3xl" />
-          <div className="space-y-2 min-w-0">
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
-              <h1 className="font-serif text-2xl md:text-3xl text-white">{fullName}</h1>
-              <RoleBadge role={customer.role} />
+      <section className="space-y-2" aria-labelledby="facts-title">
+        <h2 id="facts-title" className="t-title px-1">
+          פרטים
+        </h2>
+        <dl className="list-group">
+          {facts.map(([label, value]) => (
+            <div key={label} className="list-row justify-between">
+              <dt className="t-sub shrink-0">{label}</dt>
+              <dd className="text-sub text-white text-end min-w-0">{value}</dd>
             </div>
-            <p className="text-sm text-white/50">
-              <span dir="ltr">@{customer.username}</span>
-            </p>
-            {customer.phoneE164 && (
-              <div className="flex justify-center sm:justify-start">
-                <DialButton phoneE164={customer.phoneE164} phoneDisplay={customer.phone} name={fullName} />
-              </div>
-            )}
-            <p className="text-xs text-white/35">הצטרפות ב־{formatDate(customer.createdAt)}</p>
-          </div>
-        </div>
-
-        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Detail label="אימייל">
-            {customer.email ? (
-              <>
-                <bdi dir="ltr" className="break-all">
-                  {customer.email}
-                </bdi>
-                <span className="text-white/40"> · {customer.emailVerified ? "מאומת" : "לא מאומת"}</span>
-              </>
-            ) : (
-              "עדיין לא נוסף"
-            )}
-          </Detail>
-          <Detail label="טלפון ליצירת קשר">
-            {customer.phone ? <span dir="ltr">{customer.phone}</span> : "לא נשמר"}
-          </Detail>
-          <Detail label="הזמנות">{customer.ordersCount}</Detail>
-          <Detail label="התחברות אחרונה">
-            {customer.lastLoginAt ? formatDateTime(customer.lastLoginAt) : "—"}
-          </Detail>
-          <Detail label="פעילות אחרונה">
-            {customer.lastActiveAt ? formatDateTime(customer.lastActiveAt) : "—"}
-          </Detail>
+          ))}
         </dl>
-
-        {canManageRole && (
-          <div className="flex flex-wrap justify-center sm:justify-start gap-3">
-            {customer.role === "customer" && (
-              <button type="button" className="btn-violet" onClick={() => setPendingRole("admin")}>
-                הגדר כמנהל
-              </button>
-            )}
-            {customer.role === "admin" && (
-              <button type="button" className="btn-ghost" onClick={() => setPendingRole("customer")}>
-                הסר הרשאת מנהל
-              </button>
-            )}
-          </div>
-        )}
-
-        {roleOk && (
-          <p className="text-sm text-violet-200 text-center sm:text-right" role="status" aria-live="polite">
-            {roleOk}
-          </p>
-        )}
-
-        {canRemove && (
-          <div className="border-t border-white/[0.08] pt-5 flex justify-center sm:justify-start">
-            <button type="button" className="btn-text text-sm text-white/60" onClick={() => setRemoveOpen(true)}>
-              הסרת משתמש
-            </button>
-          </div>
-        )}
+        {!isSelf && <p className="t-foot px-1">תצוגה לקריאה בלבד — בלי כניסה לחשבון ובלי גישה לסיסמה.</p>}
       </section>
 
-      <section className="glass-panel p-6 md:p-8 space-y-4" aria-labelledby="score-title">
-        <div className="space-y-1">
-          <h2 id="score-title" className="font-serif text-2xl text-white">
-            דירוג פנימי
-          </h2>
-          <p className="text-xs text-white/45">גלוי לצוות בלבד. מחושב בשרת לפי פעילות עסקית.</p>
+      <section className="space-y-2" aria-labelledby="score-title">
+        <h2 id="score-title" className="t-title px-1">
+          פעילות
+        </h2>
+        <div className="card p-4 space-y-3">
+          <p className="t-foot">ציון פנימי לצוות בלבד, מחושב בשרת מתורים, מסלולים, רכישות ופעילות אחרונה.</p>
+          <ScoreBreakdown score={customer.score} />
         </div>
-        <ScoreBreakdown score={customer.score} />
       </section>
 
-      <MeasurementsSection
-        measurement={measurement}
-        title="מידות"
-        subtitle=""
-        emptyTitle="עדיין לא נשמרו מידות"
-        emptyText=""
-        showActions={false}
-      />
-      <OrdersSection orders={orders} title="רכישות" emptyText="אין רכישות עדיין." />
-      <ShipmentsSection shipments={shipments} title="משלוחים" emptyText="אין משלוחים פעילים." />
+      <MeasurementsSection measurement={measurement} title="מידות" showActions={false} />
+      <OrdersSection orders={orders} title="רכישות" />
+      <ShipmentsSection shipments={shipments} title="משלוחים" />
+
+      {(canManageRole || canRemove) && !removed && (
+        <section className="space-y-2" aria-labelledby="manage-title">
+          <h2 id="manage-title" className="t-title px-1">
+            ניהול
+          </h2>
+          <div className="list-group">
+            {canManageRole && customer.role === "customer" && (
+              <button type="button" className="list-row" onClick={() => setPendingRole("admin")}>
+                <ShieldPlus size={20} className="text-violet-200 shrink-0" aria-hidden="true" />
+                <span className="flex-1">הגדרה כמנהלת</span>
+              </button>
+            )}
+            {canManageRole && customer.role === "admin" && (
+              <button type="button" className="list-row" onClick={() => setPendingRole("customer")}>
+                <ShieldMinus size={20} className="text-violet-200 shrink-0" aria-hidden="true" />
+                <span className="flex-1">הסרת הרשאת ניהול</span>
+              </button>
+            )}
+            {canRemove && (
+              <button type="button" className="list-row text-red-300" onClick={() => setRemoveOpen(true)}>
+                <UserX size={20} className="shrink-0" aria-hidden="true" />
+                <span className="flex-1">הסרת המשתמש</span>
+              </button>
+            )}
+          </div>
+          {canManageRole && <p className="t-foot px-1">רק הבעלים יכולה לתת או להסיר הרשאת ניהול.</p>}
+        </section>
+      )}
 
       <ConfirmDialog
         open={Boolean(pendingRole)}
-        title={pendingRole === "admin" ? "הגדרה כמנהל" : "הסרת הרשאת מנהל"}
-        confirmLabel={pendingRole === "admin" ? "כן, הגדר כמנהל" : "כן, הסר הרשאה"}
+        title={pendingRole === "admin" ? "הגדרה כמנהלת" : "הסרת הרשאת ניהול"}
+        confirmLabel={pendingRole === "admin" ? "כן, להגדיר" : "כן, להסיר"}
+        tone={pendingRole === "admin" ? "default" : "danger"}
         busy={roleBusy}
         error={roleError}
         onConfirm={confirmRoleChange}
@@ -324,41 +323,30 @@ export default function AdminCustomerProfile() {
       >
         {pendingRole === "admin" ? (
           <>
-            <p>
-              {fullName} יוכל לצפות ברשימת הלקוחות, בפרופילים, במידות, בהזמנות ובנתוני ההצטרפות.
-            </p>
-            <p>מנהל לא יכול לראות סיסמאות, לשנות הרשאות או לגעת בחשבון הבעלים.</p>
+            <p>{fullName} תוכל לראות את רשימת הלקוחות, הפרופילים, המידות, ההזמנות והתורים, ולאשר בקשות.</p>
+            <p>מנהלת לא רואה סיסמאות, לא משנה הרשאות ולא נוגעת בחשבון הבעלים.</p>
           </>
         ) : (
-          <p>{fullName} יחזור להיות לקוח רגיל ויאבד מיד את הגישה לאזור הניהול.</p>
+          <p>{fullName} תחזור להיות לקוחה רגילה ותאבד מיד את הגישה לאזור הניהול.</p>
         )}
       </ConfirmDialog>
 
       <ConfirmDialog
         open={removeOpen}
         title={`הסרת ${fullName}`}
-        confirmLabel="כן, הסר את המשתמש"
+        confirmLabel="כן, להסיר"
+        tone="danger"
         busy={removeBusy}
         confirmDisabled={!removeAck}
         error={removeError}
         onConfirm={confirmRemove}
         onCancel={closeRemove}
       >
-        <p>
-          החשבון של <strong className="text-white">{fullName}</strong> יוסר מרשימת הלקוחות וכל ההתחברויות שלו
-          ינותקו מיד. לא תהיה אפשרות להתחבר אליו.
-        </p>
-        <p>התורים, ההזמנות והמידות נשמרים במערכת. מספר הטלפון נשאר שמור ולא ניתן להירשם איתו מחדש.</p>
-        <p>בעלת האתר יכולה לשחזר את החשבון בכל עת.</p>
-        <label className="flex items-center justify-center gap-2 pt-2 cursor-pointer select-none text-white/80">
-          <input
-            type="checkbox"
-            checked={removeAck}
-            onChange={(e) => setRemoveAck(e.target.checked)}
-            disabled={removeBusy}
-            className="rounded border-white/30"
-          />
-          <span>הבנתי, אני רוצה להסיר את המשתמש</span>
+        <p>החשבון יוסר מרשימת הלקוחות וכל ההתחברויות שלו ינותקו מיד.</p>
+        <p>התורים, ההזמנות והמידות נשמרים. הבעלים יכולה לשחזר את החשבון בכל עת.</p>
+        <label className="flex items-center gap-3 pt-2 min-h-[2.75rem] cursor-pointer select-none text-white/85">
+          <input type="checkbox" className="check" checked={removeAck} onChange={(e) => setRemoveAck(e.target.checked)} disabled={removeBusy} />
+          <span>הבנתי, להסיר את המשתמש</span>
         </label>
       </ConfirmDialog>
     </div>

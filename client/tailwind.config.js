@@ -56,21 +56,44 @@ export default {
         violet: { 300: ink("violet-300") },
       },
       fontFamily: {
-        // Latin brand font first; Hebrew falls through to Secular One (index.css declares only its Hebrew range).
-        sans: ["Sekuya", "'Secular One'", "Heebo", "Arial", "sans-serif"],
-        serif: ["'Bitcount Ink Variable'", "'Secular One'", "Heebo", "Arial", "sans-serif"],
+        // Body, inputs, numbers and data: Heebo (clean Hebrew + Latin, real weights).
+        sans: ["Heebo", "system-ui", "-apple-system", "Arial", "sans-serif"],
+        // Brand voice: headings, buttons, tabs. Secular One covers Hebrew only; Latin and digits fall to Heebo.
+        display: ["'Secular One'", "Heebo", "system-ui", "Arial", "sans-serif"],
+        // Legacy alias: `font-serif` was the Hebrew heading font across the app.
+        serif: ["'Secular One'", "Heebo", "system-ui", "Arial", "sans-serif"],
+        // Latin brand words only (package names, wordmark).
+        brand: ["Sekuya", "'Secular One'", "Heebo", "sans-serif"],
         neon: ["'Alex Brush'", "'Secular One'", "cursive"],
       },
       fontSize: {
-        "display-lg": ["clamp(3rem, 6.5vw, 6.75rem)", { lineHeight: "1.04", letterSpacing: "-0.01em" }],
-        "display-md": ["clamp(2.25rem, 4.5vw, 4rem)", { lineHeight: "1.08", letterSpacing: "-0.01em" }],
+        "large-title": ["1.75rem", { lineHeight: "2.125rem", letterSpacing: "-0.01em" }],
+        title: ["1.3125rem", { lineHeight: "1.75rem", letterSpacing: "-0.005em" }],
+        headline: ["1.0625rem", { lineHeight: "1.5rem" }],
+        body: ["1rem", { lineHeight: "1.5rem" }],
+        sub: ["0.9375rem", { lineHeight: "1.375rem" }],
+        foot: ["0.8125rem", { lineHeight: "1.125rem" }],
+        cap: ["0.75rem", { lineHeight: "1rem" }],
+        "display-lg": ["clamp(2.5rem, 6.5vw, 5rem)", { lineHeight: "1.05", letterSpacing: "-0.01em" }],
+        "display-md": ["clamp(2rem, 4.5vw, 3.5rem)", { lineHeight: "1.08", letterSpacing: "-0.01em" }],
+      },
+      borderRadius: {
+        control: "0.875rem",
+        card: "1.125rem",
+      },
+      spacing: {
+        "safe-t": "env(safe-area-inset-top)",
+        "safe-b": "env(safe-area-inset-bottom)",
+        tabbar: "var(--tabbar-h)",
       },
       maxWidth: {
         content: "1440px",
       },
       boxShadow: {
-        glow: "0 0 30px 2px rgba(176, 38, 255, 0.5), 0 0 60px 12px rgba(176, 38, 255, 0.25)",
-        "glow-lg": "0 0 60px 6px rgba(176, 38, 255, 0.55), 0 0 130px 24px rgba(176, 38, 255, 0.3)",
+        // Brand glow: an offset, soft-blurred violet lift (not a zero-offset halo).
+        glow: "0 10px 28px -10px rgba(176, 38, 255, 0.65), 0 2px 8px -2px rgba(176, 38, 255, 0.35)",
+        "glow-lg": "0 16px 44px -12px rgba(176, 38, 255, 0.7), 0 4px 14px -4px rgba(176, 38, 255, 0.4)",
+        lift: "0 12px 32px -16px rgba(0, 0, 0, 0.9), 0 2px 6px -2px rgba(0, 0, 0, 0.6)",
         hairline: "inset 0 0 0 1px rgba(255,255,255,0.08)",
       },
       backgroundImage: {

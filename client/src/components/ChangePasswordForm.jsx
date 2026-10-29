@@ -1,33 +1,28 @@
 import { useState } from "react";
 import PasswordVisibilityToggle from "./PasswordVisibilityToggle.jsx";
+import TextField from "./ui/TextField.jsx";
 import { changePasswordRequest } from "../lib/authApi.js";
 import { getApiErrorMessage } from "../lib/authErrors.js";
 
-const INPUT_CLASS =
-  "w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base outline-none focus:border-violet-400/60 pe-12";
-
-function PasswordField({ label, name, autoComplete, value, onChange }) {
+function PasswordField({ label, name, autoComplete, value, onChange, error, hint }) {
   const [visible, setVisible] = useState(false);
   return (
-    <label className="block space-y-2 text-sm text-white/70 text-right">
-      <span>{label}</span>
-      <div className="relative">
-        <input
-          type={visible ? "text" : "password"}
-          name={name}
-          autoComplete={autoComplete}
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className={INPUT_CLASS}
-          maxLength={128}
-          required
-        />
-        <PasswordVisibilityToggle visible={visible} onToggle={() => setVisible((v) => !v)} />
-      </div>
-    </label>
+    <TextField
+      label={label}
+      type={visible ? "text" : "password"}
+      name={name}
+      autoComplete={autoComplete}
+      autoCapitalize="none"
+      autoCorrect="off"
+      spellCheck={false}
+      ltr
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      maxLength={128}
+      error={error}
+      hint={hint}
+      trailing={<PasswordVisibilityToggle visible={visible} onToggle={() => setVisible((v) => !v)} />}
+    />
   );
 }
 
@@ -40,26 +35,18 @@ function validate({ currentPassword, newPassword, confirmPassword }) {
   return "";
 }
 
-export default function ChangePasswordForm() {
-  const [open, setOpen] = useState(false);
+/** Change password (own account only; the server enforces it). Lives in a sheet; `onDone(message)` closes it. */
+export default function ChangePasswordForm({ onDone, onCancel }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-
-  function reset() {
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-    setError("");
-  }
+  const mismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
 
   async function onSubmit(e) {
     e.preventDefault();
     if (submitting) return;
-    setSuccess("");
     const problem = validate({ currentPassword, newPassword, confirmPassword });
     if (problem) {
       setError(problem);
@@ -69,87 +56,45 @@ export default function ChangePasswordForm() {
     setSubmitting(true);
     try {
       const data = await changePasswordRequest({ currentPassword, newPassword, confirmPassword });
-      reset();
-      setOpen(false);
-      setSuccess(data?.message || "הסיסמה עודכנה.");
+      onDone?.(data?.message || "הסיסמה עודכנה.");
     } catch (err) {
       setError(getApiErrorMessage(err, "לא הצלחתי לעדכן את הסיסמה כרגע. אפשר לנסות שוב בעוד רגע."));
-    } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-center sm:justify-start">
-        <button
-          type="button"
-          className="btn-text text-sm"
-          aria-expanded={open}
-          onClick={() => {
-            setOpen((v) => !v);
-            setSuccess("");
-            reset();
-          }}
-        >
-          שינוי סיסמה
-          <span className="btn-text-arrow">{open ? "↑" : "←"}</span>
-        </button>
-      </div>
-
-      {success && (
-        <p className="text-sm text-violet-200 text-center sm:text-right" role="status" aria-live="polite">
-          {success}
+    <form onSubmit={onSubmit} className="space-y-4" noValidate>
+      <PasswordField label="סיסמה נוכחית" name="current-password" autoComplete="current-password" value={currentPassword} onChange={setCurrentPassword} />
+      <PasswordField
+        label="סיסמה חדשה"
+        name="new-password"
+        autoComplete="new-password"
+        value={newPassword}
+        onChange={setNewPassword}
+        hint="לפחות 8 תווים. אחרי השינוי, מכשירים אחרים שמחוברים יתנתקו."
+      />
+      <PasswordField
+        label="שוב, לאימות"
+        name="confirm-new-password"
+        autoComplete="new-password"
+        value={confirmPassword}
+        onChange={setConfirmPassword}
+        error={mismatch ? "הסיסמאות עדיין לא תואמות." : ""}
+      />
+      {error && (
+        <p className="notice-error" role="alert">
+          {error}
         </p>
       )}
-
-      {open && (
-        <form onSubmit={onSubmit} className="space-y-4 border border-white/[0.08] rounded-xl p-4 md:p-5" noValidate>
-          <PasswordField
-            label="סיסמה נוכחית"
-            name="current-password"
-            autoComplete="current-password"
-            value={currentPassword}
-            onChange={setCurrentPassword}
-          />
-          <PasswordField
-            label="סיסמה חדשה"
-            name="new-password"
-            autoComplete="new-password"
-            value={newPassword}
-            onChange={setNewPassword}
-          />
-          <PasswordField
-            label="אימות סיסמה חדשה"
-            name="confirm-new-password"
-            autoComplete="new-password"
-            value={confirmPassword}
-            onChange={setConfirmPassword}
-          />
-          <p className="text-xs text-white/40 text-right">לפחות 8 תווים. אחרי השינוי, שאר המכשירים המחוברים יתנתקו.</p>
-          {error && (
-            <p className="text-sm text-red-300 text-center" role="alert" aria-live="assertive">
-              {error}
-            </p>
-          )}
-          <div className="flex flex-wrap gap-3 justify-center sm:justify-start">
-            <button type="submit" className="btn-violet" disabled={submitting}>
-              {submitting ? "מעדכנת…" : "עדכון סיסמה"}
-            </button>
-            <button
-              type="button"
-              className="btn-ghost"
-              disabled={submitting}
-              onClick={() => {
-                reset();
-                setOpen(false);
-              }}
-            >
-              ביטול
-            </button>
-          </div>
-        </form>
-      )}
-    </div>
+      <div className="grid grid-cols-2 gap-3 pt-1">
+        <button type="button" className="btn-ghost" disabled={submitting} onClick={onCancel}>
+          ביטול
+        </button>
+        <button type="submit" className="btn-violet" disabled={submitting}>
+          {submitting ? "מעדכנת…" : "עדכון"}
+        </button>
+      </div>
+    </form>
   );
 }

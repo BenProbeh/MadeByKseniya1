@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+import { ChevronDown, Inbox, Phone } from "lucide-react";
+import PageHeader from "../components/ui/PageHeader.jsx";
+import EmptyState from "../components/ui/EmptyState.jsx";
+import { telHref } from "../lib/phone.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
-import DialButton from "../components/admin/DialButton.jsx";
 import AppointmentStatusBadge from "../components/AppointmentStatusBadge.jsx";
 import { fetchAdminAppointments, resendAppointmentEmail, setAppointmentStatus } from "../lib/authApi.js";
 import { getApiErrorMessage } from "../lib/authErrors.js";
@@ -70,9 +73,9 @@ const EMAIL_STATUS_TEXT = {
 
 function Field({ label, children }) {
   return (
-    <div className="min-w-0">
-      <dt className="text-[11px] text-white/35">{label}</dt>
-      <dd className="text-sm text-white/80 break-words">{children}</dd>
+    <div className="flex items-baseline justify-between gap-4 py-2">
+      <dt className="t-foot shrink-0">{label}</dt>
+      <dd className="text-sub text-white/85 text-end min-w-0 break-words">{children}</dd>
     </div>
   );
 }
@@ -88,90 +91,46 @@ function AppointmentCard({ appointment: a, busy, onAction, onResendEmail }) {
   const emailKind = EMAIL_KIND[a.status];
   const emailState = emailKind ? a.emailStatus?.[emailKind] : null;
   const canResend = Boolean(a.email && emailKind && emailState === "failed");
+  const tel = telHref(a.phoneE164);
 
   return (
-    <li
-      className={`rounded-xl border p-4 sm:p-5 space-y-4 transition-colors ${
-        isPending ? "border-violet-400/40 bg-violet-400/[0.04]" : "border-white/[0.08]"
-      }`}
-    >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1 min-w-0">
-          <p className="font-serif text-lg text-white">{name}</p>
-          <p className="text-sm text-violet-200">
-            {formatCalendarDay(a.date)} · {a.time}
-            {a.durationMin ? (
-              <>
-                {" "}
-                <span className="whitespace-nowrap text-white/45">({a.durationMin} דק')</span>
-              </>
-            ) : null}
-          </p>
+    <li className={`card p-4 space-y-3 ${isPending ? "border-violet-400/40" : ""}`}>
+      <div className="flex items-start gap-3">
+        <div className="text-center shrink-0 w-14 rounded-control bg-white/[0.05] py-1.5">
+          <p className="font-display text-headline tnum leading-tight">{a.time}</p>
+          <p className="text-cap text-white/50 tnum">{a.date.slice(8, 10)}.{a.date.slice(5, 7)}</p>
         </div>
-        <AppointmentStatusBadge status={a.status} staff />
+        <div className="flex-1 min-w-0">
+          <p className="t-headline truncate">{name}</p>
+          <p className="t-foot truncate">
+            {formatCalendarDay(a.date)} · {a.serviceLabel || "—"}
+            {a.priceIls != null && (
+              <>
+                {" · "}
+                <span className="tnum">{a.priceIls}</span> ₪
+              </>
+            )}
+          </p>
+          <div className="mt-1.5">
+            <AppointmentStatusBadge status={a.status} staff />
+          </div>
+        </div>
+        {tel && (
+          <a href={tel} className="icon-btn text-violet-200 bg-white/[0.05]" aria-label={`חיוג אל ${name}`}>
+            <Phone size={19} aria-hidden="true" />
+          </a>
+        )}
       </div>
 
-      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Field label="טלפון">
-          {a.phoneE164 ? (
-            <DialButton phoneE164={a.phoneE164} phoneDisplay={a.phone} name={name} />
-          ) : (
-            <span dir="ltr">{a.phone || "—"}</span>
-          )}
-        </Field>
-        <Field label="אימייל">
-          {a.email ? (
-            <bdi dir="ltr" className="break-all">
-              {a.email}
-            </bdi>
-          ) : (
-            "—"
-          )}
-        </Field>
-        <Field label="שירות / חבילה">{a.serviceLabel || "—"}</Field>
-        <Field label="מחיר">{a.priceIls != null ? `${a.priceIls} ₪` : "—"}</Field>
-        <Field label="נשלחה ב־">{formatDateTime(a.createdAt)}</Field>
-        <Field label="הערות">{a.notes || "—"}</Field>
-        {a.username && (
-          <Field label="חשבון">
-            {a.userId ? (
-              <Link to={`/admin/customers/${a.userId}`} className="text-violet-300">
-                <span dir="ltr">@{a.username}</span>
-              </Link>
-            ) : (
-              <span dir="ltr">@{a.username}</span>
-            )}
-          </Field>
-        )}
-        {a.approvedAt && (
-          <Field label="אושר על ידי">
-            {formatDateTime(a.approvedAt)}
-            {a.approvedBy?.name ? ` · ${a.approvedBy.name}` : ""}
-          </Field>
-        )}
-        {a.customerConfirmedAt && <Field label="הלקוחה אישרה">{formatDateTime(a.customerConfirmedAt)}</Field>}
-        {a.statusChangedAt && a.status !== "pending" && (
-          <Field label="עודכן">
-            {formatDateTime(a.statusChangedAt)}
-            {a.statusChangedBy?.name ? ` · ${a.statusChangedBy.name}` : ""}
-          </Field>
-        )}
-        {emailKind && a.email && (
-          <Field label="מייל ללקוחה">
-            <span className={emailState === "failed" ? "text-amber-200" : ""}>
-              {EMAIL_STATUS_TEXT[emailState] || "עדיין לא נשלח"}
-            </span>
-          </Field>
-        )}
-      </dl>
+      {a.notes && <p className="t-sub rounded-control bg-white/[0.04] px-3 py-2">״{a.notes}״</p>}
 
       {(offered.length > 0 || canResend) && (
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-2">
           {offered.map((status) => (
             <button
               key={status}
               type="button"
-              className={ACTIONS[status].className}
+              className={`${status === "manager_approved" ? "btn-violet" : "btn-ghost text-red-300"} btn-sm flex-1`}
               disabled={busy}
               onClick={() => onAction(a, status)}
             >
@@ -179,19 +138,64 @@ function AppointmentCard({ appointment: a, busy, onAction, onResendEmail }) {
             </button>
           ))}
           {canResend && (
-            <button type="button" className="btn-ghost px-5 py-2.5 text-sm" disabled={busy} onClick={() => onResendEmail(a)}>
+            <button type="button" className="btn-ghost btn-sm flex-1" disabled={busy} onClick={() => onResendEmail(a)}>
               שליחת המייל שוב
             </button>
           )}
         </div>
       )}
+
+      <details className="group">
+        <summary className="flex items-center gap-1 min-h-[2.25rem] t-foot cursor-pointer list-none select-none">
+          <ChevronDown size={16} className="transition-transform group-open:rotate-180" aria-hidden="true" />
+          פרטים נוספים
+        </summary>
+        <dl className="divide-y divide-white/[0.06]">
+          <Field label="טלפון">{a.phone ? <span dir="ltr">{a.phone}</span> : "—"}</Field>
+          <Field label="אימייל">{a.email ? <bdi dir="ltr" className="break-all">{a.email}</bdi> : "—"}</Field>
+          <Field label="נשלחה">{formatDateTime(a.createdAt)}</Field>
+          {a.username && (
+            <Field label="חשבון">
+              {a.userId ? (
+                <Link to={`/admin/customers/${a.userId}`} className="text-violet-300">
+                  <span dir="ltr">@{a.username}</span>
+                </Link>
+              ) : (
+                <span dir="ltr">@{a.username}</span>
+              )}
+            </Field>
+          )}
+          {a.approvedAt && (
+            <Field label="אושר">
+              {formatDateTime(a.approvedAt)}
+              {a.approvedBy?.name ? ` · ${a.approvedBy.name}` : ""}
+            </Field>
+          )}
+          {a.customerConfirmedAt && <Field label="הלקוחה אישרה">{formatDateTime(a.customerConfirmedAt)}</Field>}
+          {a.statusChangedAt && a.status !== "pending" && (
+            <Field label="עודכן">
+              {formatDateTime(a.statusChangedAt)}
+              {a.statusChangedBy?.name ? ` · ${a.statusChangedBy.name}` : ""}
+            </Field>
+          )}
+          {emailKind && a.email && (
+            <Field label="מייל ללקוחה">
+              <span className={emailState === "failed" ? "text-amber-200" : ""}>{EMAIL_STATUS_TEXT[emailState] || "עדיין לא נשלח"}</span>
+            </Field>
+          )}
+        </dl>
+      </details>
     </li>
   );
 }
 
 export default function AdminAppointments() {
   const { refreshUser } = useAuth();
-  const [status, setStatus] = useState("pending");
+  const [searchParams] = useSearchParams();
+  const [status, setStatus] = useState(() => {
+    const wanted = searchParams.get("status");
+    return STATUS_FILTERS.some((f) => f.value === wanted) ? wanted : "pending";
+  });
   const [scope, setScope] = useState("upcoming");
   const [items, setItems] = useState(null);
   const [counts, setCounts] = useState({ pending: 0, approved: 0, confirmed: 0 });
@@ -315,103 +319,83 @@ export default function AdminAppointments() {
   const action = pendingAction ? ACTIONS[pendingAction.next] : null;
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-16 space-y-8">
-      <div className="text-center space-y-3">
-        <span className="section-eyebrow justify-center">Admin</span>
-        <h1 className="font-serif font-medium text-3xl md:text-5xl text-white">
-          ניהול <span className="violet-text">תורים</span>
-        </h1>
-        <p className="font-serif text-white/60 text-sm md:text-base" aria-live="polite">
-          {counts.pending > 0 ? `${counts.pending} בקשות ממתינות לאישור` : "אין בקשות שממתינות לאישור"}
-          {counts.approved > 0 ? ` · ${counts.approved} ממתינות לאישור הלקוחה` : ""}
-          {` · ${counts.confirmed} תורים מאושרים סופית מהיום והלאה`}
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
-          <Link to="/admin/customers" className="btn-text text-sm">
-            <span aria-hidden="true">→</span>
-            חזרה לניהול לקוחות
-          </Link>
-          <Link to="/admin/notifications" className="btn-ghost px-5 py-2.5 text-sm">
-            התראות
-          </Link>
+    <div className="max-w-2xl mx-auto space-y-5 pt-2">
+      <PageHeader
+        title="תורים"
+        subtitle={counts.pending > 0 ? `${counts.pending} בקשות מחכות להחלטה` : "אין בקשות שממתינות לאישור"}
+      />
+
+      <div className="space-y-2">
+        <div className="chip-scroller" role="group" aria-label="סינון לפי סטטוס">
+          {STATUS_FILTERS.map((f) => (
+            <button key={f.value || "all"} type="button" aria-pressed={status === f.value} className="chip" onClick={() => changeFilter(setStatus, f.value)}>
+              {f.label}
+              {f.countKey && counts[f.countKey] > 0 ? <span className="tnum text-white/50">{counts[f.countKey]}</span> : null}
+            </button>
+          ))}
+        </div>
+        <div className="segmented" role="group" aria-label="טווח תאריכים">
+          {SCOPES.map((s) => (
+            <button key={s.value} type="button" aria-pressed={scope === s.value} onClick={() => changeFilter(setScope, s.value)}>
+              {s.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      <section className="glass-panel p-6 md:p-8 space-y-6" aria-label="רשימת תורים">
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-2" role="group" aria-label="סינון לפי סטטוס">
-            {STATUS_FILTERS.map((f) => (
-              <button
-                key={f.value || "all"}
-                type="button"
-                aria-pressed={status === f.value}
-                className={`pill-option py-2 min-h-[40px] ${status === f.value ? "pill-option-active" : ""}`}
-                onClick={() => changeFilter(setStatus, f.value)}
-              >
-                {f.label}
-                {f.countKey && counts[f.countKey] > 0 ? ` (${counts[f.countKey]})` : ""}
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-2" role="group" aria-label="סינון לפי תאריך">
-            {SCOPES.map((s) => (
-              <button
-                key={s.value}
-                type="button"
-                aria-pressed={scope === s.value}
-                className={`pill-option py-1.5 min-h-[36px] text-xs ${scope === s.value ? "pill-option-active" : ""}`}
-                onClick={() => changeFilter(setScope, s.value)}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
+      {message && (
+        <p className="notice-success" role="status">
+          {message}
+        </p>
+      )}
+
+      {error && (
+        <div className="notice-warning justify-between items-center" role="alert">
+          <span>{error}</span>
+          <button type="button" className="btn-text p-0" onClick={() => void load()}>
+            לנסות שוב
+          </button>
         </div>
+      )}
 
-        {message && (
-          <p className="text-sm text-violet-200 text-center" role="status">
-            {message}
-          </p>
-        )}
+      {!items && !error && (
+        <div className="space-y-3" aria-hidden="true">
+          {[0, 1].map((i) => (
+            <div key={i} className="skeleton h-36 rounded-card" />
+          ))}
+        </div>
+      )}
 
-        {error && (
-          <div className="text-center space-y-3">
-            <p className="text-sm text-amber-200" role="alert">
-              {error}
-            </p>
-            <button type="button" className="btn-text text-sm" onClick={() => void load()}>
-              לנסות שוב
-            </button>
-          </div>
-        )}
+      {items && items.length === 0 && !error && (
+        <div className="card">
+          <EmptyState
+            icon={Inbox}
+            title={status === "pending" ? "אין בקשות שממתינות" : "אין תורים להצגה"}
+            text={status === "pending" ? "כל הבקשות טופלו. בקשה חדשה תופיע כאן ובאייקון הלשונית." : "אפשר לשנות את הסינון למעלה."}
+            compact
+          />
+        </div>
+      )}
 
-        {!items && !error && <p className="text-sm text-white/45 text-center">התורים נטענים…</p>}
-
-        {items && items.length === 0 && !error && (
-          <p className="font-serif text-sm text-white/55 text-center py-4">
-            {status === "pending" ? "אין בקשות שממתינות לאישור." : "אין תורים להצגה."}
-          </p>
-        )}
-
-        {items && items.length > 0 && (
-          <ul className="space-y-4">
-            {items.map((a) => (
-              <AppointmentCard
-                key={a.id}
-                appointment={a}
-                busy={(actionBusy && pendingAction?.appointment.id === a.id) || resendingId === a.id}
-                onAction={openAction}
-                onResendEmail={resendEmail}
-              />
-            ))}
-          </ul>
-        )}
-      </section>
+      {items && items.length > 0 && (
+        <ul className="space-y-3">
+          {items.map((a) => (
+            <AppointmentCard
+              key={a.id}
+              appointment={a}
+              busy={(actionBusy && pendingAction?.appointment.id === a.id) || resendingId === a.id}
+              onAction={openAction}
+              onResendEmail={resendEmail}
+            />
+          ))}
+        </ul>
+      )}
 
       <ConfirmDialog
         open={Boolean(pendingAction)}
         title={action?.title || ""}
         confirmLabel={action?.confirmLabel}
+        tone={pendingAction?.next === "manager_approved" ? "default" : "danger"}
         cancelLabel="חזרה"
         busy={actionBusy}
         error={actionError}

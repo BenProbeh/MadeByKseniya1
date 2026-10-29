@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
-import CodeStep, { AUTH_INPUT_CLASS, Feedback } from "../components/auth/CodeStep.jsx";
+import CodeStep, { Feedback } from "../components/auth/CodeStep.jsx";
+import AuthLayout from "../components/auth/AuthLayout.jsx";
+import TextField from "../components/ui/TextField.jsx";
 import { resendVerificationRequest } from "../lib/authApi.js";
 import { getApiErrorMessage } from "../lib/authErrors.js";
 import { normalizeEmail } from "../lib/email.js";
@@ -9,7 +11,7 @@ import { safeInternalPath } from "../lib/authPaths.js";
 
 /** Completes sign-up: the 6-digit code from the email activates the account and signs her in. */
 export default function VerifyEmail() {
-  const { verifyEmail, authenticated, loading: authLoading } = useAuth();
+  const { verifyEmail, authenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const state = location.state || {};
@@ -26,13 +28,6 @@ export default function VerifyEmail() {
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
 
-  if (authLoading) {
-    return (
-      <div className="min-h-[50vh] flex items-center justify-center">
-        <p className="font-serif text-white/60 text-sm">רגע אחד…</p>
-      </div>
-    );
-  }
   if (authenticated && !done) return <Navigate to={from} replace />;
 
   async function requestCode(e) {
@@ -78,21 +73,20 @@ export default function VerifyEmail() {
   }
 
   return (
-    <div className="max-w-md mx-auto px-6 py-12 md:py-16 space-y-6">
-      <div className="flex flex-col items-center text-center overflow-visible">
-        <img
-          src="/logo.png"
-          alt="MadeByKseniya"
-          className="w-44 md:w-52 h-auto object-contain drop-shadow-[0_0_10px_rgba(176,38,255,0.65)]"
-        />
-        <h1 className="font-serif text-2xl text-white mt-4">אימות כתובת האימייל</h1>
-        <p className="font-serif text-sm text-white/60 mt-2">
-          {pending
-            ? "הקלידי את הקוד בן 6 הספרות ששלחתי לך, והחשבון יופעל מיד."
-            : "הזיני את כתובת האימייל שאיתה נרשמת, ואשלח קוד אימות חדש."}
-        </p>
-      </div>
-
+    <AuthLayout
+      compactLogo
+      back="/login"
+      title="אימות האימייל"
+      subtitle={pending ? "הקלידי את הקוד ששלחתי, והחשבון יופעל מיד." : "הקלידי את האימייל שאיתו נרשמת, ואשלח קוד חדש."}
+      footer={
+        <>
+          כבר אימתת?{" "}
+          <Link to="/login" className="text-violet-300 font-medium inline-flex min-h-[2.75rem] items-center">
+            להתחברות
+          </Link>
+        </>
+      }
+    >
       {pending ? (
         <CodeStep
           key={pending.email}
@@ -110,42 +104,30 @@ export default function VerifyEmail() {
           changeEmailLabel="כתובת אחרת"
         />
       ) : (
-        <form onSubmit={requestCode} className="glass-panel p-6 md:p-8 space-y-5" noValidate>
-          <label className="block space-y-2 text-sm text-white/70" htmlFor="verify-email-address">
-            <span>אימייל</span>
-            <input
-              id="verify-email-address"
-              type="email"
-              inputMode="email"
-              autoComplete="email"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              dir="ltr"
-              placeholder="name@example.com"
-              value={emailInput}
-              onChange={(e) => {
-                setEmailInput(e.target.value);
-                if (error) setError("");
-              }}
-              className={`${AUTH_INPUT_CLASS} text-right`}
-              maxLength={254}
-              required
-            />
-          </label>
+        <form onSubmit={requestCode} className="space-y-4" noValidate>
+          <TextField
+            label="אימייל"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            ltr
+            placeholder="name@example.com"
+            value={emailInput}
+            onChange={(e) => {
+              setEmailInput(e.target.value);
+              if (error) setError("");
+            }}
+            maxLength={254}
+          />
           <Feedback error={error} />
-          <button type="submit" className="btn-violet w-full" disabled={busy}>
+          <button type="submit" className="btn-violet btn-block" disabled={busy}>
             {busy ? "שולחת…" : "שליחת קוד אימות"}
           </button>
         </form>
       )}
-
-      <p className="text-center text-sm text-white/55">
-        כבר אימתת?{" "}
-        <Link to="/login" className="text-violet-200 hover:text-violet-100">
-          להתחברות
-        </Link>
-      </p>
-    </div>
+    </AuthLayout>
   );
 }

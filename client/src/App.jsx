@@ -1,197 +1,103 @@
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import Navbar from "./components/Navbar.jsx";
-import Footer from "./components/Footer.jsx";
-import ChatWidget from "./components/ChatWidget.jsx";
+import { Suspense, lazy } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
+import AppShell from "./components/shell/AppShell.jsx";
 import ScrollToTop from "./components/ScrollToTop.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
-import Services from "./pages/Services.jsx";
-import PackageDetail from "./pages/PackageDetail.jsx";
-import Gallery from "./pages/Gallery.jsx";
-import Booking from "./pages/Booking.jsx";
-import Configurator from "./pages/Configurator.jsx";
-import NailSizing from "./pages/NailSizing.jsx";
-import Login from "./pages/Login.jsx";
-import Register from "./pages/Register.jsx";
-import ForgotPassword from "./pages/ForgotPassword.jsx";
-import VerifyEmail from "./pages/VerifyEmail.jsx";
-import EmailSetup from "./pages/EmailSetup.jsx";
-import AppointmentConfirm from "./pages/AppointmentConfirm.jsx";
-import Profile from "./pages/Profile.jsx";
-import AdminCustomers from "./pages/AdminCustomers.jsx";
-import AdminCustomerProfile from "./pages/AdminCustomerProfile.jsx";
-import AdminNotifications from "./pages/AdminNotifications.jsx";
-import AdminAppointments from "./pages/AdminAppointments.jsx";
-import AdminContent from "./pages/AdminContent.jsx";
-import AdminContentEditor from "./pages/AdminContentEditor.jsx";
-import ContentPage from "./pages/ContentPage.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
-import { AUTH_PAGES } from "./lib/authPaths.js";
 
-function AuthBoot({ children }) {
-  const { loading } = useAuth();
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-6 bg-oled-950">
-        <div className="glass-panel px-8 py-6 text-center space-y-3">
-          <img
-            src="/logo.png"
-            alt="MadeByKseniya"
-            className="h-20 w-auto mx-auto object-contain drop-shadow-[0_0_12px_rgba(176,38,255,0.55)]"
-          />
-          <p className="font-serif text-white/70 text-sm">רגע אחד, אני בודקת את החיבור…</p>
-        </div>
-      </div>
-    );
-  }
-  return children;
+// Screens load on demand so the first paint ships only the shell (the camera flow and admin stay out of it).
+const Home = lazy(() => import("./pages/Home.jsx"));
+const Services = lazy(() => import("./pages/Services.jsx"));
+const PackageDetail = lazy(() => import("./pages/PackageDetail.jsx"));
+const Gallery = lazy(() => import("./pages/Gallery.jsx"));
+const Booking = lazy(() => import("./pages/Booking.jsx"));
+const Appointments = lazy(() => import("./pages/Appointments.jsx"));
+const Configurator = lazy(() => import("./pages/Configurator.jsx"));
+const NailSizing = lazy(() => import("./pages/NailSizing.jsx"));
+const Login = lazy(() => import("./pages/Login.jsx"));
+const Register = lazy(() => import("./pages/Register.jsx"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword.jsx"));
+const VerifyEmail = lazy(() => import("./pages/VerifyEmail.jsx"));
+const EmailSetup = lazy(() => import("./pages/EmailSetup.jsx"));
+const AppointmentConfirm = lazy(() => import("./pages/AppointmentConfirm.jsx"));
+const Profile = lazy(() => import("./pages/Profile.jsx"));
+const ContentPage = lazy(() => import("./pages/ContentPage.jsx"));
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard.jsx"));
+const AdminMore = lazy(() => import("./pages/AdminMore.jsx"));
+const AdminCustomers = lazy(() => import("./pages/AdminCustomers.jsx"));
+const AdminCustomerProfile = lazy(() => import("./pages/AdminCustomerProfile.jsx"));
+const AdminNotifications = lazy(() => import("./pages/AdminNotifications.jsx"));
+const AdminAppointments = lazy(() => import("./pages/AdminAppointments.jsx"));
+const AdminContent = lazy(() => import("./pages/AdminContent.jsx"));
+const AdminContentEditor = lazy(() => import("./pages/AdminContentEditor.jsx"));
+
+function BootScreen() {
+  return (
+    <div className="min-h-[100dvh] flex flex-col items-center justify-center gap-6 px-6" role="status" aria-live="polite">
+      <img src="/logo.png" alt="MadeByKseniya" className="h-24 w-auto object-contain" />
+      <span className="spinner text-violet-300" aria-hidden="true" />
+      <span className="sr-only">טוענת…</span>
+    </div>
+  );
 }
 
+/** Placeholder while a screen's code arrives: the title and two blocks, so nothing jumps. */
+function ScreenSkeleton() {
+  return (
+    <div className="space-y-5 pt-2" aria-hidden="true">
+      <div className="skeleton h-8 w-44" />
+      <div className="skeleton h-4 w-64" />
+      <div className="skeleton h-40 w-full rounded-card" />
+      <div className="skeleton h-24 w-full rounded-card" />
+    </div>
+  );
+}
+
+const customer = (el) => <ProtectedRoute>{el}</ProtectedRoute>;
+const staff = (el) => <AdminRoute>{el}</AdminRoute>;
+
 export default function App() {
-  const { pathname } = useLocation();
-  const isAuthPage = AUTH_PAGES.includes(pathname) || pathname === "/appointments/confirm";
+  const { loading } = useAuth();
+  if (loading) return <BootScreen />;
 
   return (
-    <AuthBoot>
-      <div className="min-h-screen flex flex-col">
-        <ScrollToTop />
-        {!isAuthPage && <Navbar />}
-        <main className={`flex-1 ${isAuthPage ? "pt-8" : "pt-24"}`}>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/verify-email" element={<VerifyEmail />} />
-            <Route path="/account/email" element={<EmailSetup />} />
-            <Route path="/appointments/confirm" element={<AppointmentConfirm />} />
-            <Route path="/" element={<Navigate to="/services" replace />} />
-            <Route path="/about" element={<Navigate to="/services" replace />} />
-            <Route
-              path="/services"
-              element={
-                <ProtectedRoute>
-                  <Services />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/services/:slug"
-              element={
-                <ProtectedRoute>
-                  <PackageDetail />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/gallery"
-              element={
-                <ProtectedRoute>
-                  <Gallery />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/build-a-set"
-              element={
-                <ProtectedRoute>
-                  <Configurator />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/nail-sizing"
-              element={
-                <ProtectedRoute>
-                  <NailSizing />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/booking"
-              element={
-                <ProtectedRoute>
-                  <Booking />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/profile"
-              element={
-                <ProtectedRoute>
-                  <Profile />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/customers"
-              element={
-                <AdminRoute>
-                  <AdminCustomers />
-                </AdminRoute>
-              }
-            />
-            <Route
-              path="/admin/customers/:id"
-              element={
-                <AdminRoute>
-                  <AdminCustomerProfile />
-                </AdminRoute>
-              }
-            />
-            <Route
-              path="/admin/appointments"
-              element={
-                <AdminRoute>
-                  <AdminAppointments />
-                </AdminRoute>
-              }
-            />
-            <Route
-              path="/admin/notifications"
-              element={
-                <AdminRoute>
-                  <AdminNotifications />
-                </AdminRoute>
-              }
-            />
-            <Route
-              path="/admin/content"
-              element={
-                <AdminRoute>
-                  <AdminContent />
-                </AdminRoute>
-              }
-            />
-            <Route
-              path="/admin/content/new"
-              element={
-                <AdminRoute>
-                  <AdminContentEditor />
-                </AdminRoute>
-              }
-            />
-            <Route
-              path="/admin/content/:id"
-              element={
-                <AdminRoute>
-                  <AdminContentEditor />
-                </AdminRoute>
-              }
-            />
-            <Route
-              path="/:slug"
-              element={
-                <ProtectedRoute>
-                  <ContentPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route path="*" element={<Navigate to="/services" replace />} />
-          </Routes>
-        </main>
-        {!isAuthPage && <Footer />}
-        {!isAuthPage && <ChatWidget />}
-      </div>
-    </AuthBoot>
+    <AppShell>
+      <ScrollToTop />
+      <Suspense fallback={<ScreenSkeleton />}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/account/email" element={<EmailSetup />} />
+          <Route path="/appointments/confirm" element={<AppointmentConfirm />} />
+
+          <Route path="/" element={customer(<Home />)} />
+          <Route path="/about" element={<Navigate to="/" replace />} />
+          <Route path="/services" element={customer(<Services />)} />
+          <Route path="/services/:slug" element={customer(<PackageDetail />)} />
+          <Route path="/gallery" element={customer(<Gallery />)} />
+          <Route path="/build-a-set" element={customer(<Configurator />)} />
+          <Route path="/nail-sizing" element={customer(<NailSizing />)} />
+          <Route path="/appointments" element={customer(<Appointments />)} />
+          <Route path="/booking" element={customer(<Booking />)} />
+          <Route path="/profile" element={customer(<Profile />)} />
+
+          <Route path="/admin" element={staff(<AdminDashboard />)} />
+          <Route path="/admin/more" element={staff(<AdminMore />)} />
+          <Route path="/admin/customers" element={staff(<AdminCustomers />)} />
+          <Route path="/admin/customers/:id" element={staff(<AdminCustomerProfile />)} />
+          <Route path="/admin/appointments" element={staff(<AdminAppointments />)} />
+          <Route path="/admin/notifications" element={staff(<AdminNotifications />)} />
+          <Route path="/admin/content" element={staff(<AdminContent />)} />
+          <Route path="/admin/content/new" element={staff(<AdminContentEditor />)} />
+          <Route path="/admin/content/:id" element={staff(<AdminContentEditor />)} />
+
+          <Route path="/:slug" element={customer(<ContentPage />)} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </AppShell>
   );
 }

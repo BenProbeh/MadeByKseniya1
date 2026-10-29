@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { ArrowUp, MessageCircle } from "lucide-react";
+import Sheet from "./ui/Sheet.jsx";
 import { sendChatMessage } from "../lib/api.js";
 import { getApiErrorMessage } from "../lib/authErrors.js";
 
 const WELCOME = {
   role: "assistant",
-  content:
-    "היי! אני הקונסיירז' הדיגיטלי של MadeByKseniya 💅 אפשר לשאול אותי מה הכי מתאים לך, לבדוק זמינות או להזיז תור קיים.",
+  content: "היי! אני הקונסיירז' של MadeByKseniya. אפשר לשאול אותי איזה מסלול מתאים לך, לבדוק שעות פנויות או לשאול כל דבר על הטיפול.",
 };
 
+/** Concierge chat in a sheet. Opened from the app bar (phones) or the round button (desktop). */
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([WELCOME]);
@@ -16,10 +17,17 @@ export default function ChatWidget() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const scrollRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, loading]);
+    const open = () => setIsOpen(true);
+    window.addEventListener("mbk:open-chat", open);
+    return () => window.removeEventListener("mbk:open-chat", open);
+  }, []);
+
+  useEffect(() => {
+    scrollRef.current?.scrollIntoView({ block: "end" });
+  }, [messages, loading, isOpen]);
 
   async function handleSend(e) {
     e.preventDefault();
@@ -34,12 +42,12 @@ export default function ChatWidget() {
 
     try {
       const apiMessages = nextMessages
-        .filter((m) => m.role === "user" || m.role === "assistant")
+        .filter((m) => m !== WELCOME && (m.role === "user" || m.role === "assistant"))
         .map(({ role, content }) => ({ role, content }));
       const { reply } = await sendChatMessage(apiMessages);
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch (err) {
-      setError(getApiErrorMessage(err, "משהו השתבש, נסי שוב בעוד רגע."));
+      setError(getApiErrorMessage(err, "משהו השתבש, אפשר לנסות שוב בעוד רגע."));
     } finally {
       setLoading(false);
     }
@@ -47,78 +55,68 @@ export default function ChatWidget() {
 
   return (
     <>
-      <motion.button
-        onClick={() => setIsOpen((v) => !v)}
-        className="mbk-chat-fab fixed z-50 w-14 h-14 rounded-full bg-violet-gradient shadow-glow flex items-center justify-center text-oled-950 text-2xl"
-        style={{
-          bottom: "calc(env(safe-area-inset-bottom) + 1.5rem)",
-          left: "calc(env(safe-area-inset-left) + 1.5rem)",
-        }}
-        whileHover={{ scale: 1.08 }}
-        whileTap={{ scale: 0.95 }}
-        aria-label="פתיחת צ'אט"
+      <button
+        type="button"
+        onClick={() => setIsOpen(true)}
+        className="hidden md:flex fixed z-30 bottom-6 left-6 w-14 h-14 rounded-full btn-violet p-0"
+        aria-label="שאלה לקונסיירז'"
       >
-        {isOpen ? "✕" : "💬"}
-      </motion.button>
+        <MessageCircle size={24} strokeWidth={1.9} aria-hidden="true" />
+      </button>
 
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className="mbk-chat-panel fixed z-50 w-[92vw] max-w-sm h-[min(32rem,75vh)] glass-panel flex flex-col overflow-hidden shadow-glow-lg"
-            style={{
-              bottom: "calc(env(safe-area-inset-bottom) + 6rem)",
-              left: "calc(env(safe-area-inset-left) + 1.5rem)",
-            }}
-          >
-            <div className="px-4 py-3 border-b border-white/10 bg-white/5">
-              <p className="font-bold text-sm">
-                MadeBy<span className="violet-text">Kseniya</span> · קונסיירז' AI
-              </p>
-            </div>
-
-            <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-              {messages.map((m, i) => (
-                <div
-                  key={i}
-                  className={`max-w-[85%] px-3 py-2 rounded-2xl text-sm leading-relaxed ${
-                    m.role === "user"
-                      ? "bg-violet-gradient text-oled-950 mr-auto rounded-bl-sm"
-                      : "bg-white/10 text-white/90 ml-auto rounded-br-sm"
-                  }`}
-                >
-                  {m.content}
-                </div>
-              ))}
-              {loading && (
-                <div className="ml-auto max-w-[70%] px-3 py-2 rounded-2xl text-sm bg-white/10 text-white/60">
-                  כותבת תשובה...
-                </div>
-              )}
-              {error && <p className="text-xs text-red-300 text-center">{error}</p>}
-            </div>
-
-            <form onSubmit={handleSend} className="p-3 border-t border-white/10 flex gap-2">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="כתבי הודעה..."
-                className="flex-1 min-w-0 min-h-[44px] bg-white/5 border border-white/10 rounded-full px-4 text-base outline-none focus:border-violet-400/60"
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn-violet px-5 min-h-[44px] text-sm disabled:opacity-50 shrink-0"
-              >
-                שלח
-              </button>
-            </form>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Sheet
+        open={isOpen}
+        onClose={() => setIsOpen(false)}
+        title="קונסיירז'"
+        description="תשובות על מסלולים, שעות וטיפול."
+        initialFocusRef={inputRef}
+        size="lg"
+        footer={
+          <form onSubmit={handleSend} className="flex gap-2 w-full">
+            <label htmlFor="chat-input" className="sr-only">
+              הודעה
+            </label>
+            <input
+              id="chat-input"
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="כתבי הודעה…"
+              maxLength={1000}
+              enterKeyHint="send"
+              className="input flex-1 min-w-0 rounded-full"
+            />
+            <button
+              type="submit"
+              disabled={loading || !input.trim()}
+              className="btn-violet w-[3.25rem] px-0 shrink-0"
+              aria-label="שליחה"
+            >
+              <ArrowUp size={22} strokeWidth={2.2} aria-hidden="true" />
+            </button>
+          </form>
+        }
+      >
+        <div className="space-y-3 min-h-[40dvh]" aria-live="polite">
+          {messages.map((m, i) => (
+            <p
+              key={i}
+              className={`w-fit max-w-[85%] px-4 py-2.5 rounded-[1.25rem] text-sub leading-relaxed whitespace-pre-wrap ${
+                m.role === "user"
+                  ? "ms-auto bg-violet-400/25 text-white rounded-ee-md"
+                  : "bg-white/[0.07] text-white/90 rounded-es-md"
+              }`}
+            >
+              {m.content}
+            </p>
+          ))}
+          {loading && (
+            <p className="w-fit px-4 py-2.5 rounded-[1.25rem] bg-white/[0.07] text-white/55 text-sub">כותבת תשובה…</p>
+          )}
+          {error && <p className="notice-error">{error}</p>}
+          <div ref={scrollRef} />
+        </div>
+      </Sheet>
     </>
   );
 }

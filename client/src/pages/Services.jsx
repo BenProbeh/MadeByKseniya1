@@ -1,48 +1,34 @@
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
-
-const TRACKS = [
-  { title: "Basic Bitch", detailSlug: "basic-bitch" },
-  { title: "Bad Bitch", featured: true, detailSlug: "bad-bitch" },
-  { title: "Stay High", detailSlug: "stay-high" },
-];
+import { ChevronLeft, Sparkles } from "lucide-react";
+import PageHeader from "../components/ui/PageHeader.jsx";
+import { PACKAGES } from "../lib/packages.js";
 
 export default function Services() {
   return (
-    <div className="max-w-6xl mx-auto px-6 py-16">
-      <div className="text-center max-w-2xl mx-auto mb-12">
-        <span className="section-eyebrow">Packages</span>
-        <h1 className="font-serif font-medium text-3xl md:text-5xl mt-3 mb-4">
-          בחרי <span className="violet-text">מסלול</span>
-        </h1>
-        <p className="text-white/60">תבחרי את המסלול אני אדאג לשאר 🔥</p>
-      </div>
-
-      <div className="grid sm:grid-cols-3 gap-6">
-        {TRACKS.map((track, i) => (
-          <motion.div
-            key={track.title}
-            initial={{ opacity: 0, y: 24 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-60px" }}
-            transition={{ duration: 0.6, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] }}
-            className={`relative glass-panel p-8 flex flex-col items-center text-center gap-6 transition-colors duration-300 ${
-              track.featured ? "border-violet-400/50 shadow-glow" : "hover:border-white/25"
-            }`}
-          >
-            {track.featured && (
-              <span className="absolute -top-3 text-[11px] tracking-[0.2em] uppercase bg-violet-gradient text-oled-950 font-semibold rounded-full px-4 py-1">
-                הכי פופולרי 🤩
+    <div className="max-w-2xl mx-auto space-y-6 pt-2">
+      <PageHeader title="המסלולים" subtitle="תבחרי את המסלול, אני אדאג לשאר." />
+      <ul className="space-y-3">
+        {PACKAGES.map((p) => (
+          <li key={p.slug}>
+            <Link
+              to={`/services/${p.slug}`}
+              className={`card flex items-center gap-4 p-5 min-h-[6.5rem] active:bg-oled-800 transition-colors ${p.featured ? "border-violet-400/50" : ""}`}
+            >
+              <span className="flex-1 min-w-0 space-y-1.5">
+                <span className="flex items-center gap-2 t-foot">
+                  {p.featured && <Sparkles size={15} className="text-violet-300" aria-hidden="true" />}
+                  {p.tagline}
+                </span>
+                <span className="block font-brand text-[1.0625rem] tracking-wide text-white">{p.title}</span>
+                <span className="block t-sub">
+                  החל מ־<span className="tnum">{p.fromPrice}</span> ₪
+                </span>
               </span>
-            )}
-
-            <Link to={`/services/${track.detailSlug}`} className="contents">
-              <h2 className="font-serif text-3xl md:text-4xl text-white">{track.title}</h2>
-              <span className="btn-violet w-full mt-2">לפרטים ומחירים</span>
+              <ChevronLeft size={22} className="text-white/35 shrink-0" aria-hidden="true" />
             </Link>
-          </motion.div>
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   );
 }

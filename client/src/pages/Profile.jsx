@@ -1,59 +1,45 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { Bell, Camera, ChevronLeft, ImagePlus, KeyRound, LogOut, Mail, Phone, Settings2, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import UserAvatar from "../components/UserAvatar.jsx";
+import Sheet from "../components/ui/Sheet.jsx";
 import ChangePasswordForm from "../components/ChangePasswordForm.jsx";
 import PhoneForm from "../components/PhoneForm.jsx";
-import EmailSection from "../components/profile/EmailSection.jsx";
-import MailConnectionSection from "../components/profile/MailConnectionSection.jsx";
 import SiteColorSection from "../components/theme/SiteColorSection.jsx";
-import {
-  AppointmentsSection,
-  MeasurementsSection,
-  OrdersSection,
-  ShipmentsSection,
-} from "../components/profile/ProfileSections.jsx";
-import { fetchMyAppointments } from "../lib/api.js";
+import { MeasurementsSection, OrdersSection, ShipmentsSection } from "../components/profile/ProfileSections.jsx";
 import {
   deleteAvatar,
   fetchProfileMeasurements,
   fetchProfileOrders,
   fetchProfileShipments,
+  updateBookingEmailsRequest,
   uploadAvatarDataUrl,
   uploadAvatarFile,
 } from "../lib/authApi.js";
+import { getApiErrorMessage } from "../lib/authErrors.js";
 import { formatDate } from "../lib/format.js";
-import { isOwner, isStaff } from "../lib/roles.js";
+import { isStaff, roleLabel } from "../lib/roles.js";
 
-/** Isolated selfie capture — does not share stream with nail sizing. */
-function AvatarCameraModal({ open, onClose, onCaptured }) {
+/** Selfie capture in a sheet — its own stream, stopped on close, retake or save. */
+function AvatarCamera({ onCancel, onCaptured }) {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState(null);
-  const [starting, setStarting] = useState(false);
+  const [starting, setStarting] = useState(true);
 
   const stopCamera = useCallback(() => {
-    const stream = streamRef.current || videoRef.current?.srcObject;
-    if (stream && typeof stream.getTracks === "function") {
-      stream.getTracks().forEach((t) => t.stop());
-    }
+    streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
-    if (videoRef.current) {
-      try {
-        videoRef.current.pause?.();
-      } catch {
-        /* ignore */
-      }
-      videoRef.current.srcObject = null;
-    }
+    if (videoRef.current) videoRef.current.srcObject = null;
   }, []);
 
   const startCamera = useCallback(async () => {
     setError("");
     setStarting(true);
+    stopCamera();
     try {
-      stopCamera();
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: { facingMode: "user", width: { ideal: 720 }, height: { ideal: 720 } },
@@ -61,33 +47,19 @@ function AvatarCameraModal({ open, onClose, onCaptured }) {
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        await videoRef.current.play().catch(() => {});
       }
     } catch {
-      setError("לא הצלחתי לפתוח את המצלמה. אפשר לאשר גישה ולנסות שוב.");
+      setError("לא הצלחתי לפתוח את המצלמה. אפשר לאשר גישה בהגדרות, או לבחור תמונה מהגלריה.");
     } finally {
       setStarting(false);
     }
   }, [stopCamera]);
 
   useEffect(() => {
-    if (!open) return undefined;
-    setPreview(null);
     void startCamera();
-    const onKey = (e) => {
-      if (e.key === "Escape") {
-        stopCamera();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      stopCamera();
-    };
-  }, [open, startCamera, stopCamera, onClose]);
-
-  if (!open) return null;
+    return stopCamera;
+  }, [startCamera, stopCamera]);
 
   function capture() {
     const video = videoRef.current;
@@ -97,87 +69,99 @@ function AvatarCameraModal({ open, onClose, onCaptured }) {
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext("2d");
-    const sx = (video.videoWidth - size) / 2;
-    const sy = (video.videoHeight - size) / 2;
-    ctx.drawImage(video, sx, sy, size, size, 0, 0, size, size);
+    // Mirror like the preview so the photo looks the way she saw herself.
+    ctx.translate(size, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, (video.videoWidth - size) / 2, (video.videoHeight - size) / 2, size, size, 0, 0, size, size);
     setPreview(canvas.toDataURL("image/jpeg", 0.9));
     stopCamera();
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-oled-950/80 px-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="צילום תמונת פרופיל"
-    >
-      <div className="glass-panel p-5 md:p-6 w-full max-w-md space-y-4">
-        <h3 className="font-serif text-2xl text-white text-center">צילום תמונה</h3>
-        {!preview ? (
-          <div className="relative aspect-square overflow-hidden rounded-xl bg-black border border-white/10">
-            <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" playsInline muted autoPlay />
-          </div>
+    <div className="space-y-4">
+      <div className="relative mx-auto aspect-square w-full max-w-xs overflow-hidden rounded-full bg-black ring-1 ring-white/10">
+        {preview ? (
+          <img src={preview} alt="תצוגה מקדימה" className="absolute inset-0 w-full h-full object-cover" />
         ) : (
-          <img src={preview} alt="תצוגה מקדימה" className="aspect-square w-full object-cover rounded-xl" />
+          <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover -scale-x-100" playsInline muted autoPlay />
         )}
-        {error && (
-          <p className="text-sm text-red-300 text-center" role="alert">
-            {error}
-          </p>
-        )}
-        <div className="flex flex-wrap gap-3 justify-between">
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={() => {
-              stopCamera();
-              onClose();
-            }}
-          >
-            ביטול
-          </button>
-          {!preview ? (
-            <button type="button" className="btn-violet" onClick={capture} disabled={starting}>
-              צלמי
+        {starting && !preview && <span className="absolute inset-0 grid place-items-center"><span className="spinner text-white/70" /></span>}
+      </div>
+      {error && (
+        <p className="notice-error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        {preview ? (
+          <>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => {
+                setPreview(null);
+                void startCamera();
+              }}
+            >
+              צילום מחדש
             </button>
-          ) : (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => {
-                  setPreview(null);
-                  void startCamera();
-                }}
-              >
-                צילום מחדש
-              </button>
-              <button
-                type="button"
-                className="btn-violet"
-                onClick={() => {
-                  onCaptured(preview);
-                  stopCamera();
-                  onClose();
-                }}
-              >
-                שמירת התמונה
-              </button>
-            </div>
-          )}
-        </div>
+            <button type="button" className="btn-violet" onClick={() => onCaptured(preview)}>
+              שמירה
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" className="btn-ghost" onClick={onCancel}>
+              ביטול
+            </button>
+            <button type="button" className="btn-violet" onClick={capture} disabled={starting || Boolean(error)}>
+              <Camera size={18} aria-hidden="true" />
+              צילום
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
+function SettingsRow({ icon: Icon, title, detail, onClick, to, tone, trailing }) {
+  const content = (
+    <>
+      <span
+        className={`grid place-items-center w-9 h-9 rounded-[0.625rem] shrink-0 ${tone === "danger" ? "bg-red-500/10 text-red-300" : "bg-white/[0.06] text-violet-200"}`}
+        aria-hidden="true"
+      >
+        <Icon size={19} strokeWidth={1.8} />
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className={`block text-body ${tone === "danger" ? "text-red-300" : "text-white"}`}>{title}</span>
+        {detail && <span className="block t-foot truncate">{detail}</span>}
+      </span>
+      {trailing ?? (tone !== "danger" && <ChevronLeft size={20} className="text-white/30 shrink-0" aria-hidden="true" />)}
+    </>
+  );
+  if (to) {
+    return (
+      <Link to={to} className="list-row">
+        {content}
+      </Link>
+    );
+  }
+  return (
+    <button type="button" className="list-row" onClick={onClick}>
+      {content}
+    </button>
+  );
+}
+
+/** The customer's personal home: who she is, her sizes and orders, and her account settings. */
 export default function Profile() {
   const { user, updateUser, logout } = useAuth();
   const fileRef = useRef(null);
-  const [cameraOpen, setCameraOpen] = useState(false);
+  const [sheet, setSheet] = useState(null); // "photo" | "camera" | "phone" | "password" | "logout"
   const [avatarBusy, setAvatarBusy] = useState(false);
-  const [avatarError, setAvatarError] = useState("");
-  const [avatarOk, setAvatarOk] = useState("");
+  const [toast, setToast] = useState(null); // { ok, text }
 
   const [measurement, setMeasurement] = useState(undefined);
   const [orders, setOrders] = useState(undefined);
@@ -185,20 +169,30 @@ export default function Profile() {
   const [measError, setMeasError] = useState("");
   const [ordersError, setOrdersError] = useState("");
   const [shipsError, setShipsError] = useState("");
-  const [appointments, setAppointments] = useState(undefined);
-  const [apptError, setApptError] = useState("");
+  const [notifyBusy, setNotifyBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    fetchMyAppointments()
-      .then((list) => {
-        if (!cancelled) setAppointments(list);
-      })
+    fetchProfileMeasurements()
+      .then((m) => !cancelled && setMeasurement(m))
       .catch(() => {
-        if (!cancelled) {
-          setAppointments([]);
-          setApptError("לא הצלחתי לטעון את התורים.");
-        }
+        if (cancelled) return;
+        setMeasurement(null);
+        setMeasError("לא הצלחתי לטעון את המידות.");
+      });
+    fetchProfileOrders()
+      .then((o) => !cancelled && setOrders(o))
+      .catch(() => {
+        if (cancelled) return;
+        setOrders([]);
+        setOrdersError("לא הצלחתי לטעון רכישות.");
+      });
+    fetchProfileShipments()
+      .then((s) => !cancelled && setShipments(s))
+      .catch(() => {
+        if (cancelled) return;
+        setShipments([]);
+        setShipsError("לא הצלחתי לטעון משלוחים.");
       });
     return () => {
       cancelled = true;
@@ -206,212 +200,187 @@ export default function Profile() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const m = await fetchProfileMeasurements();
-        if (!cancelled) setMeasurement(m);
-      } catch {
-        if (!cancelled) {
-          setMeasurement(null);
-          setMeasError("לא הצלחתי לטעון את המידות.");
-        }
-      }
-      try {
-        const o = await fetchProfileOrders();
-        if (!cancelled) setOrders(o);
-      } catch {
-        if (!cancelled) {
-          setOrders([]);
-          setOrdersError("לא הצלחתי לטעון רכישות.");
-        }
-      }
-      try {
-        const s = await fetchProfileShipments();
-        if (!cancelled) setShipments(s);
-      } catch {
-        if (!cancelled) {
-          setShipments([]);
-          setShipsError("לא הצלחתי לטעון משלוחים.");
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (!toast) return undefined;
+    const t = window.setTimeout(() => setToast(null), 3500);
+    return () => window.clearTimeout(t);
+  }, [toast]);
 
-  async function onFileChange(e) {
+  async function runAvatar(task, okText, failText) {
+    setSheet(null);
+    setAvatarBusy(true);
+    try {
+      updateUser(await task());
+      setToast({ ok: true, text: okText });
+    } catch (err) {
+      setToast({ ok: false, text: getApiErrorMessage(err, failText) });
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
+  function onFileChange(e) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    setAvatarError("");
-    setAvatarOk("");
-    setAvatarBusy(true);
+    if (file.size > 5 * 1024 * 1024) {
+      setToast({ ok: false, text: "התמונה גדולה מדי (עד 5MB). אפשר לבחור תמונה אחרת." });
+      setSheet(null);
+      return;
+    }
+    void runAvatar(() => uploadAvatarFile(file), "התמונה נשמרה.", "לא הצלחתי להעלות את התמונה.");
+  }
+
+  async function toggleBookingEmails() {
+    if (notifyBusy) return;
+    setNotifyBusy(true);
     try {
-      const next = await uploadAvatarFile(file);
-      updateUser(next);
-      setAvatarOk("התמונה נשמרה.");
+      updateUser(await updateBookingEmailsRequest(!user.notifyBookingEmails));
     } catch (err) {
-      setAvatarError(err?.response?.data?.error || "לא הצלחתי להעלות את התמונה.");
+      setToast({ ok: false, text: getApiErrorMessage(err, "לא הצלחתי לשמור את ההגדרה.") });
     } finally {
-      setAvatarBusy(false);
+      setNotifyBusy(false);
     }
   }
 
-  async function onCameraCaptured(dataUrl) {
-    setAvatarError("");
-    setAvatarOk("");
-    setAvatarBusy(true);
-    try {
-      const next = await uploadAvatarDataUrl(dataUrl);
-      updateUser(next);
-      setAvatarOk("התמונה נשמרה.");
-    } catch (err) {
-      setAvatarError(err?.response?.data?.error || "לא הצלחתי לשמור את התמונה.");
-    } finally {
-      setAvatarBusy(false);
-    }
-  }
-
-  async function onDeleteAvatar() {
-    setAvatarBusy(true);
-    setAvatarError("");
-    try {
-      const next = await deleteAvatar();
-      updateUser(next);
-      setAvatarOk("התמונה הוסרה.");
-    } catch {
-      setAvatarError("לא הצלחתי למחוק את התמונה.");
-    } finally {
-      setAvatarBusy(false);
-    }
-  }
+  const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
+  const done = (text) => {
+    setSheet(null);
+    setToast({ ok: true, text });
+  };
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-16 space-y-8">
-      <div className="text-center space-y-3">
-        <span className="section-eyebrow justify-center">Profile</span>
-        <h1 className="font-serif font-medium text-3xl md:text-5xl text-white">
-          הפרופיל <span className="violet-text">שלי</span>
-        </h1>
-        <p className="font-serif text-white/60 text-sm md:text-base max-w-xl mx-auto">
-          כל המידות, ההזמנות והעדכונים שלך במקום אחד.
+    <div className="max-w-2xl mx-auto space-y-8 pt-2">
+      <header className="flex flex-col items-center text-center gap-3">
+        <button
+          type="button"
+          onClick={() => setSheet("photo")}
+          disabled={avatarBusy}
+          className="relative rounded-full"
+          aria-label={user?.avatarUrl ? "החלפת תמונת הפרופיל" : "הוספת תמונת פרופיל"}
+        >
+          <UserAvatar user={user} className="h-24 w-24 text-3xl" />
+          <span className="absolute -bottom-0.5 -end-0.5 grid place-items-center w-8 h-8 rounded-full bg-oled-700 border-2 border-[rgb(var(--oled-950))] text-white">
+            {avatarBusy ? <span className="spinner w-4 h-4" /> : <Camera size={15} aria-hidden="true" />}
+          </span>
+        </button>
+        <div>
+          <h1 className="t-large-title">{fullName || user?.username}</h1>
+          <p className="t-sub mt-0.5">
+            {user?.email && (
+              <bdi dir="ltr" className="break-all">
+                {user.email}
+              </bdi>
+            )}
+          </p>
+          {user?.createdAt && <p className="t-foot mt-1">איתי מאז {formatDate(user.createdAt)}</p>}
+        </div>
+      </header>
+
+      {toast && (
+        <p className={toast.ok ? "notice-success" : "notice-error"} role={toast.ok ? "status" : "alert"}>
+          {toast.text}
         </p>
-      </div>
+      )}
 
-      <section className="glass-panel p-6 md:p-8 space-y-5">
-        <div className="flex flex-col sm:flex-row items-center gap-5 text-center sm:text-right">
-          <UserAvatar user={user} className="h-24 w-24 md:h-28 md:w-28 text-3xl" />
-          <div className="space-y-1 min-w-0">
-            <h2 className="font-serif text-2xl md:text-3xl text-white">
-              {user?.firstName} {user?.lastName}
-            </h2>
-            <p className="text-sm text-white/50">@{user?.username}</p>
-            {user?.createdAt && (
-              <p className="text-xs text-white/35">הצטרפת ב־{formatDate(user.createdAt)}</p>
-            )}
-            {isStaff(user) && (
-              <div className="pt-3 flex flex-wrap gap-2 justify-center sm:justify-start">
-                <Link to="/admin/appointments" className="btn-ghost px-5 py-2.5 text-sm">
-                  ניהול תורים
-                </Link>
-                <Link to="/admin/customers" className="btn-ghost px-5 py-2.5 text-sm">
-                  ניהול לקוחות
-                </Link>
-                <Link to="/admin/content" className="btn-ghost px-5 py-2.5 text-sm">
-                  ניהול תוכן
-                </Link>
-              </div>
-            )}
-          </div>
+      {isStaff(user) && (
+        <div className="list-group">
+          <SettingsRow to="/admin" icon={Settings2} title="ניהול העסק" detail={`מחוברת כ${roleLabel(user.role)}`} />
         </div>
+      )}
 
-        <div className="space-y-2 text-center sm:text-right">
-          <p className="font-serif text-white/80">רוצה להוסיף תמונה?</p>
-          <p className="font-serif text-sm text-white/50">בחרי תמונה שאת אוהבת או צלמי אחת עכשיו.</p>
-        </div>
-
-        <div className="flex flex-wrap gap-3 justify-center sm:justify-start">
-          <button
-            type="button"
-            className="btn-violet"
-            disabled={avatarBusy}
-            onClick={() => fileRef.current?.click()}
-          >
-            בחירה מהאלבום
-          </button>
-          <button
-            type="button"
-            className="btn-ghost"
-            disabled={avatarBusy}
-            onClick={() => setCameraOpen(true)}
-          >
-            צילום תמונה
-          </button>
-          {user?.avatarUrl && (
-            <button type="button" className="btn-text text-xs" disabled={avatarBusy} onClick={onDeleteAvatar}>
-              הסרת תמונה
-            </button>
-          )}
-        </div>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          className="hidden"
-          onChange={onFileChange}
-        />
-        {avatarError && (
-          <p className="text-sm text-red-300 text-center" role="alert" aria-live="polite">
-            {avatarError}
-          </p>
-        )}
-        {avatarOk && (
-          <p className="text-sm text-violet-200 text-center" role="status" aria-live="polite">
-            {avatarOk}
-          </p>
-        )}
-
-        <div className="border-t border-white/[0.08] pt-5">
-          <EmailSection />
-        </div>
-
-        {isOwner(user) && (
-          <div className="border-t border-white/[0.08] pt-5">
-            <MailConnectionSection />
-          </div>
-        )}
-
-        <div className="border-t border-white/[0.08] pt-5">
-          <PhoneForm />
-        </div>
-
-        <div className="border-t border-white/[0.08] pt-5">
-          <ChangePasswordForm />
-        </div>
-      </section>
-
-      <SiteColorSection />
-
-      <AppointmentsSection
-        appointments={appointments}
-        error={apptError}
-        onAppointmentUpdated={(updated) =>
-          setAppointments((list) => (list || []).map((a) => (a.id === updated.id ? updated : a)))
-        }
-      />
       <MeasurementsSection measurement={measurement} error={measError} />
       <OrdersSection orders={orders} error={ordersError} />
       <ShipmentsSection shipments={shipments} error={shipsError} />
 
-      <div className="flex justify-center">
-        <button type="button" className="btn-text text-sm text-white/50" onClick={() => logout()}>
-          התנתקות
-        </button>
-      </div>
+      <SiteColorSection />
 
-      <AvatarCameraModal open={cameraOpen} onClose={() => setCameraOpen(false)} onCaptured={onCameraCaptured} />
+      <section className="space-y-2" aria-labelledby="account-title">
+        <h2 id="account-title" className="t-title px-1">
+          החשבון
+        </h2>
+        <div className="list-group">
+          <SettingsRow
+            to="/account/email"
+            icon={Mail}
+            title="אימייל"
+            detail={user?.emailVerified ? user.email : "עוד לא אומת — נדרש לקביעת תור"}
+          />
+          <SettingsRow icon={Phone} title="טלפון" detail={user?.phone || "לא חובה"} onClick={() => setSheet("phone")} />
+          <SettingsRow icon={KeyRound} title="שינוי סיסמה" onClick={() => setSheet("password")} />
+          {isStaff(user) && user?.emailVerified && (
+            <label className="list-row cursor-pointer">
+              <span className="grid place-items-center w-9 h-9 rounded-[0.625rem] bg-white/[0.06] text-violet-200 shrink-0" aria-hidden="true">
+                <Bell size={19} strokeWidth={1.8} />
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-body">מייל על כל בקשה חדשה</span>
+                <span className="block t-foot">לצוות בלבד</span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                className="check"
+                checked={Boolean(user.notifyBookingEmails)}
+                disabled={notifyBusy}
+                onChange={() => void toggleBookingEmails()}
+              />
+            </label>
+          )}
+        </div>
+        <div className="list-group">
+          <SettingsRow icon={LogOut} title="התנתקות" tone="danger" onClick={() => setSheet("logout")} />
+        </div>
+      </section>
+
+      <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={onFileChange} />
+
+      <Sheet open={sheet === "photo"} onClose={() => setSheet(null)} title="תמונת פרופיל">
+        <div className="list-group">
+          <SettingsRow icon={ImagePlus} title="בחירה מהגלריה" onClick={() => fileRef.current?.click()} trailing={null} />
+          <SettingsRow icon={Camera} title="צילום עכשיו" onClick={() => setSheet("camera")} trailing={null} />
+          {user?.avatarUrl && (
+            <SettingsRow
+              icon={Trash2}
+              title="הסרת התמונה"
+              tone="danger"
+              onClick={() => void runAvatar(deleteAvatar, "התמונה הוסרה.", "לא הצלחתי להסיר את התמונה.")}
+            />
+          )}
+        </div>
+      </Sheet>
+
+      <Sheet open={sheet === "camera"} onClose={() => setSheet(null)} title="צילום תמונה">
+        <AvatarCamera
+          onCancel={() => setSheet(null)}
+          onCaptured={(dataUrl) => void runAvatar(() => uploadAvatarDataUrl(dataUrl), "התמונה נשמרה.", "לא הצלחתי לשמור את התמונה.")}
+        />
+      </Sheet>
+
+      <Sheet open={sheet === "phone"} onClose={() => setSheet(null)} title="טלפון ליצירת קשר">
+        <PhoneForm onDone={done} onCancel={() => setSheet(null)} />
+      </Sheet>
+
+      <Sheet open={sheet === "password"} onClose={() => setSheet(null)} title="שינוי סיסמה">
+        <ChangePasswordForm onDone={done} onCancel={() => setSheet(null)} />
+      </Sheet>
+
+      <Sheet
+        open={sheet === "logout"}
+        onClose={() => setSheet(null)}
+        role="alertdialog"
+        title="להתנתק?"
+        description="המידות והתורים שלך נשמרים בחשבון."
+        footer={
+          <>
+            <button type="button" className="btn-ghost w-full sm:w-auto" onClick={() => setSheet(null)}>
+              ביטול
+            </button>
+            <button type="button" className="btn-danger w-full sm:w-auto" onClick={() => void logout()}>
+              התנתקות
+            </button>
+          </>
+        }
+      />
     </div>
   );
 }
