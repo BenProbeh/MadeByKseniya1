@@ -37,6 +37,17 @@ FRONTEND_URL=https://made-by-kseniya1.vercel.app
 TRUST_PROXY=2
 ```
 
+Also set (both are in place in production since 2026-10-29):
+
+```
+RAILWAY_DOCKERFILE_PATH=server/Dockerfile   # builds with the Dockerfile on every deploy path, even without railway.json
+EMAIL_VERIFICATION=off                       # only until an email provider is connected; delete it afterwards
+```
+
+`railway.json` (Config as Code) stops being read by Railway on 2026-12-01. `RAILWAY_DOCKERFILE_PATH` already keeps the
+build correct; before that date set the health check path (`/api/health`) in the service settings, because the
+automatic `railway config migrate` output does not carry the Dockerfile settings over.
+
 Optional: `OPENAI_API_KEY`, `OPENAI_MODEL` (AI chat). `PORT` is provided by Railway automatically.
 Only if the browser calls Railway directly via `VITE_API_URL`: `COOKIE_SAMESITE=none`.
 
