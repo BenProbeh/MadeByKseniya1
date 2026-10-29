@@ -21,7 +21,9 @@ import { registerVerified, request, uniqueEmail, DEFAULT_PASSWORD } from "./test
 
 const CLIENT_ID = "11111111-2222-4333-8444-555555555555";
 const CLIENT_SECRET = "fake-client-secret-value-for-tests";
-const FROM = "madebykseniya@outlook.com";
+// The site's business mailbox (MAIL_FROM_ADDRESS). The previous one must never be accepted again.
+const FROM = "madebykseniya4@outlook.com";
+const PREVIOUS_FROM = "madebykseniya@outlook.com";
 const TEST_SUBJECT = "בדיקת מערכת המיילים של MadeByKseniya";
 
 /** A fake Microsoft identity platform + Graph that records every call. */
@@ -272,7 +274,35 @@ describe("Outlook sending through Microsoft Graph (PostgreSQL)", () => {
     }
   });
 
+  it("the previous business mailbox is refused like any other account", async () => {
+    fake.meAddress = PREVIOUS_FROM;
+    try {
+      const { callback } = await connect();
+      assert.match(callback.headers.location, /mail=wrong_account$/);
+      const { rows } = await db.query(`SELECT 1 FROM mail_connections`);
+      assert.equal(rows.length, 0);
+    } finally {
+      fake.meAddress = FROM;
+    }
+  });
+
+  it("the owner sees 'not connected' and the app keeps working while no mailbox is connected", async () => {
+    const status = await request(server, { path: "/api/owner/mail/status", cookies: [owner.cookie] });
+    assert.equal(status.status, 200);
+    assert.equal(status.json.microsoft.connected, false);
+    assert.equal(status.json.ready, false);
+    assert.equal(status.json.sender, `MadeByKseniya <${FROM}>`);
+    const health = await request(server, { path: "/api/health" });
+    assert.equal(health.status, 200);
+    const services = await request(server, { path: "/api/services" });
+    assert.equal(services.status, 200);
+    const me = await request(server, { path: "/api/auth/me", cookies: [customer.cookie] });
+    assert.equal(me.status, 200);
+  });
+
   it("connecting stores only an encrypted refresh token and proves PKCE", async () => {
+    // MAIL_FROM_ADDRESS is compared after trimming and lower-casing.
+    process.env.MAIL_FROM_ADDRESS = `  ${FROM.toUpperCase()}  `;
     const { location, callback } = await connect();
     assert.equal(callback.status, 303);
     assert.equal(callback.headers.location, "https://made-by-kseniya.example/admin/more?mail=connected");
@@ -290,6 +320,7 @@ describe("Outlook sending through Microsoft Graph (PostgreSQL)", () => {
     assert.ok(!JSON.stringify(rows[0]).includes("fake-refresh-token"), "no plain refresh token in the database");
     assert.ok(!JSON.stringify(rows[0]).includes("fake-access-token"), "access tokens are never stored");
     assert.equal(openSecret(rows[0].refresh_token_enc, "refresh-token"), fake.currentRefresh);
+    process.env.MAIL_FROM_ADDRESS = FROM;
   });
 
   it("the owner's status shows the connection without secrets", async () => {
@@ -417,6 +448,19 @@ describe("Outlook sending through Microsoft Graph (PostgreSQL)", () => {
     assert.match(callback.headers.location, /mail=connected$/);
     const again = await sendEmail({ type: "test", to: uniqueEmail("again"), subject: "s", html: "<p>h</p>", text: "t" });
     assert.equal(again.ok, true);
+  });
+
+  it("a stored connection is never used once MAIL_FROM_ADDRESS names another mailbox", async () => {
+    process.env.MAIL_FROM_ADDRESS = "another.mailbox@outlook.com";
+    try {
+      const before = fake.sent.length;
+      const to = uniqueEmail("switched");
+      const result = await sendEmail({ type: "mail_test", to, subject: "x", html: "<p>x</p>", text: "x" });
+      assert.equal(result.ok, false, "nothing is reported as sent");
+      assert.equal(fake.sent.length, before, "Graph sendMail was never called");
+    } finally {
+      process.env.MAIL_FROM_ADDRESS = FROM;
+    }
   });
 
   it("the test email is rate limited", async () => {

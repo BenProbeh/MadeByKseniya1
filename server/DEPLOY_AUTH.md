@@ -48,6 +48,27 @@ EMAIL_VERIFICATION=off                       # only until an email provider is c
 build correct; before that date set the health check path (`/api/health`) in the service settings, because the
 automatic `railway config migrate` output does not carry the Dockerfile settings over.
 
+## Email (Outlook through Microsoft Graph)
+
+The site sends from one business mailbox, named only by `MAIL_FROM_ADDRESS`. In `MadeByKseniya1` → Variables:
+
+```
+MAIL_PROVIDER=microsoft
+MAIL_FROM_ADDRESS=madebykseniya4@outlook.com
+MAIL_FROM_NAME=MadeByKseniya
+MICROSOFT_TENANT_ID=consumers
+APP_PUBLIC_URL=https://made-by-kseniya1.vercel.app
+MICROSOFT_CLIENT_ID=<Application (client) ID from Microsoft Entra>
+MICROSOFT_CLIENT_SECRET=<the client secret's Value from Microsoft Entra>
+```
+
+The Entra app registration must allow personal Microsoft accounts and list the Web redirect URI
+`https://made-by-kseniya1.vercel.app/api/mail/microsoft/callback` (delegated Graph permissions: Mail.Send, User.Read,
+offline_access). Then the owner connects the mailbox once: ניהול → עוד → שליחת מיילים → "חיבור תיבת Outlook", signing in
+as the `MAIL_FROM_ADDRESS` account. Any other Microsoft account is refused, and a stored connection is never used once
+`MAIL_FROM_ADDRESS` names a different mailbox — changing the mailbox means connecting the new one. The refresh token is
+stored encrypted (key derived from the client secret), so a new client secret also needs one reconnect.
+
 Optional: `OPENAI_API_KEY`, `OPENAI_MODEL` (AI chat). `PORT` is provided by Railway automatically.
 Only if the browser calls Railway directly via `VITE_API_URL`: `COOKIE_SAMESITE=none`.
 
