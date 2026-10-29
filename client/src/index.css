@@ -718,6 +718,35 @@
     border-top: 1px solid var(--theme-border);
     transition: transform 200ms var(--ease-out);
   }
+  /* Current tab: a short bar of violet light on the top edge, and the icon glows like a lit bulb. */
+  .tab-light {
+    position: absolute;
+    top: 0;
+    inset-inline: 0;
+    margin-inline: auto;
+    width: 2rem;
+    height: 2px;
+    border-radius: 0 0 2px 2px;
+    background: linear-gradient(90deg, #d17dff, #f5e0ff, #b026ff);
+    box-shadow: 0 0 12px 2px rgba(176, 38, 255, 0.7);
+    animation: mbk-fade 240ms ease-out;
+  }
+  .tab-icon-lit {
+    filter: drop-shadow(0 0 6px rgba(176, 38, 255, 0.75));
+  }
+  /* Auth screens: the logo stands in a soft pool of stage light. */
+  .auth-stage {
+    position: relative;
+    isolation: isolate;
+  }
+  .auth-stage::before {
+    content: "";
+    position: absolute;
+    inset: -45% -60%;
+    z-index: -1;
+    background: radial-gradient(closest-side, rgba(176, 38, 255, 0.28), rgba(176, 38, 255, 0.08) 55%, transparent 75%);
+    pointer-events: none;
+  }
   /* The tab bar steps aside while typing (keyboard up) and inside full-screen flows. */
   html[data-keyboard="open"] .app-tabbar,
   html[data-immersive="true"] .app-tabbar {

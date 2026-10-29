@@ -72,7 +72,7 @@ export default function TopBar({ tabs, staffArea, chatEnabled }) {
               key={tab.to}
               to={tab.to}
               className={`font-display text-sub px-4 min-h-[2.75rem] inline-flex items-center rounded-full transition-colors ${
-                tab.match(pathname) ? "text-white bg-white/[0.07]" : "text-white/60 hover:text-white"
+                tab.match(pathname) ? "text-white bg-violet-400/[0.12] shadow-glow-soft" : "text-white/60 hover:text-white"
               }`}
             >
               {tab.label}

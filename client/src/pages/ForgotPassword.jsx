@@ -122,7 +122,9 @@ export default function ForgotPassword() {
     <AuthLayout
       compactLogo
       back={step === "email" ? "/login" : undefined}
-      title={step === "password" ? "סיסמה חדשה" : "שכחתי סיסמה"}
+      eyebrow="Reset"
+      title={step === "password" ? "סיסמה" : "שכחתי"}
+      accent={step === "password" ? "חדשה" : "סיסמה"}
       subtitle={
         step === "email"
           ? "אין בעיה. אשלח קוד לכתובת שאיתה נרשמת."

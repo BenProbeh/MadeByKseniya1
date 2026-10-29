@@ -76,7 +76,9 @@ export default function VerifyEmail() {
     <AuthLayout
       compactLogo
       back="/login"
-      title="אימות האימייל"
+      eyebrow="Verify"
+      title="אימות"
+      accent="האימייל"
       subtitle={pending ? "הקלידי את הקוד ששלחתי, והחשבון יופעל מיד." : "הקלידי את האימייל שאיתו נרשמת, ואשלח קוד חדש."}
       footer={
         <>

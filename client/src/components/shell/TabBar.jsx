@@ -11,7 +11,7 @@ export const TAB_ICONS = {
   more: Ellipsis,
 };
 
-/** Phone bottom navigation: four destinations, 64px tall, thumb-reachable, safe-area aware. */
+/** Phone bottom navigation: four destinations, 64px tall, thumb-reachable, safe-area aware; the current tab is lit like a marquee bulb. */
 export default function TabBar({ tabs, badges = {}, label }) {
   const { pathname } = useLocation();
   return (
@@ -30,7 +30,8 @@ export default function TabBar({ tabs, badges = {}, label }) {
                   active ? "text-violet-300" : "text-white/50 active:text-white/80"
                 }`}
               >
-                <span className="relative">
+                {active && <span className="tab-light" aria-hidden="true" />}
+                <span className={`relative ${active ? "tab-icon-lit" : ""}`}>
                   <Icon size={24} strokeWidth={active ? 2.2 : 1.7} aria-hidden="true" />
                   {count > 0 && (
                     <span

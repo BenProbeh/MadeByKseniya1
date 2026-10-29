@@ -28,6 +28,18 @@ function When({ appointment }) {
   );
 }
 
+/** The hero frame: Cursor-era glass inside a border of travelling light (still under reduced motion). */
+function Frame({ children }) {
+  return (
+    <section className="marquee-frame rounded-card shadow-glow" aria-labelledby="next-title">
+      <div className="marquee-frame__inner relative overflow-hidden p-5 space-y-4">
+        <span className="pointer-events-none absolute -top-24 -start-16 h-48 w-48 rounded-full bg-violet-500/20 blur-3xl" aria-hidden="true" />
+        {children}
+      </div>
+    </section>
+  );
+}
+
 /** The one card that answers "what now?". */
 function NextStepCard({ step, onConfirmed }) {
   if (!step) {
@@ -41,18 +53,10 @@ function NextStepCard({ step, onConfirmed }) {
   }
 
   const a = step.appointment;
-  const shell = "card-raised p-5 space-y-4 relative overflow-hidden";
-  const glow = (
-    <span
-      className="pointer-events-none absolute -top-24 -start-16 h-48 w-48 rounded-full bg-violet-500/20 blur-3xl"
-      aria-hidden="true"
-    />
-  );
 
   if (step.kind === "confirm") {
     return (
-      <section className={shell} aria-labelledby="next-title">
-        {glow}
+      <Frame>
         <AppointmentStatusBadge status={a.status} />
         <div className="space-y-1.5">
           <h2 id="next-title" className="t-title">התור שלך אושר</h2>
@@ -60,14 +64,13 @@ function NextStepCard({ step, onConfirmed }) {
         </div>
         <When appointment={a} />
         <ConfirmBookingButton appointment={a} onConfirmed={onConfirmed} block />
-      </section>
+      </Frame>
     );
   }
 
   if (step.kind === "visit") {
     return (
-      <section className={shell} aria-labelledby="next-title">
-        {glow}
+      <Frame>
         <AppointmentStatusBadge status={a.status} />
         <div className="space-y-1.5">
           <h2 id="next-title" className="t-title">נתראה בקרוב</h2>
@@ -87,14 +90,13 @@ function NextStepCard({ step, onConfirmed }) {
           <MapPin size={18} strokeWidth={1.9} aria-hidden="true" />
           ניווט לסטודיו
         </a>
-      </section>
+      </Frame>
     );
   }
 
   if (step.kind === "pending") {
     return (
-      <section className={shell} aria-labelledby="next-title">
-        {glow}
+      <Frame>
         <AppointmentStatusBadge status={a.status} />
         <div className="space-y-1.5">
           <h2 id="next-title" className="t-title">הבקשה שלך אצלי</h2>
@@ -104,14 +106,13 @@ function NextStepCard({ step, onConfirmed }) {
         <Link to="/appointments" className="btn-ghost btn-block">
           לכל התורים שלי
         </Link>
-      </section>
+      </Frame>
     );
   }
 
   if (step.kind === "measure") {
     return (
-      <section className={shell} aria-labelledby="next-title">
-        {glow}
+      <Frame>
         <span className="grid place-items-center w-12 h-12 rounded-full bg-violet-400/15 text-violet-200" aria-hidden="true">
           <Ruler size={24} strokeWidth={1.8} />
         </span>
@@ -122,13 +123,12 @@ function NextStepCard({ step, onConfirmed }) {
         <Link to="/nail-sizing" className="btn-violet btn-block">
           למדידה
         </Link>
-      </section>
+      </Frame>
     );
   }
 
   return (
-    <section className={shell} aria-labelledby="next-title">
-      {glow}
+    <Frame>
       <span className="grid place-items-center w-12 h-12 rounded-full bg-violet-400/15 text-violet-200" aria-hidden="true">
         <CalendarPlus size={24} strokeWidth={1.8} />
       </span>
@@ -139,7 +139,7 @@ function NextStepCard({ step, onConfirmed }) {
       <Link to="/booking" className="btn-violet btn-block">
         קביעת תור
       </Link>
-    </section>
+    </Frame>
   );
 }
 
@@ -181,9 +181,12 @@ export default function Home() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-8 pt-2">
-      <header>
+      <header className="space-y-2">
+        <span className="section-eyebrow">Today</span>
         <p className="t-sub">{greeting(user?.firstName)}</p>
-        <h1 className="t-large-title mt-0.5">מה עושות היום?</h1>
+        <h1 className="font-prose text-[2.25rem] leading-tight md:text-5xl">
+          מה <span className="violet-text">עושות</span> היום?
+        </h1>
       </header>
 
       <NextStepCard
@@ -203,8 +206,8 @@ export default function Home() {
             <li key={p.slug} className="w-[72%] max-w-[17rem]">
               <Link
                 to={`/services/${p.slug}`}
-                className={`card flex flex-col justify-between h-40 p-5 transition-colors active:bg-oled-800 ${
-                  p.featured ? "border-violet-400/40" : ""
+                className={`card flex flex-col justify-between h-40 p-5 transition-[transform,box-shadow] duration-300 ease-editorial active:scale-[0.985] ${
+                  p.featured ? "border-violet-400/40 shadow-glow-soft" : ""
                 }`}
               >
                 <span className="flex items-center justify-between">
@@ -212,9 +215,11 @@ export default function Home() {
                   {p.featured && <Sparkles size={18} className="text-violet-300" aria-label="הכי פופולרי" />}
                 </span>
                 <span>
-                  <span className="block font-brand text-[0.9375rem] leading-snug tracking-wide text-white break-words">{p.title}</span>
-                  <span className="block t-foot mt-1">
-                    החל מ־<span className="tnum">{p.fromPrice}</span> ₪
+                  <span className="block marquee text-[1.35rem] leading-tight break-words">{p.title}</span>
+                  <span className="flex items-baseline gap-1.5 mt-1.5">
+                    <span className="t-foot">החל מ־</span>
+                    <span className="price text-lg leading-none">{p.fromPrice}</span>
+                    <span className="price text-sm leading-none">₪</span>
                   </span>
                 </span>
               </Link>

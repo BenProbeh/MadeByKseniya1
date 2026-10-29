@@ -87,7 +87,9 @@ export default function Login() {
 
   return (
     <AuthLayout
-      title="ברוכה השבה"
+      eyebrow="Sign in"
+      title="ברוכה"
+      accent="השבה"
       subtitle="מתחברות כדי לקבוע תור ולראות את המידות שלך."
       footer={
         <>

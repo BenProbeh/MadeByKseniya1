@@ -135,8 +135,8 @@ export default function CodeStep({
       noValidate
     >
       <p className="t-sub text-center">
-        שלחתי קוד בן 6 ספרות אל{" "}
-        <bdi dir="ltr" className="text-white break-all">
+        שלחתי קוד בן 6 ספרות אל
+        <bdi dir="ltr" className="block mt-1 text-white [overflow-wrap:anywhere]">
           {email}
         </bdi>
       </p>

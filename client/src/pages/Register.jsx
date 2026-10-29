@@ -76,7 +76,9 @@ export default function Register() {
     <AuthLayout
       compactLogo
       back="/login"
-      title="נעים להכיר"
+      eyebrow="Join"
+      title="נעים"
+      accent="להכיר"
       subtitle="כאן אשמור את המידות, התורים וכל מה שצריך לפעם הבאה."
       footer={
         <>

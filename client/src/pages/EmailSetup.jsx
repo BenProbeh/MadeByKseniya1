@@ -79,7 +79,9 @@ export default function EmailSetup() {
     <AuthLayout
       compactLogo
       back={changing ? "/profile" : undefined}
-      title={changing ? "החלפת אימייל" : "עוד צעד קטן"}
+      eyebrow="Email"
+      title={changing ? "החלפת" : "עוד צעד"}
+      accent={changing ? "אימייל" : "קטן"}
       subtitle={
         changing
           ? "אשלח קוד לכתובת החדשה. עד שתאשרי אותה, הכתובת הנוכחית נשארת בתוקף."
