@@ -5,7 +5,7 @@ import { EMAIL_RE, brandSenderName, maskEmail } from "./sender.js";
 
 /**
  * Sending from the site's Outlook.com mailbox through Microsoft Graph (delegated OAuth 2.0, authorization code + PKCE).
- * The owner connects the mailbox once from the profile page; the refresh token is stored encrypted in
+ * The owner connects the mailbox once from the admin area (ניהול → עוד → שליחת מיילים); the refresh token is stored encrypted in
  * mail_connections and rotated on every refresh. Access tokens live in memory only. Nothing here logs or returns
  * a token, a code or the client secret.
  */

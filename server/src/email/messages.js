@@ -67,7 +67,7 @@ export function addressInUseMessage({ firstName }) {
   });
 }
 
-/** One-off check of the sending mailbox, sent only to the owner from the profile page. */
+/** One-off check of the sending mailbox, sent only to the owner from the admin area (ניהול → עוד). */
 export function mailTestMessage() {
   return renderEmail({
     subject: "בדיקת מערכת המיילים של MadeByKseniya",

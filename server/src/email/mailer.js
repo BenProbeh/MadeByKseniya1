@@ -131,9 +131,9 @@ export function reportMicrosoftConnection() {
   if (selectedEmailProvider() !== "microsoft") return;
   const current = microsoftConnection();
   if (isMicrosoftConnected()) console.log(`[email] Outlook connected (${maskEmail(current.account)}).`);
-  else if (current?.needsReconnect) console.error("[email] Outlook needs to be reconnected by the owner (profile page).");
-  else if (current) console.error("[email] the connected Outlook account is not MAIL_FROM_ADDRESS - reconnect it from the profile page.");
-  else console.error("[email] Outlook is not connected yet - the owner connects it once from the profile page.");
+  else if (current?.needsReconnect) console.error("[email] Outlook needs to be reconnected by the owner (admin area: ניהול → עוד).");
+  else if (current) console.error("[email] the connected Outlook account is not MAIL_FROM_ADDRESS - reconnect it from the admin area (ניהול → עוד).");
+  else console.error("[email] Outlook is not connected yet - the owner connects it once from the admin area (ניהול → עוד).");
 }
 
 let resendClient = null;
