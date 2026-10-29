@@ -77,6 +77,14 @@ export const config = {
    * "microsoft" (Outlook via Microsoft Graph) | "resend" | "off"; "memory" captures emails in-process (tests only,
    * never in production). MAIL_PROVIDER wins over the older EMAIL_PROVIDER name; unset keeps Resend.
    */
+  /**
+   * EMAIL_VERIFICATION=off (Railway variable) lets sign-up work while no email provider is connected: accounts are
+   * active at once with the email marked unverified, and booking doesn't wait for a verified address. Anything
+   * else (or unset) keeps verification required. Remove the variable once email sending works.
+   */
+  get emailVerificationOff() {
+    return read("EMAIL_VERIFICATION").toLowerCase() === "off";
+  },
   get emailProvider() {
     return (read("MAIL_PROVIDER") || read("EMAIL_PROVIDER")).toLowerCase();
   },

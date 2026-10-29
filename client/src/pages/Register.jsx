@@ -50,6 +50,10 @@ export default function Register() {
     setSubmitting(true);
     try {
       const pending = await register({ firstName, lastName, email: emailCheck.email, password, confirmPassword: password });
+      if (pending.signedIn) {
+        navigate(from, { replace: true });
+        return;
+      }
       const start = Date.now();
       setPassword("");
       navigate("/verify-email", {

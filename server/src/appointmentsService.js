@@ -6,6 +6,7 @@ import { refreshScoresForAppointment } from "./customerScore.js";
 import { markAppointmentNotificationsRead, notifyAppointmentRequest } from "./notifications.js";
 import { recordAudit } from "./roles.js";
 import { hashToken } from "./auth.js";
+import { config } from "./config.js";
 import { runEmailJob } from "./email/mailer.js";
 import {
   customerEmailStatuses,
@@ -271,7 +272,7 @@ export async function createAppointmentRequest(input, { userId = null, now = new
       if (userId) {
         const user = await tx.query(`SELECT first_name, last_name, email, email_verified FROM users WHERE id = $1`, [userId]);
         account = user.rows[0] || null;
-        if (!account?.email_verified || !account.email) throw appointmentError("EMAIL_NOT_VERIFIED");
+        if ((!account?.email_verified || !account.email) && !config.emailVerificationOff) throw appointmentError("EMAIL_NOT_VERIFIED");
         const pending = await tx.query(
           `SELECT count(*)::int AS n FROM appointments
             WHERE user_id = $1 AND status = 'pending' AND (starts_at IS NULL OR starts_at > now())`,
@@ -298,7 +299,7 @@ export async function createAppointmentRequest(input, { userId = null, now = new
         [
           values.clientName,
           values.phone,
-          account?.email ?? null,
+          account?.email_verified ? account.email : null,
           service.id,
           values.date,
           values.time,

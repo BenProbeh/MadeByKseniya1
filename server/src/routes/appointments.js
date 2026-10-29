@@ -12,6 +12,7 @@ import {
   MAX_PENDING_PER_USER,
 } from "../appointmentsService.js";
 import { asyncRoute } from "../http.js";
+import { config } from "../config.js";
 import { requireAdmin, requireAuth } from "../middleware/authMiddleware.js";
 import { sendStatusChangeError } from "./appointmentStatus.js";
 
@@ -96,7 +97,9 @@ router.post(
     if (!clientName || !serviceId || !date || !time) {
       return reply(res, 400, "VALIDATION_ERROR", "חסרים פרטים לבקשת התור.");
     }
-    if (!req.user.emailVerified) return reply(res, 403, "EMAIL_NOT_VERIFIED", MESSAGES.emailNotVerified);
+    if (!req.user.emailVerified && !config.emailVerificationOff) {
+      return reply(res, 403, "EMAIL_NOT_VERIFIED", MESSAGES.emailNotVerified);
+    }
     try {
       const { appointment, duplicate } = await createAppointmentRequest(
         {

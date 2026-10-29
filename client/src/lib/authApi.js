@@ -28,13 +28,17 @@ function mapAdminCustomer(raw) {
   return { ...raw, avatarUrl: resolveMediaUrl(raw.avatarUrl) };
 }
 
-/** `{ user, emailDeliveryReady }`; user is null when signed out. */
+/** `{ user, emailDeliveryReady, emailVerificationRequired }`; user is null when signed out. */
 export async function fetchCurrentUser() {
   try {
     const { data } = await api.get("/auth/me");
-    return { user: mapUser(data?.user), emailDeliveryReady: data?.emailDeliveryReady !== false };
+    return {
+      user: mapUser(data?.user),
+      emailDeliveryReady: data?.emailDeliveryReady !== false,
+      emailVerificationRequired: data?.emailVerificationRequired !== false,
+    };
   } catch (err) {
-    if (err?.response?.status === 401) return { user: null, emailDeliveryReady: true };
+    if (err?.response?.status === 401) return { user: null, emailDeliveryReady: true, emailVerificationRequired: true };
     throw err;
   }
 }
@@ -45,7 +49,10 @@ export async function loginRequest({ email, password, rememberMe }) {
   return assertUser(mapUser(data?.user));
 }
 
-/** Creates the account as pending; resolves `{ email, expiresInSeconds, resendAfterSeconds }` — no session yet. */
+/**
+ * Creates the account. Normally pending until the emailed code: `{ email, expiresInSeconds, resendAfterSeconds }`.
+ * With email verification switched off on the server it is active and signed in: `{ signedIn: true, user }`.
+ */
 export async function registerRequest(payload) {
   const { data } = await api.post("/auth/register", {
     username: payload.username,
@@ -55,6 +62,7 @@ export async function registerRequest(payload) {
     firstName: payload.firstName,
     lastName: payload.lastName,
   });
+  if (data?.signedIn && data?.user) return { signedIn: true, user: assertUser(mapUser(data.user)) };
   return {
     email: data?.email || payload.email,
     expiresInSeconds: Number(data?.expiresInSeconds) || 600,

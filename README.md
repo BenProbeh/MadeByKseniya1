@@ -59,7 +59,8 @@ The browser keeps calling `/api/*` on the Vercel domain, so cookies stay first-p
 `server/Dockerfile` (configured by `railway.json`), health check `/api/health`, next to a Railway PostgreSQL service.
 Variables: `DATABASE_URL=${{Postgres.DATABASE_URL}}`, `NODE_ENV=production`, `FRONTEND_URL=https://<vercel-domain>`,
 `TRUST_PROXY=2`, plus the email provider (`MAIL_PROVIDER=microsoft` with `MICROSOFT_*` and `MAIL_FROM_*`, or
-`resend` with `RESEND_*`) — see `server/.env.example` and `server/DEPLOY_AUTH.md`. Optional: `OPENAI_API_KEY` for
+`resend` with `RESEND_*`; until one is connected, `EMAIL_VERIFICATION=off` keeps sign-up and booking working without
+email codes) — see `server/.env.example` and `server/DEPLOY_AUTH.md`. Optional: `OPENAI_API_KEY` for
 the concierge chat, `OWNER_USER_ID` to assign the owner once.
 
 Migrations run automatically on start (forward-only, inside a transaction, never dropping data).

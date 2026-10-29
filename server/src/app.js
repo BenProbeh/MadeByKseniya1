@@ -143,6 +143,9 @@ export function createApp() {
     if (err?.type === "entity.too.large" || err?.status === 413) {
       return res.status(413).json({ error: "הבקשה גדולה מדי." });
     }
+    if (err?.type === "entity.parse.failed") {
+      return res.status(400).json({ error: "הבקשה לא תקינה." });
+    }
     if (err?.code === "DB_UNAVAILABLE") {
       return sendServiceUnavailable(res);
     }

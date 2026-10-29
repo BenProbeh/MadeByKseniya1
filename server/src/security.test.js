@@ -148,6 +148,23 @@ describe("security (PostgreSQL)", () => {
       assert.equal(fromApp.status, 401, "passes the origin check and reaches auth");
     });
 
+    it("answers malformed JSON with 400 and no details", async () => {
+      const res = await new Promise((resolve, reject) => {
+        const req = http.request(
+          { host: "127.0.0.1", port: server.address().port, method: "POST", path: "/api/auth/login", headers: { "Content-Type": "application/json" } },
+          (r) => {
+            let body = "";
+            r.on("data", (d) => (body += d));
+            r.on("end", () => resolve({ status: r.statusCode, body }));
+          }
+        );
+        req.on("error", reject);
+        req.end("{bad json");
+      });
+      assert.equal(res.status, 400);
+      assert.doesNotMatch(res.body, /SyntaxError|at |position/);
+    });
+
     it("sends security headers and hides the framework", async () => {
       const res = await request(server, { path: "/api/health" });
       assert.equal(res.headers["x-content-type-options"], "nosniff");

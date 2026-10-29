@@ -24,6 +24,7 @@ import { CODE_PURPOSES, CODE_TTL_MINUTES, RESEND_COOLDOWN_SECONDS, isCodeFormat 
 import { isEmailConfigured } from "../email/mailer.js";
 import { completeEmailVerification, dispatchAddressInUse, dispatchVerificationCode } from "../emailVerification.js";
 import { lockedResponse } from "../codeLimits.js";
+import { config } from "../config.js";
 
 export const AUTH_MESSAGES = Object.freeze({
   usernameTaken: "שם המשתמש הזה כבר בשימוש, נסי לבחור שם אחר.",
@@ -67,6 +68,53 @@ const isUniqueOn = (err, name) => err?.code === "23505" && new RegExp(name).test
  * POST /verify-email/resend { email }                    -> same answer for every address
  * POST /login               { email, password, rememberMe } (accounts without a verified email may still use their username)
  */
+/**
+ * EMAIL_VERIFICATION=off: the account is active at once (email stored, marked unverified) and signed in.
+ * An address that already has an account gets a plain "already registered" answer — without email there is
+ * no private channel to tell its owner instead.
+ */
+async function registerWithoutVerification(req, res, { firstName, lastName, username, email, password }) {
+  const passwordHash = await hashPassword(password);
+  try {
+    const existing = await findUserByEmail(email);
+    if (existing && existing.account_status === "active") {
+      return fail(res, 409, "EMAIL_TAKEN", "כבר יש חשבון עם האימייל הזה. אפשר להתחבר.");
+    }
+    const user = await transaction(async (tx) => {
+      if (existing) {
+        const { rows } = await tx.query(
+          `UPDATE users SET username = $2, password_hash = $3, first_name = $4, last_name = $5,
+                  account_status = 'active', updated_at = now()
+            WHERE id = $1 AND account_status = 'pending_verification' AND deleted_at IS NULL RETURNING *`,
+          [existing.id, username, passwordHash, firstName, lastName]
+        );
+        if (rows.length) return rows[0];
+        throw Object.assign(new Error("taken"), { code: "EMAIL_TAKEN" });
+      }
+      const { rows } = await tx.query(
+        `INSERT INTO users (username, password_hash, first_name, last_name, email, email_normalized, email_verified, account_status)
+         VALUES ($1, $2, $3, $4, $5, $5, false, 'active') RETURNING *`,
+        [username, passwordHash, firstName, lastName, email]
+      );
+      await recordAudit(tx, { actorUserId: rows[0].id, action: "account_registered", targetUserId: rows[0].id, details: { emailVerification: "off" } });
+      return rows[0];
+    });
+    const rememberMe = req.body?.rememberMe !== false;
+    const session = await createSession(user.id, rememberMe);
+    await db.query(`UPDATE users SET last_login_at = now() WHERE id = $1`, [user.id]);
+    res.cookie(SESSION_COOKIE, session.token, cookieOptions(session.rememberMe, session.maxAgeMs));
+    return res.status(201).json({ success: true, signedIn: true, verificationRequired: false, user: publicUser(user) });
+  } catch (err) {
+    if (err?.code === "EMAIL_TAKEN" || isUniqueOn(err, "users_email_lower_key")) {
+      return fail(res, 409, "EMAIL_TAKEN", "כבר יש חשבון עם האימייל הזה. אפשר להתחבר.");
+    }
+    if (isUniqueOn(err, "users_username_key")) return fail(res, 409, "USERNAME_TAKEN", AUTH_MESSAGES.usernameTaken);
+    if (err?.code === "DB_UNAVAILABLE") return sendServiceUnavailable(res);
+    console.error("register failed:", err?.code || "", err?.message);
+    return fail(res, 500, "REGISTRATION_FAILED", "לא הצלחתי ליצור את החשבון כרגע. אפשר לנסות שוב בעוד רגע.");
+  }
+}
+
 export function createAuthRouter(limits) {
   const router = Router();
 
@@ -78,8 +126,10 @@ export function createAuthRouter(limits) {
       if (!checked.ok) {
         return fail(res, 400, "VALIDATION_ERROR", checked.errors[0] || "יש לבדוק את הפרטים שמילאת ולנסות שוב.");
       }
-      if (!isEmailConfigured()) return fail(res, 503, "EMAIL_UNAVAILABLE", AUTH_MESSAGES.emailOff);
+      const verificationOff = config.emailVerificationOff;
+      if (!verificationOff && !isEmailConfigured()) return fail(res, 503, "EMAIL_UNAVAILABLE", AUTH_MESSAGES.emailOff);
       const { firstName, lastName, username, email, password } = checked.data;
+      if (verificationOff) return registerWithoutVerification(req, res, { firstName, lastName, username, email, password });
 
       try {
         const usernameTaken = await db.query(
@@ -299,7 +349,12 @@ export function createAuthRouter(limits) {
   );
 
   router.get("/me", requireAuth, (req, res) => {
-    return res.json({ success: true, user: req.user, emailDeliveryReady: isEmailConfigured() });
+    return res.json({
+      success: true,
+      user: req.user,
+      emailDeliveryReady: isEmailConfigured(),
+      emailVerificationRequired: !config.emailVerificationOff,
+    });
   });
 
   return router;

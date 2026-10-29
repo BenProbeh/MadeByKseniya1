@@ -200,7 +200,7 @@ function RequestSent({ appointment, label, email }) {
 }
 
 export default function Booking() {
-  const { user } = useAuth();
+  const { user, emailVerificationRequired } = useAuth();
   const location = useLocation();
   const initialNotes = location.state?.prefillNotes ?? "";
   const skipServiceSelect = Boolean(location.state?.skipServiceSelect);
@@ -221,7 +221,8 @@ export default function Booking() {
     phone: user?.phone || "",
     notes: initialNotes || "",
   }));
-  const emailReady = Boolean(user?.emailVerified);
+  // While email verification is switched off on the server, booking doesn't wait for a verified address.
+  const emailReady = Boolean(user?.emailVerified) || !emailVerificationRequired;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState("");
@@ -529,14 +530,14 @@ export default function Booking() {
                 maxLength={500}
               />
               <p className="t-foot">התור נקבע אחרי שאאשר את הבקשה.</p>
-              {emailReady ? (
+              {emailReady && user?.emailVerified ? (
                 <p className="t-foot">
                   עדכונים על התור יגיעו למייל{" "}
                   <bdi dir="ltr" className="text-white/70 break-all">
                     {user.email}
                   </bdi>
                 </p>
-              ) : (
+              ) : emailReady ? null : (
                 <p className="notice-warning" role="alert">
                   <span>
                     {EMAIL_NOT_VERIFIED_TEXT}{" "}
