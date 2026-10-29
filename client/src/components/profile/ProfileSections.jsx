@@ -99,8 +99,8 @@ export function AppointmentItem({ appointment: a, onUpdated }) {
         <div className="flex items-baseline justify-between gap-3">
           <p className="t-headline truncate">{a.serviceLabel || "תור"}</p>
           {a.priceIls != null && (
-            <p className="t-sub shrink-0">
-              <span className="tnum">{a.priceIls}</span> ₪
+            <p className="price text-lg leading-none shrink-0">
+              {a.priceIls} ₪
             </p>
           )}
         </div>

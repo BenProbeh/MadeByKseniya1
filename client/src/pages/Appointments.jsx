@@ -36,7 +36,9 @@ export default function Appointments() {
   return (
     <div className="max-w-2xl mx-auto space-y-7 pt-2">
       <PageHeader
-        title="התורים שלי"
+        eyebrow="Appointments"
+        title="התורים"
+        accent="שלי"
         action={
           <Link to="/booking" className="btn-violet btn-sm gap-1.5">
             <Plus size={18} strokeWidth={2.2} aria-hidden="true" />

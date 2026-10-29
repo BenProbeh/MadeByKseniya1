@@ -52,9 +52,9 @@ function DayStrip({ selected, onSelect, onMore }) {
             aria-selected={Boolean(on)}
             onClick={() => onSelect(day)}
             className={`flex flex-col items-center justify-center w-[3.75rem] h-[4.75rem] rounded-control border transition-colors ${
-              on ? "border-violet-400 bg-violet-400 text-white" : "border-white/[0.12] bg-white/[0.03] text-white/80 active:bg-white/[0.08]"
+              on ? "border-transparent bg-violet-gradient shadow-glow" : "border-white/[0.12] bg-white/[0.03] text-white/80 active:bg-white/[0.08]"
             }`}
-            style={on ? { color: "#fff" } : undefined}
+            style={on ? { color: "#000" } : undefined}
           >
             <span className={`text-cap ${on ? "" : "text-white/50"}`}>{i === 0 ? "היום" : i === 1 ? "מחר" : format(day, "EEEEEE", { locale: he })}</span>
             <span className="font-display text-title tnum leading-none mt-1">{format(day, "d")}</span>
@@ -66,7 +66,7 @@ function DayStrip({ selected, onSelect, onMore }) {
         type="button"
         onClick={onMore}
         className={`flex flex-col items-center justify-center gap-1 w-[4.25rem] h-[4.75rem] rounded-control border border-dashed text-cap ${
-          selectedOutside ? "border-violet-400 text-white bg-violet-400/15" : "border-white/20 text-white/60"
+          selectedOutside ? "border-violet-400 text-white bg-violet-400/15 shadow-glow-soft" : "border-white/20 text-white/60"
         }`}
       >
         <CalendarSearch size={20} strokeWidth={1.8} aria-hidden="true" />
@@ -95,9 +95,9 @@ function SlotButton({ slot, selected, onSelect }) {
       aria-pressed={selected}
       aria-label={`${slot.time} — ${SLOT_STATE_TEXT.free}`}
       className={`${base} text-body ${
-        selected ? "border-violet-400 bg-violet-400 font-bold" : "border-white/[0.14] bg-white/[0.03] text-white/85 active:bg-white/[0.08]"
+        selected ? "border-transparent bg-violet-gradient font-bold shadow-glow" : "border-white/[0.14] bg-white/[0.03] text-white/85 active:bg-white/[0.08]"
       }`}
-      style={selected ? { color: "#fff" } : undefined}
+      style={selected ? { color: "#000" } : undefined}
     >
       {slot.time}
     </button>
@@ -128,8 +128,10 @@ function Step({ n, title, children, done }) {
     <section className="space-y-3" aria-label={title}>
       <h2 className="flex items-center gap-2.5 t-headline">
         <span
-          className={`grid place-items-center w-6 h-6 rounded-full text-cap font-bold tnum ${done ? "bg-violet-400" : "bg-white/10 text-white/70"}`}
-          style={done ? { color: "#fff" } : undefined}
+          className={`grid place-items-center w-6 h-6 rounded-full text-cap font-bold tnum transition-shadow duration-300 ${
+            done ? "bg-violet-gradient shadow-glow-soft" : "border border-violet-400/40 bg-violet-400/10 text-violet-200"
+          }`}
+          style={done ? { color: "#000" } : undefined}
           aria-hidden="true"
         >
           {done ? <Check size={14} strokeWidth={3} /> : n}
@@ -144,10 +146,13 @@ function Step({ n, title, children, done }) {
 function RequestSent({ appointment, label, email }) {
   return (
     <div className="max-w-md mx-auto pt-6 space-y-6 text-center" role="status" aria-live="polite">
-      <span className="mx-auto grid place-items-center w-16 h-16 rounded-full bg-violet-400/15 text-violet-200" aria-hidden="true">
-        <CalendarDays size={30} strokeWidth={1.7} />
+      <span className="auth-stage mx-auto grid place-items-center w-16 h-16 rounded-full bg-violet-gradient shadow-glow" style={{ color: "#000" }} aria-hidden="true">
+        <CalendarDays size={30} strokeWidth={1.9} />
       </span>
-      <AppointmentStatusBadge status="pending" />
+      <span className="section-eyebrow">Requested</span>
+      <div>
+        <AppointmentStatusBadge status="pending" />
+      </div>
       <div className="space-y-3">
         <h1 className="t-title leading-snug">קיבלתי את הפרטים שלך, מיד אעבור עליהם ואשתדל לאשר את התור. נתראה!</h1>
         <p className="t-sub">
@@ -397,7 +402,7 @@ export default function Booking() {
 
   return (
     <form onSubmit={handleSubmit} className="max-w-xl mx-auto space-y-8 pt-2" noValidate>
-      <PageHeader title="קביעת תור" subtitle="בוחרות יום ושעה, ואני מאשרת את הבקשה בהקדם." />
+      <PageHeader eyebrow="Booking" title="קביעת" accent="תור" subtitle="בוחרות יום ושעה, ואני מאשרת את הבקשה בהקדם." />
 
       {servicesError && (
         <div className="notice-warning justify-between items-center">
@@ -409,14 +414,16 @@ export default function Booking() {
       )}
 
       {skipServiceSelect && packageLabel ? (
-        <div className="card p-4 flex items-center justify-between gap-3">
+        <div className="marquee-frame rounded-card shadow-glow-soft">
+          <div className="marquee-frame__inner p-4 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="t-foot">המסלול שבחרת</p>
-            <p className="t-headline truncate">{packageLabel}</p>
+            <p className="marquee text-[1.35rem] leading-tight mt-1 truncate">{packageLabel}</p>
           </div>
           <Link to="/services" className="btn-text shrink-0">
             החלפה
           </Link>
+          </div>
         </div>
       ) : (
         <Step n={++n} title="טיפול" done={Boolean(serviceId)}>
@@ -436,7 +443,7 @@ export default function Booking() {
                     className="list-row"
                   >
                     <span
-                      className={`grid place-items-center w-5 h-5 rounded-full border-2 shrink-0 ${on ? "border-violet-400 bg-violet-400" : "border-white/30"}`}
+                      className={`grid place-items-center w-5 h-5 rounded-full border-2 shrink-0 ${on ? "border-violet-400 bg-violet-400 shadow-glow-soft" : "border-white/30"}`}
                       aria-hidden="true"
                     >
                       {on && <span className="w-2 h-2 rounded-full bg-white" />}
@@ -445,7 +452,7 @@ export default function Booking() {
                       <span className="block text-body text-white">{s.name_he}</span>
                       <span className="block t-foot tnum">{s.duration_min} דק׳</span>
                     </span>
-                    <span className="font-display text-headline tnum shrink-0">{s.price_ils} ₪</span>
+                    <span className="price text-xl leading-none shrink-0">{s.price_ils} ₪</span>
                   </button>
                 );
               })}

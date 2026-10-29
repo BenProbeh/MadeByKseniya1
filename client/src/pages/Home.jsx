@@ -184,7 +184,7 @@ export default function Home() {
       <header className="space-y-2">
         <span className="section-eyebrow">Today</span>
         <p className="t-sub">{greeting(user?.firstName)}</p>
-        <h1 className="font-prose text-[2.25rem] leading-tight md:text-5xl">
+        <h1 className="text-[2.25rem] leading-tight md:text-5xl">
           מה <span className="violet-text">עושות</span> היום?
         </h1>
       </header>
