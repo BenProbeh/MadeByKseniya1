@@ -188,10 +188,16 @@ export function AppointmentsSection({
   );
 }
 
-export function MeasurementsSection({ measurement, error, title = "המידות שלי", showActions = true }) {
+/** Optional Neon Marquee label above a section title (the profile uses it; staff screens don't). */
+function Eyebrow({ text }) {
+  return text ? <span className="section-eyebrow px-1">{text}</span> : null;
+}
+
+export function MeasurementsSection({ measurement, error, title = "המידות שלי", showActions = true, eyebrow }) {
   const fingers = measurement ? measuredFingers(measurement) : [];
   return (
     <section className="space-y-2" aria-label={title} id="measurements">
+      <Eyebrow text={eyebrow} />
       <div className="flex items-baseline justify-between px-1">
         <h2 className="t-title">{title}</h2>
         {showActions && measurement && (
@@ -229,8 +235,8 @@ export function MeasurementsSection({ measurement, error, title = "המידות 
                 <p className="t-foot">{hand.labelHe}</p>
                 <ul className="grid grid-cols-5 gap-2">
                   {row.map((f) => (
-                    <li key={f.fingerId} className="rounded-control bg-white/[0.04] px-1 py-2.5 text-center">
-                      <span className="block font-display text-title text-white tnum">{f.size ?? "—"}</span>
+                    <li key={f.fingerId} className={`rounded-control border px-1 py-2.5 text-center ${f.size != null ? "border-violet-400/25 bg-violet-400/[0.06]" : "border-white/[0.06] bg-white/[0.04]"}`}>
+                      <span className="block marquee text-[1.625rem] leading-none tnum">{f.size ?? "—"}</span>
                       <span className="block text-cap text-white/50 mt-0.5 truncate">{f.shortHe}</span>
                       {f.widthMm != null && (
                         <span className="block text-cap text-white/35 tnum" dir="ltr">
@@ -253,9 +259,10 @@ export function MeasurementsSection({ measurement, error, title = "המידות 
   );
 }
 
-export function OrdersSection({ orders, error, title = "הרכישות שלי" }) {
+export function OrdersSection({ orders, error, title = "הרכישות שלי", eyebrow }) {
   return (
     <section className="space-y-2" aria-label={title}>
+      <Eyebrow text={eyebrow} />
       <h2 className="t-title px-1">{title}</h2>
       {orders === undefined && <ListSkeleton rows={1} />}
       {error && <p className="notice-warning">{error}</p>}
@@ -282,7 +289,7 @@ export function OrdersSection({ orders, error, title = "הרכישות שלי" }
                   {formatDate(o.createdAt)} · {o.statusHe}
                 </p>
               </div>
-              <p className="font-display text-headline text-white tnum shrink-0">{formatMoney(o.totalAmount, o.currency)}</p>
+              <p className="price text-lg leading-none shrink-0">{formatMoney(o.totalAmount, o.currency)}</p>
             </li>
           ))}
         </ul>
@@ -291,10 +298,11 @@ export function OrdersSection({ orders, error, title = "הרכישות שלי" }
   );
 }
 
-export function ShipmentsSection({ shipments, error, title = "משלוחים" }) {
+export function ShipmentsSection({ shipments, error, title = "משלוחים", eyebrow }) {
   if (shipments && shipments.length === 0 && !error) return null;
   return (
     <section className="space-y-2" aria-label={title}>
+      <Eyebrow text={eyebrow} />
       <h2 className="t-title px-1">{title}</h2>
       {shipments === undefined && <ListSkeleton rows={1} />}
       {error && <p className="notice-warning">{error}</p>}

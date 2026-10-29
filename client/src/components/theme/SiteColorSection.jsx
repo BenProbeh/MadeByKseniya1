@@ -102,6 +102,7 @@ function SiteColorPicker() {
 
   return (
     <section className="space-y-2" aria-labelledby="site-color-title">
+      <span className="section-eyebrow px-1">Colour</span>
       <h2 id="site-color-title" className="t-title px-1">
         צבע האפליקציה
       </h2>
@@ -118,7 +119,7 @@ function SiteColorPicker() {
             aria-checked={!activeColor}
             aria-label="ברירת המחדל: שחור"
             onClick={() => void resetToDefault()}
-            className="relative w-11 h-11 rounded-full ring-1 ring-white/20 bg-black grid place-items-center"
+            className={`relative w-11 h-11 rounded-full bg-black grid place-items-center transition-shadow duration-300 ${!activeColor ? "ring-2 ring-violet-400 shadow-glow" : "ring-1 ring-white/20"}`}
           >
             {!activeColor && <Check size={18} strokeWidth={3} style={{ color: "#fff" }} aria-hidden="true" />}
           </button>
@@ -138,7 +139,7 @@ function SiteColorPicker() {
                   sentRef.current = w.hex;
                   commitColor(w.hex);
                 }}
-                className="relative w-11 h-11 rounded-full ring-1 ring-white/20 grid place-items-center"
+                className={`relative w-11 h-11 rounded-full grid place-items-center transition-shadow duration-300 ${on ? "ring-2 ring-violet-400 shadow-glow" : "ring-1 ring-white/20"}`}
                 style={{ backgroundColor: w.hex }}
               >
                 {on && <Check size={18} strokeWidth={3} style={{ color: hexToHsv(w.hex).v > 0.6 ? "#000" : "#fff" }} aria-hidden="true" />}
@@ -152,7 +153,7 @@ function SiteColorPicker() {
             aria-expanded={wheelOpen}
             aria-label="צבע חופשי"
             onClick={() => setWheelOpen((v) => !v)}
-            className="relative w-11 h-11 rounded-full grid place-items-center"
+            className={`relative w-11 h-11 rounded-full grid place-items-center transition-shadow duration-300 ${activeColor && !isSwatch ? "ring-2 ring-violet-400 shadow-glow" : ""}`}
             style={{ background: "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)" }}
           >
             <span className="grid place-items-center w-7 h-7 rounded-full bg-black/70">

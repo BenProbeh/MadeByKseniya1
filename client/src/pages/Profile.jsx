@@ -251,20 +251,33 @@ export default function Profile() {
   return (
     <div className="max-w-2xl mx-auto space-y-8 pt-2">
       <header className="flex flex-col items-center text-center gap-3">
+        <span className="section-eyebrow">Profile</span>
         <button
           type="button"
           onClick={() => setSheet("photo")}
           disabled={avatarBusy}
-          className="relative rounded-full"
+          className="relative rounded-full mt-1"
           aria-label={user?.avatarUrl ? "החלפת תמונת הפרופיל" : "הוספת תמונת פרופיל"}
         >
-          <UserAvatar user={user} className="h-24 w-24 text-3xl" />
-          <span className="absolute -bottom-0.5 -end-0.5 grid place-items-center w-8 h-8 rounded-full bg-oled-700 border-2 border-[rgb(var(--oled-950))] text-white">
+          <span className="marquee-frame block rounded-full shadow-glow" style={{ padding: "2.5px" }}>
+            <span className="relative block rounded-full bg-[rgb(var(--oled-950))] p-[3px]">
+              <UserAvatar user={user} className="h-24 w-24 text-3xl" />
+            </span>
+          </span>
+          <span className="absolute bottom-0.5 end-0.5 grid place-items-center w-8 h-8 rounded-full bg-violet-gradient border-2 border-[rgb(var(--oled-950))]" style={{ color: "#000" }}>
             {avatarBusy ? <span className="spinner w-4 h-4" /> : <Camera size={15} aria-hidden="true" />}
           </span>
         </button>
         <div>
-          <h1 className="t-large-title">{fullName || user?.username}</h1>
+          <h1 className="t-large-title">
+            {user?.firstName && user?.lastName ? (
+              <>
+                {user.firstName} <span className="violet-text">{user.lastName}</span>
+              </>
+            ) : (
+              fullName || user?.username
+            )}
+          </h1>
           <p className="t-sub mt-0.5">
             {user?.email && (
               <bdi dir="ltr" className="break-all">
@@ -288,13 +301,14 @@ export default function Profile() {
         </div>
       )}
 
-      <MeasurementsSection measurement={measurement} error={measError} />
-      <OrdersSection orders={orders} error={ordersError} />
-      <ShipmentsSection shipments={shipments} error={shipsError} />
+      <MeasurementsSection measurement={measurement} error={measError} eyebrow="Sizes" />
+      <OrdersSection orders={orders} error={ordersError} eyebrow="Orders" />
+      <ShipmentsSection shipments={shipments} error={shipsError} eyebrow="Shipping" />
 
       <SiteColorSection />
 
       <section className="space-y-2" aria-labelledby="account-title">
+        <span className="section-eyebrow px-1">Account</span>
         <h2 id="account-title" className="t-title px-1">
           החשבון
         </h2>
@@ -303,7 +317,7 @@ export default function Profile() {
             to="/account/email"
             icon={Mail}
             title="אימייל"
-            detail={user?.emailVerified ? user.email : "עוד לא אומת — נדרש לקביעת תור"}
+            detail={user?.emailVerified ? <bdi dir="ltr">{user.email}</bdi> : "עוד לא אומת — נדרש לקביעת תור"}
           />
           <SettingsRow icon={Phone} title="טלפון" detail={user?.phone || "לא חובה"} onClick={() => setSheet("phone")} />
           <SettingsRow icon={KeyRound} title="שינוי סיסמה" onClick={() => setSheet("password")} />
