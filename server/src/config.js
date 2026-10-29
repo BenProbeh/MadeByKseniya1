@@ -1,4 +1,8 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+
+// `node --test` never reads the developer's server/.env: a local DATABASE_URL or mail setting can't leak into tests.
+export const isTestRun = Boolean(process.env.NODE_TEST_CONTEXT);
+if (!isTestRun) dotenv.config();
 
 /**
  * Single place where the server reads environment variables.
@@ -36,8 +40,13 @@ export const config = {
   get frontendOrigins() {
     return originList("FRONTEND_URL", "CORS_ORIGINS");
   },
+  /** Express "trust proxy": a hop count, false/0 to trust nothing, or a named setting like "loopback". */
   get trustProxy() {
-    return Number(read("TRUST_PROXY")) || 1;
+    const raw = read("TRUST_PROXY");
+    if (!raw) return 1;
+    if (/^(false|no)$/i.test(raw)) return false;
+    const n = Number(raw);
+    return Number.isInteger(n) && n >= 0 ? n : raw;
   },
   /**
    * Browsers reach the API same-site through the Vercel /api proxy, so "lax" works

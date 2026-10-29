@@ -162,14 +162,25 @@ export function cookieOptions(rememberMe, maxAgeMs) {
   return opts;
 }
 
+/**
+ * Sign-up no longer asks for a username: one is derived from the email (letters/digits before the @ plus a short
+ * random tag), so it stays unique and still works for staff search and older username sign-ins.
+ */
+export function usernameFromEmail(email) {
+  const local = String(email || "").split("@")[0].toLowerCase().replace(/[^a-z0-9._-]/g, "").replace(/^[._-]+|[._-]+$/g, "");
+  const base = (local.length >= 3 ? local : `user${local}`).slice(0, 30);
+  return `${base}-${crypto.randomBytes(3).toString("hex")}`;
+}
+
 export function validateRegisterInput(body) {
   const errors = [];
   const firstName = String(body?.firstName || "").trim();
   const lastName = String(body?.lastName || "").trim();
-  const username = normalizeUsername(body?.username);
-  const password = String(body?.password || "");
-  const confirmPassword = String(body?.confirmPassword || "");
   const email = normalizeEmail(body?.email);
+  const username = body?.username ? normalizeUsername(body.username) : email.ok ? usernameFromEmail(email.email) : "";
+  const password = String(body?.password || "");
+  // Optional: the app shows the password instead of asking for it twice.
+  const confirmPassword = body?.confirmPassword == null ? password : String(body.confirmPassword);
 
   if (!firstName || firstName.length < 2) errors.push("יש להזין שם פרטי.");
   if (firstName.length > 60) errors.push("שם פרטי ארוך מדי.");
@@ -182,7 +193,7 @@ export function validateRegisterInput(body) {
   }
   if (!email.ok) errors.push(email.error);
   if (password.length < 8) errors.push("הסיסמה חייבת להכיל לפחות 8 תווים.");
-  if (password.length > 128) errors.push("הסיסמה ארוכה מדי.");
+  if (password.length > 128 || Buffer.byteLength(password, "utf8") > 72) errors.push("הסיסמה ארוכה מדי.");
   if (password !== confirmPassword) errors.push("אימות הסיסמה אינו תואם.");
 
   return {

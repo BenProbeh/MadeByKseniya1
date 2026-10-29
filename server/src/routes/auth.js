@@ -92,6 +92,8 @@ export function createAuthRouter(limits) {
         const limited = limits.takeSend(CODE_PURPOSES.VERIFY_EMAIL, email);
         if (limited) return fail(res, limited.status, limited.code, limited.message, { retryAfterSeconds: limited.retryAfterSeconds });
 
+        // Hash before branching so the response time doesn't reveal whether the address is registered.
+        const passwordHash = await hashPassword(password);
         const existing = await findUserByEmail(email);
         if (existing && (existing.account_status === "active" || existing.deleted_at)) {
           // Same answer as a fresh sign-up; the address's owner is told by email instead.
@@ -99,7 +101,6 @@ export function createAuthRouter(limits) {
           return res.status(202).json(pendingResponse(email));
         }
 
-        const passwordHash = await hashPassword(password);
         const user = await transaction(async (tx) => {
           if (existing) {
             // An unverified sign-up with this address is replaced: only the address's owner can ever activate it.

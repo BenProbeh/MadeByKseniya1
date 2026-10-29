@@ -400,6 +400,7 @@ function mapForCustomer(row) {
     approvedAt: toIso(row.approved_at),
     customerConfirmedAt: toIso(row.customer_confirmed_at),
     canConfirm: row.status === "manager_approved" && isFuture(row),
+    canCancel: CUSTOMER_CANCELLABLE.includes(row.status) && isFuture(row),
   };
 }
 
@@ -407,7 +408,7 @@ function mapForCustomer(row) {
 function mapForStaff(row, emailStatus = {}) {
   const nameFromAccount = `${row.user_first_name || ""} ${row.user_last_name || ""}`.trim();
   const status = row.status;
-  const { canConfirm: _customerOnly, ...base } = mapForCustomer(row);
+  const { canConfirm: _customerOnly, canCancel: _customerCancel, ...base } = mapForCustomer(row);
   return {
     ...base,
     startsAt: toIso(row.starts_at),
@@ -631,6 +632,42 @@ export async function confirmAppointmentForUser(id, userId, { now = new Date() }
   const apptId = Number(id);
   if (!Number.isInteger(apptId) || apptId <= 0) return { ok: false, reason: "invalid" };
   return confirmByCustomer(apptId, (appt) => appt.user_id === userId, "profile", now);
+}
+
+/** Statuses a customer may withdraw herself (before the appointment starts). */
+const CUSTOMER_CANCELLABLE = Object.freeze(["pending", "manager_approved", "confirmed"]);
+
+/**
+ * The customer withdraws her own request or booking. Frees the slot at once; staff see it in the list and
+ * the audit log. Returns { ok: true, appointment } or { ok: false, reason: "invalid" | "unavailable" | "expired" }.
+ */
+export async function cancelAppointmentForUser(id, userId, { now = new Date() } = {}) {
+  const apptId = Number(id);
+  if (!Number.isInteger(apptId) || apptId <= 0) return { ok: false, reason: "invalid" };
+  const result = await transaction(async (tx) => {
+    const current = await tx.query(`SELECT * FROM appointments WHERE id = $1 FOR UPDATE`, [apptId]);
+    const appt = current.rows[0];
+    if (!appt || appt.user_id !== userId) return { ok: false, reason: "invalid" };
+    if (!CUSTOMER_CANCELLABLE.includes(appt.status)) return { ok: false, reason: "unavailable" };
+    if (appt.starts_at && new Date(appt.starts_at) <= now) return { ok: false, reason: "expired" };
+    await tx.query(
+      `UPDATE appointments SET status = 'cancelled', status_changed_at = now(), status_changed_by = $2,
+              confirmation_token_hash = NULL, confirmation_token_expires_at = NULL
+        WHERE id = $1 AND status = $3`,
+      [apptId, userId, appt.status]
+    );
+    await recordAudit(tx, {
+      actorUserId: userId,
+      action: "appointment_cancelled_by_customer",
+      targetUserId: userId,
+      details: { appointmentId: apptId, from: appt.status, date: appt.date, time: appt.time },
+    });
+    await markAppointmentNotificationsRead(tx, apptId, userId);
+    return { ok: true, row: { ...appt, status: "cancelled" } };
+  });
+  if (!result.ok) return result;
+  await refreshScoresForAppointment(db, result.row);
+  return { ok: true, appointment: await getAppointmentForCustomer(apptId) };
 }
 
 const RESEND_KIND_BY_STATUS = Object.freeze({

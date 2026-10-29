@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { config } from "./config.js";
+import { config, isTestRun } from "./config.js";
 import { runMigrations } from "./migrations.js";
 import { ensureOwner } from "./roles.js";
 
@@ -84,7 +84,11 @@ async function createEmbeddedBackend() {
 }
 
 async function createBackend() {
-  if (config.databaseUrl) return createPostgresBackend(config.databaseUrl);
+  if (config.databaseUrl) {
+    // Tests run only against an in-process database; never a real server, let alone production.
+    if (isTestRun) throw new Error("Refusing to run tests against DATABASE_URL - tests use the embedded database only");
+    return createPostgresBackend(config.databaseUrl);
+  }
   if (config.isProduction) {
     const err = new Error("DATABASE_URL is not set");
     err.code = "DATABASE_URL_MISSING";

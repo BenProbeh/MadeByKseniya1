@@ -47,7 +47,7 @@ const stateCookieOptions = () => ({
 
 function backToProfile(res, result) {
   const outcome = CALLBACK_RESULTS.has(result) ? result : "failed";
-  return res.redirect(303, `${config.appPublicUrl || ""}/profile?mail=${outcome}`);
+  return res.redirect(303, `${config.appPublicUrl || ""}/admin/more?mail=${outcome}`);
 }
 
 const testLimiter = rateLimit({

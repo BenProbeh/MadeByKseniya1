@@ -30,6 +30,41 @@ export function createApp() {
 
   // Vercel proxy → Railway edge is two hops; set TRUST_PROXY=2 there so rate limits see the real client IP.
   app.set("trust proxy", config.trustProxy);
+  app.disable("x-powered-by");
+
+  app.use((_req, res, next) => {
+    res.set("X-Content-Type-Options", "nosniff");
+    res.set("X-Frame-Options", "DENY");
+    res.set("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.set("Cross-Origin-Resource-Policy", "same-site");
+    if (isProd) res.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    next();
+  });
+
+  // CSRF: a state-changing request that names a foreign Origin is refused. Browsers always send Origin on
+  // cross-site POST/PATCH/DELETE; same-site calls (through the Vercel proxy) carry the site's own origin.
+  const publicOrigin = (() => {
+    try {
+      return config.appPublicUrl ? new URL(config.appPublicUrl).origin : "";
+    } catch {
+      return "";
+    }
+  })();
+  app.use("/api", (req, res, next) => {
+    if (["GET", "HEAD", "OPTIONS"].includes(req.method) || req.path.startsWith("/webhooks/")) return next();
+    const origin = req.get("origin");
+    if (!origin || (origin === "null" && !isProd)) return next();
+    if (allowedOrigins.includes(origin) || origin === publicOrigin) return next();
+    if (!isProd && LOCAL_ORIGIN_RE.test(origin)) return next();
+    const forwardedHost = String(req.get("x-forwarded-host") || req.get("host") || "").split(",")[0].trim();
+    try {
+      if (forwardedHost && new URL(origin).host === forwardedHost) return next();
+    } catch {
+      /* malformed origin */
+    }
+    console.warn(`[security] blocked ${req.method} ${req.path} from origin ${origin.slice(0, 80)}`);
+    return res.status(403).json({ success: false, code: "ORIGIN_REJECTED", error: "הבקשה נחסמה." });
+  });
 
   app.use(
     cors({

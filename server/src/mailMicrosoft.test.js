@@ -224,7 +224,7 @@ describe("Outlook sending through Microsoft Graph (PostgreSQL)", () => {
 
     const callback = await request(server, { path: "/api/mail/microsoft/callback?code=good-code&state=x", cookies: [customer.cookie] });
     assert.equal(callback.status, 303);
-    assert.match(callback.headers.location, /\/profile\?mail=signin_required$/);
+    assert.match(callback.headers.location, /\/admin\/more\?mail=signin_required$/);
   });
 
   it("the connect link asks Microsoft for Mail.Send + offline access with PKCE and a state cookie", async () => {
@@ -275,7 +275,7 @@ describe("Outlook sending through Microsoft Graph (PostgreSQL)", () => {
   it("connecting stores only an encrypted refresh token and proves PKCE", async () => {
     const { location, callback } = await connect();
     assert.equal(callback.status, 303);
-    assert.equal(callback.headers.location, "https://made-by-kseniya.example/profile?mail=connected");
+    assert.equal(callback.headers.location, "https://made-by-kseniya.example/admin/more?mail=connected");
     assert.match(cookieNamed(callback.setCookie, "mbk_ms_oauth"), /Expires=Thu, 01 Jan 1970/, "the state cookie is cleared");
 
     const challenge = crypto.createHash("sha256").update(fake.lastVerifier).digest("base64url");

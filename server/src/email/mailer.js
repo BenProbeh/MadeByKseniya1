@@ -26,10 +26,14 @@ function senderAddress() {
 
 const senderName = () => brandSenderName(config.resendFromName);
 
-/** The provider chosen in Railway, whether or not it is ready: "microsoft" | "resend" | "memory" | "off". */
+/**
+ * The provider chosen in Railway, whether or not it is ready: "microsoft" | "resend" | "memory" | "console" | "off".
+ * "console" is local development only: the message (with its code) is printed to the server log and the app
+ * says plainly that nothing was emailed. Production never accepts it.
+ */
 export function selectedEmailProvider() {
   const chosen = config.emailProvider;
-  if (chosen === "memory") return config.isProduction ? "off" : "memory";
+  if (chosen === "memory" || chosen === "console") return config.isProduction ? "off" : chosen;
   if (chosen === "off" || chosen === "microsoft") return chosen;
   return "resend";
 }
@@ -59,10 +63,12 @@ export function emailSettings() {
 function setupIssues() {
   const selected = selectedEmailProvider();
   if (selected === "off") {
-    const why = config.emailProvider === "memory" ? "MAIL_PROVIDER=memory is for tests only" : "MAIL_PROVIDER is set to off";
+    const why = ["memory", "console"].includes(config.emailProvider)
+      ? `MAIL_PROVIDER=${config.emailProvider} is for development only`
+      : "MAIL_PROVIDER is set to off";
     return { problems: [why], warnings: [] };
   }
-  if (selected === "memory") return { problems: [], warnings: [] };
+  if (selected === "memory" || selected === "console") return { problems: [], warnings: [] };
   if (selected === "microsoft") return { problems: microsoftSettings().problems, warnings: [] };
   const { problems, warnings } = emailSettings();
   return { problems, warnings };
@@ -157,6 +163,16 @@ async function deliver(provider, message, idempotencyKey) {
   if (provider === "memory") {
     emailTestOutbox.push({ ...message, idempotencyKey, at: Date.now() });
     return { id: `memory-${emailTestOutbox.length}` };
+  }
+  if (provider === "console") {
+    // Development only (never selected in production): show the email where the developer can read it.
+    console.log(`
+[email:dev] NOT SENT - development mode
+  to: ${message.to}
+  subject: ${message.subject}
+${String(message.text || "").replace(/^/gm, "  | ")}
+`);
+    return { id: `console-${Date.now()}` };
   }
   if (provider === "microsoft") return sendViaMicrosoft(message);
   const client = getResendClient();

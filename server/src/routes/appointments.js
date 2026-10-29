@@ -1,6 +1,7 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import {
+  cancelAppointmentForUser,
   changeAppointmentStatus,
   confirmAppointmentByToken,
   confirmAppointmentForUser,
@@ -139,6 +140,25 @@ router.post(
   confirmLimiter,
   asyncRoute(async (req, res) => {
     return sendConfirmResult(res, await confirmAppointmentForUser(req.params.id, req.user.id));
+  })
+);
+
+const CANCEL_FAILURES = Object.freeze({
+  invalid: [404, "NOT_FOUND", "התור לא נמצא."],
+  unavailable: [409, "CANCEL_UNAVAILABLE", "התור הזה כבר לא פעיל."],
+  expired: [409, "IN_PAST", "מועד התור כבר עבר. אם משהו השתנה, כתבי לי ואסדר."],
+});
+
+/** The customer withdraws her own request or upcoming booking. */
+router.post(
+  "/:id/cancel",
+  requireAuth,
+  confirmLimiter,
+  asyncRoute(async (req, res) => {
+    const result = await cancelAppointmentForUser(req.params.id, req.user.id);
+    if (result.ok) return res.json({ success: true, appointment: result.appointment });
+    const [status, code, message] = CANCEL_FAILURES[result.reason] || CANCEL_FAILURES.invalid;
+    return reply(res, status, code, message);
   })
 );
 

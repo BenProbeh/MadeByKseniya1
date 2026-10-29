@@ -2,7 +2,7 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import db from "../db.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
-import { findUserByEmail, publicUser } from "../auth.js";
+import { findUserByEmail, publicUser, verifyPassword } from "../auth.js";
 import { asyncRoute } from "../http.js";
 import { normalizeEmail } from "../emailAddress.js";
 import { CODE_PURPOSES, CODE_TTL_MINUTES, RESEND_COOLDOWN_SECONDS, isCodeFormat } from "../emailCodes.js";
@@ -42,6 +42,15 @@ export function createProfileEmailRouter(limits) {
       if (!isEmailConfigured()) return fail(res, 503, "EMAIL_UNAVAILABLE", "שליחת המיילים לא זמינה כרגע. אפשר לנסות שוב בעוד כמה דקות.");
       if (req.user.emailVerified && req.user.email === email.email) {
         return fail(res, 400, "SAME_EMAIL", "זו כבר כתובת האימייל המאומתת שלך.");
+      }
+
+      // Replacing a verified address hands over password recovery, so it needs the current password.
+      if (req.user.emailVerified) {
+        const password = typeof req.body?.currentPassword === "string" ? req.body.currentPassword : "";
+        const { rows } = await db.query(`SELECT password_hash FROM users WHERE id = $1`, [req.user.id]);
+        if (!password || !rows[0] || !(await verifyPassword(password, rows[0].password_hash))) {
+          return fail(res, 403, "PASSWORD_REQUIRED", "כדי להחליף כתובת צריך להקליד את הסיסמה הנוכחית.");
+        }
       }
 
       const limited = limits.takeSend(CODE_PURPOSES.VERIFY_EMAIL, email.email);

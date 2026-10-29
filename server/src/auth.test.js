@@ -226,16 +226,13 @@ describe("auth + profile API (PostgreSQL)", () => {
     assert.equal(meas.json.measurement.hands.right.fingers[0].size, 3);
     assert.equal(meas.json.measurement.hands.right.fingers[0].widthMm, 12.4);
 
-    const byPhone = await request(server, {
-      path: "/api/measurements/profile?phone=0501234567",
-      cookies: [cookie],
-    });
-    assert.equal(byPhone.status, 200);
-    assert.equal(byPhone.json.fingers.length, 1);
+    const mine = await request(server, { path: "/api/measurements/profile", cookies: [cookie] });
+    assert.equal(mine.status, 200);
+    assert.equal(mine.json.fingers.length, 1);
 
     const link = await request(server, { path: `/api/measurements/link/${save.json.linkToken}` });
     assert.equal(link.status, 200);
-    assert.equal(link.json.profileId, save.json.id);
+    assert.equal(link.json.profileId, undefined);
 
     const orders = await request(server, { path: "/api/profile/orders", cookies: [cookie] });
     assert.equal(orders.status, 200);

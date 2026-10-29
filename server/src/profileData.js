@@ -21,7 +21,7 @@ const ORDER_STATUS_HE = {
 
 const FINGER_LABELS = {
   thumb: "אגודל",
-  index: "אצבע",
+  index: "אצבע מורה",
   middle: "אמה",
   ring: "קמיצה",
   pinky: "זרת",
