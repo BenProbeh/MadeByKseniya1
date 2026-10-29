@@ -13,7 +13,7 @@ import { chromium, devices } from "@playwright/test";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const outRoot = path.resolve(here, "../../docs/design-audit");
-const API = "http://127.0.0.1:4000";
+const API = process.env.AUDIT_API || "http://127.0.0.1:4000";
 const targets = process.argv.slice(2).map((a) => a.split("="));
 const SCREENS = [
   ["01-login", "/login", false],
@@ -36,6 +36,15 @@ async function code(email) {
     await new Promise((r) => setTimeout(r, 150));
   }
   throw new Error("no code");
+}
+
+// Safety: only ever run against the isolated test API (its mail mode is "memory"; dev and production never are).
+for (const [, base] of targets) {
+  const h = await (await fetch(`${base}/api/health`)).json().catch(() => ({}));
+  if (h.mailProvider !== "memory") {
+    console.error(`Refusing to run: ${base} is not backed by the isolated test API (mailProvider=${h.mailProvider}).`);
+    process.exit(2);
+  }
 }
 
 const browser = await chromium.launch({ channel: process.env.E2E_BROWSER_CHANNEL || "chrome" });

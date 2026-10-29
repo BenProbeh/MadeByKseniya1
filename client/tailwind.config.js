@@ -56,14 +56,22 @@ export default {
         violet: { 300: ink("violet-300") },
       },
       fontFamily: {
-        // Body, inputs, numbers and data: Heebo (clean Hebrew + Latin, real weights).
-        sans: ["Heebo", "system-ui", "-apple-system", "Arial", "sans-serif"],
-        // Brand voice: headings, buttons, tabs. Secular One covers Hebrew only; Latin and digits fall to Heebo.
-        display: ["'Secular One'", "Heebo", "system-ui", "Arial", "sans-serif"],
-        // Legacy alias: `font-serif` was the Hebrew heading font across the app.
-        serif: ["'Secular One'", "Heebo", "system-ui", "Arial", "sans-serif"],
-        // Latin brand words only (package names, wordmark).
+        // Cursor-era stacks (93b3fcb), with one deliberate fix: "MBK Neutral" (Heebo) answers only for spaces,
+        // digits and punctuation, so running text keeps normal word spacing and readable numbers.
+        // Hebrew is Secular One everywhere (index.css declares it for the Hebrew range only).
+        sans: ["'MBK Neutral'", "Sekuya", "'Secular One'", "Heebo", "Arial", "sans-serif"],
+        // Headings: Bitcount Ink for Latin (brand words light up), Secular One for Hebrew; spaces stay normal.
+        display: ["'MBK Space'", "'Bitcount Ink Variable'", "'Secular One'", "Heebo", "Arial", "sans-serif"],
+        serif: ["'MBK Space'", "'Bitcount Ink Variable'", "'Secular One'", "Heebo", "Arial", "sans-serif"],
+        // Descriptive text (as Cursor's font-serif paragraphs): Latin words lit in Bitcount Ink, digits and
+        // punctuation plain Heebo so sentences stay readable.
+        prose: ["'MBK Neutral'", "'Bitcount Ink Variable'", "'Secular One'", "Heebo", "Arial", "sans-serif"],
+        // Prices, sizes, brand names: the full dot-matrix marquee, digits included.
+        marquee: ["'Bitcount Ink Variable'", "'Secular One'", "Heebo", "sans-serif"],
+        // Latin labels (eyebrows, the wordmark).
         brand: ["Sekuya", "'Secular One'", "Heebo", "sans-serif"],
+        // Fields, emails, phone numbers: plain and legible.
+        data: ["Heebo", "system-ui", "Arial", "sans-serif"],
         neon: ["'Alex Brush'", "'Secular One'", "cursive"],
       },
       fontSize: {
@@ -79,7 +87,7 @@ export default {
       },
       borderRadius: {
         control: "0.875rem",
-        card: "1.125rem",
+        card: "0.75rem",
       },
       spacing: {
         "safe-t": "env(safe-area-inset-top)",
@@ -90,9 +98,10 @@ export default {
         content: "1440px",
       },
       boxShadow: {
-        // Brand glow: an offset, soft-blurred violet lift (not a zero-offset halo).
-        glow: "0 10px 28px -10px rgba(176, 38, 255, 0.65), 0 2px 8px -2px rgba(176, 38, 255, 0.35)",
-        "glow-lg": "0 16px 44px -12px rgba(176, 38, 255, 0.7), 0 4px 14px -4px rgba(176, 38, 255, 0.4)",
+        // Cursor-era glow, exact values.
+        glow: "0 0 30px 2px rgba(176, 38, 255, 0.5), 0 0 60px 12px rgba(176, 38, 255, 0.25)",
+        "glow-lg": "0 0 60px 6px rgba(176, 38, 255, 0.55), 0 0 130px 24px rgba(176, 38, 255, 0.3)",
+        "glow-soft": "0 0 24px 0 rgba(176, 38, 255, 0.28)",
         lift: "0 12px 32px -16px rgba(0, 0, 0, 0.9), 0 2px 6px -2px rgba(0, 0, 0, 0.6)",
         hairline: "inset 0 0 0 1px rgba(255,255,255,0.08)",
       },

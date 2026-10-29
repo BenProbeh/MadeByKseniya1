@@ -253,10 +253,10 @@ describe("brand violet never changes", () => {
     expect(colors.violet[400]).toBe(BRAND_VIOLET);
     expect(backgroundImage["violet-gradient"]).toBe(DEFAULT_VIOLET_GRADIENT);
     expect(boxShadow.glow).toContain("rgba(176, 38, 255,");
-    // The primary button is painted with fixed brand values (white on a violet gradient), never theme variables.
     const primary = css.match(/\.btn-violet,\s*\.btn-primary \{([^}]*)\}/)?.[1] || "";
-    expect(primary).toContain("color: #fff;");
-    expect(primary).toMatch(/linear-gradient\(180deg, #bc45ff 0%, #a114f5 55%, #8e00dd 100%\)/);
+    // Cursor-era primary: the fixed brand gradient with black ink — never theme variables.
+    expect(primary).toContain("color: #000;");
+    expect(primary).toContain("linear-gradient(135deg, #f5e0ff 0%, #d17dff 40%, #b026ff 70%, #7a00bf 100%)");
     expect(primary).not.toContain("var(--");
   });
 

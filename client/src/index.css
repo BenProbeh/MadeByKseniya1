@@ -18,6 +18,36 @@
   unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+25CC, U+FB1D-FB4F;
 }
 
+/*
+ * Readability fixes on top of the Cursor-era stacks. In 93b3fcb the space, digits and punctuation inside Hebrew
+ * text fell through to Sekuya / Bitcount Ink (very wide word gaps, pixel commas). These faces lend Heebo only for
+ * those characters; Hebrew letters stay Secular One and Latin letters stay Sekuya / Bitcount Ink.
+ */
+@font-face {
+  font-family: "MBK Neutral";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 599;
+  src: url("@fontsource/heebo/files/heebo-latin-400-normal.woff2") format("woff2");
+  unicode-range: U+0020-0040, U+005B-0060, U+007B-007E, U+00A0-00BF, U+2013-2014, U+2018-201F, U+2026;
+}
+@font-face {
+  font-family: "MBK Neutral";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600 900;
+  src: url("@fontsource/heebo/files/heebo-latin-700-normal.woff2") format("woff2");
+  unicode-range: U+0020-0040, U+005B-0060, U+007B-007E, U+00A0-00BF, U+2013-2014, U+2018-201F, U+2026;
+}
+@font-face {
+  font-family: "MBK Space";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource/heebo/files/heebo-latin-400-normal.woff2") format("woff2");
+  unicode-range: U+0020, U+00A0;
+}
+
 @layer base {
   /* Site default theme. A personal colour overrides these on <html>; removing the overrides restores them. */
   :root {
@@ -72,6 +102,32 @@
     --danger: rgb(var(--ink-red-300));
 
     --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+    /* ---- Neon Marquee semantic tokens (Cursor-era values; components use these roles) ---- */
+    --surface-primary: rgb(var(--oled-950));
+    --surface-card: rgb(var(--oled-900) / 0.7);
+    --surface-elevated: rgb(var(--oled-800) / 0.82);
+    --surface-input: rgb(var(--oled-850));
+    --text-primary: rgb(var(--theme-fg));
+    --text-muted: var(--theme-text-secondary);
+    --line: var(--theme-border);
+    --accent-primary: #b026ff;
+    --accent-gradient: linear-gradient(135deg, #f5e0ff 0%, #d17dff 40%, #b026ff 70%, #7a00bf 100%);
+    --glow-brand: 0 0 30px 2px rgba(176, 38, 255, 0.5), 0 0 60px 12px rgba(176, 38, 255, 0.25);
+    --glow-brand-lg: 0 0 60px 6px rgba(176, 38, 255, 0.55), 0 0 130px 24px rgba(176, 38, 255, 0.3);
+    --glow-soft: 0 0 24px 0 rgba(176, 38, 255, 0.28);
+    --ambient-a: rgba(176, 38, 255, 0.2);
+    --ambient-b: rgba(176, 38, 255, 0.15);
+    --ambient-c: rgba(122, 0, 191, 0.07);
+    --state-pending: rgb(var(--theme-fg) / 0.75);
+    --state-approved: rgb(var(--ink-violet-200));
+    --state-confirmed: var(--success);
+    --state-error: var(--danger);
+    --dur-fast: 160ms;
+    --dur-base: 300ms;
+    --dur-slow: 500ms;
+    --ease-editorial: cubic-bezier(0.22, 1, 0.36, 1);
+    --touch-min: 2.75rem;
   }
 
   html {
@@ -89,9 +145,11 @@
   body {
     position: relative;
     background-color: var(--theme-page-bg);
-    /* One quiet brand light from the top; the rest of the field stays true OLED black. */
-    background-image: radial-gradient(ellipse 90% 38% at 50% -12%, rgba(176, 38, 255, 0.16), transparent 70%);
-    background-repeat: no-repeat;
+    /* Cursor-era light (93b3fcb): violet from the top-left, an answer from the bottom-right, a faint core. */
+    background-image: radial-gradient(ellipse 65% 50% at 15% -8%, var(--ambient-a), transparent 62%),
+      radial-gradient(ellipse 55% 45% at 88% 108%, var(--ambient-b), transparent 62%),
+      radial-gradient(ellipse 40% 35% at 50% 40%, var(--ambient-c), transparent 70%);
+    background-attachment: fixed;
     min-height: 100vh;
     min-height: 100dvh;
     font-family: theme("fontFamily.sans");
@@ -101,14 +159,24 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Secular One has one weight (declared 100–900, so Hebrew is never faux-bolded); 700 makes the Latin,
-     digits and punctuation that fall through to Heebo match its heavier colour. */
+  /* Cursor-era film grain, so the black never reads as flat digital black. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0.045;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* Headings at the Cursor-era weight: Secular One has a single weight, and Bitcount Ink's colours are drawn at 400. */
   h1,
   h2,
   h3,
-  h4,
-  .font-display {
-    font-weight: 700;
+  h4 {
+    font-weight: 400;
   }
   h1,
   h2,
@@ -127,6 +195,12 @@
   textarea,
   select {
     caret-color: #d17dff;
+    font-family: theme("fontFamily.data");
+  }
+
+  /* Emails, phone numbers and codes (always marked left-to-right) read in plain Heebo. */
+  [dir="ltr"]:not(html) {
+    font-family: theme("fontFamily.data");
   }
 
   :focus-visible {
@@ -176,15 +250,18 @@
 
 @layer components {
   /* ---------- Surfaces ---------- */
+  /* Cursor-era glass: translucent card over the light, hairline edge, 12px radius. */
   .card,
   .glass-panel {
-    @apply bg-oled-900 border rounded-card;
-    border-color: var(--theme-border);
+    @apply border rounded-card backdrop-blur-sm;
+    background-color: var(--surface-card);
+    border-color: var(--line);
   }
 
   .card-raised {
-    @apply bg-oled-800 border rounded-card shadow-lift;
-    border-color: var(--theme-border);
+    @apply border rounded-card backdrop-blur-sm shadow-lift;
+    background-color: var(--surface-elevated);
+    border-color: var(--line);
   }
 
   .hairline {
@@ -193,8 +270,9 @@
 
   /* iOS-style inset grouped list */
   .list-group {
-    @apply bg-oled-900 border rounded-card overflow-hidden;
-    border-color: var(--theme-border);
+    @apply border rounded-card overflow-hidden backdrop-blur-sm;
+    background-color: var(--surface-card);
+    border-color: var(--line);
   }
   .list-group > * + * {
     border-top: 1px solid var(--theme-border);
@@ -219,7 +297,7 @@
 
   /* ---------- Buttons ---------- */
   .btn {
-    @apply relative inline-flex items-center justify-center gap-2 select-none rounded-full font-display text-[1rem] leading-none min-h-[3.25rem] px-6 text-center transition-[transform,background-color,border-color,box-shadow,opacity,filter] duration-150;
+    @apply relative inline-flex items-center justify-center gap-2 select-none overflow-hidden rounded-full font-sans font-semibold tracking-wide text-[1rem] leading-none min-h-[3.25rem] px-7 text-center transition-[transform,background-color,border-color,box-shadow,opacity,filter,color] duration-300 ease-editorial;
     -webkit-user-select: none;
   }
   .btn:active:not(:disabled) {
@@ -233,8 +311,18 @@
   .btn-violet,
   .btn-primary {
     @apply btn shadow-glow;
-    color: #fff;
-    background-image: linear-gradient(180deg, #bc45ff 0%, #a114f5 55%, #8e00dd 100%);
+    color: #000;
+    background-image: linear-gradient(135deg, #f5e0ff 0%, #d17dff 40%, #b026ff 70%, #7a00bf 100%);
+  }
+  /* Cursor-era sheen that sweeps across the button on hover (and once when pressed on touch). */
+  .btn-violet::after,
+  .btn-primary::after {
+    content: "";
+    @apply absolute inset-0 bg-violet-sheen bg-[length:200%_100%] bg-[position:-150%_0] opacity-0 pointer-events-none;
+  }
+  .btn-violet:active:not(:disabled)::after,
+  .btn-primary:active:not(:disabled)::after {
+    @apply opacity-100 animate-sheen-sweep;
   }
   .btn-violet:active:not(:disabled),
   .btn-primary:active:not(:disabled) {
@@ -247,14 +335,17 @@
   @media (hover: hover) {
     .btn-violet:hover:not(:disabled),
     .btn-primary:hover:not(:disabled) {
-      @apply shadow-glow-lg;
-      filter: brightness(1.06);
+      @apply shadow-glow-lg -translate-y-0.5;
+    }
+    .btn-violet:hover:not(:disabled)::after,
+    .btn-primary:hover:not(:disabled)::after {
+      @apply opacity-100 animate-sheen-sweep;
     }
   }
 
   .btn-ghost,
   .btn-secondary {
-    @apply btn border bg-white/[0.06] border-white/[0.12] text-white/90;
+    @apply btn border border-white/20 bg-transparent text-white/85 font-medium;
   }
   .btn-ghost:active:not(:disabled),
   .btn-secondary:active:not(:disabled) {
@@ -267,7 +358,7 @@
   @media (hover: hover) {
     .btn-ghost:hover:not(:disabled),
     .btn-secondary:hover:not(:disabled) {
-      @apply bg-white/[0.09] border-white/20;
+      @apply border-violet-400/60 text-violet-200;
     }
   }
 
@@ -321,7 +412,8 @@
   .chip[aria-pressed="true"],
   .chip-active,
   .pill-option-active {
-    @apply border-violet-400/70 bg-violet-400/15 text-white;
+    @apply bg-violet-gradient border-transparent font-semibold shadow-glow;
+    color: #000;
   }
 
   /* Horizontally scrolling chip row that bleeds to the screen edge on phones */
@@ -457,18 +549,24 @@
     @apply font-display text-headline text-white;
   }
   .t-sub {
-    @apply text-sub text-white/60;
+    @apply font-prose text-sub text-white/60;
   }
   .t-foot {
-    @apply text-foot text-white/50;
+    @apply font-prose text-foot text-white/50;
   }
 
   /* Legacy decorative helpers, kept neutral so older markup stays calm */
   .violet-text {
-    @apply text-violet-200;
+    background-image: var(--theme-violet-gradient);
+    @apply bg-clip-text text-transparent;
   }
+  /* Cursor-era eyebrow: Latin label in Sekuya, wide tracking, with a short rule. */
   .section-eyebrow {
-    display: none;
+    @apply inline-flex items-center gap-3 font-brand text-xs tracking-[0.35em] uppercase text-violet-300/80 font-semibold;
+  }
+  .section-eyebrow::before {
+    content: "";
+    @apply block w-6 h-px bg-violet-400/60;
   }
   .font-nav {
     font-family: theme("fontFamily.display");
@@ -483,6 +581,85 @@
       opacity: 0.35;
       transform: translateY(6px);
     }
+  }
+
+  /* ---------- Neon Marquee ---------- */
+  /* One slow drifting violet light behind everything. Transform-only, paused in the camera, still on reduced motion. */
+  .ambient-light {
+    position: fixed;
+    inset: -25%;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(32% 24% at 28% 22%, rgba(176, 38, 255, 0.11), transparent 70%),
+      radial-gradient(28% 22% at 74% 78%, rgba(122, 0, 191, 0.09), transparent 70%);
+    animation: mbk-ambient 42s ease-in-out infinite alternate;
+    will-change: transform;
+  }
+  @keyframes mbk-ambient {
+    0% {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    50% {
+      transform: translate3d(5%, -4%, 0) scale(1.06);
+    }
+    100% {
+      transform: translate3d(-4%, 5%, 0) scale(1);
+    }
+  }
+  html[data-immersive="true"] .ambient-light {
+    display: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ambient-light {
+      animation: none;
+    }
+  }
+
+  /* The lit dot-matrix: brand names, prices and sizes (Bitcount Ink keeps its own colours). */
+  .marquee {
+    font-family: theme("fontFamily.marquee");
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+  }
+  /* Featured frame: a band of violet light travels around the edge like marquee bulbs. The light is a rotating
+     conic gradient behind a 1.5px inset; only transform animates. */
+  .marquee-frame {
+    position: relative;
+    overflow: hidden;
+    padding: 1.5px;
+    background: rgba(176, 38, 255, 0.35);
+  }
+  .marquee-frame::before {
+    content: "";
+    position: absolute;
+    inset: -60%;
+    background: conic-gradient(from 0deg, transparent 0deg, transparent 250deg, #d17dff 300deg, #f5e0ff 330deg, #b026ff 350deg, transparent 360deg);
+    animation: mbk-marquee-spin 5.5s linear infinite;
+    will-change: transform;
+  }
+  .marquee-frame__inner {
+    position: relative;
+    border-radius: calc(0.75rem - 1.5px);
+    background: rgb(var(--oled-900) / 0.92);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+  @keyframes mbk-marquee-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .marquee-frame::before {
+      animation: none;
+      background: conic-gradient(from 300deg, transparent 0deg, #d17dff 40deg, transparent 120deg);
+    }
+  }
+
+  /* Prices in violet light (gradient), digits in the dot-matrix. */
+  .price {
+    @apply marquee violet-text;
   }
 
   /* ---------- Sheets ---------- */

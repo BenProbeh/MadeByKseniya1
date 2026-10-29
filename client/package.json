@@ -12,6 +12,7 @@
     "test:e2e": "node --test --test-concurrency=1 e2e/app.e2e.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/bitcount-ink": "^5.3.0",
     "@fontsource/alex-brush": "^5.3.0",
     "@fontsource/heebo": "^5.1.0",
     "@fontsource/secular-one": "^5.3.0",

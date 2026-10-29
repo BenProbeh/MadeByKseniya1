@@ -5,6 +5,8 @@ import "@fontsource/heebo/400.css";
 import "@fontsource/heebo/500.css";
 import "@fontsource/heebo/700.css";
 import "@fontsource/sekuya/latin-400.css";
+// Cursor-era brand display face: the colour dot-matrix Latin for brand words, prices and sizes.
+import "@fontsource-variable/bitcount-ink/full.css";
 import "@fontsource/alex-brush/latin-400.css";
 import "./index.css";
 import App from "./App.jsx";
