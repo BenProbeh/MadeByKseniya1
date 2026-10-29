@@ -6,7 +6,8 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "http://localhost:4000",
+        // E2E runs point the proxy at the isolated test API (see playwright.config.js).
+        target: process.env.VITE_API_PROXY || "http://localhost:4000",
         changeOrigin: true,
       },
     },
@@ -15,5 +16,6 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: "./src/test/setup.js",
+    exclude: ["e2e/**", "node_modules/**"],
   },
 });

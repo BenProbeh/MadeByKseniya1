@@ -1,91 +1,73 @@
-# made by kseniya — Nail Studio Website
+# MadeByKseniya
 
-Full-stack site for the nail salon "made by kseniya": React + Tailwind frontend, Express + PostgreSQL backend, an OpenAI-powered chat concierge, and a full booking calendar.
+Mobile-first app for the MadeByKseniya nail studio: customers measure their nails with the phone camera against a
+10 ₪ coin, book appointments and keep their sizes; the owner and managers run the studio from their phone.
 
-## Structure
-- `server/` — Express API, PostgreSQL via `DATABASE_URL` (requires **Node.js 22.5+**), OpenAI chat agent with tool-calling.
-- `client/` — Vite + React + Tailwind (RTL Hebrew UI).
+- `client/` — React + Vite + Tailwind (Hebrew, RTL), installable as a home-screen app.
+- `server/` — Express + PostgreSQL API (Node.js 22.5+).
+- `docs/ARCHITECTURE.md` — app shell, design system, roles, camera flow, booking, security, tests, native path.
 
-## Setup
+## Local setup
 
-### 1. Server
+### 1. API
 ```
 cd server
 npm install
 copy .env.example .env
-```
-Edit `server/.env` and set:
-```
-OPENAI_API_KEY=sk-...your real key...
-OPENAI_MODEL=gpt-4o-mini
-PORT=4000
-```
-Then run:
-```
 npm run dev
 ```
-The API starts on `http://localhost:4000`. With `DATABASE_URL` set it uses that PostgreSQL database; without it (development only) it runs an embedded Postgres engine stored in `server/.pgdata`. Migrations in `server/src/migrations.js` run automatically on startup and seed placeholder services.
+Without `DATABASE_URL` the API runs an embedded Postgres (PGlite). Useful local `server/.env` settings:
+
+```
+# Prints every email (with its code) to the server log instead of sending it; the app says so on screen.
+MAIL_PROVIDER=console
+# If the project lives in OneDrive/Dropbox/iCloud, keep the dev database OUTSIDE the synced folder —
+# sync locks its files ("Resource busy") and the embedded database stops opening.
+PGLITE_DIR=C:/Users/<you>/AppData/Local/madebykseniya/pgdata
+# Optional: make an existing account the site owner (users.id), once.
+# OWNER_USER_ID=1
+```
 
 ### 2. Client
-In a second terminal:
 ```
 cd client
 npm install
 npm run dev
 ```
-Open the printed local URL (usually `http://localhost:5173`). API calls to `/api/*` are proxied to the server automatically in dev.
+Open `http://localhost:5173`. `/api/*` is proxied to the API on port 4000.
 
-## What's included
-- **Home / Services / Gallery / About / Booking** pages, fully Hebrew + RTL, dark true-black "OLED" theme with neon-violet accents.
-- **Booking page**: full month calendar, live time-slot availability (respects business hours: Sun–Thu 09:00–19:00, Fri 09:00–14:00, Sat closed), booking form, and a "find my appointment" phone lookup to reschedule/cancel.
-- **AI concierge chat widget** (bottom-left bubble on every page): answers service questions and, via OpenAI function-calling, can check availability, book, and reschedule appointments directly against the same database as the UI. Requires `OPENAI_API_KEY` — without it, the chat returns a clear "not configured" message instead of crashing.
+## Tests
 
-## Editing placeholder content
-- **Services, prices, durations**: seeded once by the `002_seed_services` migration in `server/src/migrations.js`; change existing rows with a new migration (or add an admin UI later).
-- **Business hours**: `server/src/appointmentsService.js` (`BUSINESS_HOURS`).
-- **Gallery images**: `client/src/pages/Gallery.jsx` currently shows gradient placeholder tiles — swap in real photos when available.
-- **About text / brand story**: `client/src/pages/About.jsx`.
-- **Colors / theme**: `client/tailwind.config.js` (`violet` and `oled` color scales).
-
-## Notes
-- The chat has no persistent history (stateless per browser session) — that's intentional for v1.
-- The PostgreSQL database is the single source of truth for both the booking UI and the AI agent, so double-booking is prevented in both paths.
+```
+cd server && npm test          # API, roles, security (in-memory Postgres; never reads .env)
+cd client && npm test          # unit tests (Vitest)
+cd client && npm run test:e2e  # Playwright on installed Edge; starts its own isolated API + Vite
+```
 
 ## Deployment
 
-The frontend and backend deploy to **separate services** — they can't share one Vercel deployment.
+The frontend and backend deploy separately; pushing to `main` deploys both.
 
-### 1. Frontend → Vercel
-This is a monorepo (no root `package.json`), so a root-level [`vercel.json`](vercel.json) tells Vercel to build from `client/` without needing any dashboard configuration:
+### Frontend → Vercel
+Root `vercel.json` builds `client/` (`client/dist`) and rewrites `/api/*` to `api/proxy.js`. Set in Vercel:
 ```
-cd client && npm install && npm run build   →  output: client/dist
+API_ORIGIN = https://<your-railway-domain>     (no trailing slash, no /api)
 ```
-It also includes a SPA rewrite so client-side routes (`/booking`, `/services`, ...) don't 404 on direct load/refresh. Just connect the GitHub repo in Vercel and deploy — no Root Directory setting needed.
+The browser keeps calling `/api/*` on the Vercel domain, so cookies stay first-party (required by iPhone Safari).
 
-### 2. Backend → Railway (or similar)
-`server/` is a long-running Express process — it is **not** compatible with Vercel's serverless model. It deploys to Railway with `server/Dockerfile` (configured by the root `railway.json`) next to a Railway PostgreSQL service:
-1. Service variables: `DATABASE_URL=${{Postgres.DATABASE_URL}}`, `NODE_ENV=production`, `FRONTEND_URL=https://made-by-kseniya1.vercel.app`, `TRUST_PROXY=2` (optional `OPENAI_API_KEY`, `OPENAI_MODEL`).
-2. Settings → Networking → Generate Domain, e.g. `https://madebykseniya-production.up.railway.app`.
-3. Check `https://<your-railway-domain>/api/health` → `{"ok":true,"database":"connected"}`.
+### API → Railway
+`server/Dockerfile` (configured by `railway.json`), health check `/api/health`, next to a Railway PostgreSQL service.
+Variables: `DATABASE_URL=${{Postgres.DATABASE_URL}}`, `NODE_ENV=production`, `FRONTEND_URL=https://<vercel-domain>`,
+`TRUST_PROXY=2`, plus the email provider (`MAIL_PROVIDER=microsoft` with `MICROSOFT_*` and `MAIL_FROM_*`, or
+`resend` with `RESEND_*`) — see `server/.env.example` and `server/DEPLOY_AUTH.md`. Optional: `OPENAI_API_KEY` for
+the concierge chat, `OWNER_USER_ID` to assign the owner once.
 
-### 3. Connect them
+Migrations run automatically on start (forward-only, inside a transaction, never dropping data).
 
-**Preferred (same-origin proxy):** in the Vercel project settings, add:
+## Editing content
 
-```
-API_ORIGIN = https://<your-railway-domain>
-```
-
-(no trailing slash, no `/api` suffix). Redeploy. The browser keeps calling `/api/*` on the Vercel domain; `vercel.json` rewrites them to `api/proxy.js`, which forwards to Railway.
-
-**Alternative (not recommended — iPhone Safari blocks the resulting third-party cookie):** set build-time
-
-```
-VITE_API_URL = https://<your-railway-domain>
-```
-
-and set `COOKIE_SAMESITE=none` on Railway (see `server/DEPLOY_AUTH.md`).
-
-Until `API_ORIGIN` (or `VITE_API_URL`) is set, auth/register will not reach the Express server.
-# MadeByKseniya
-# MadeByKseniya1
+- Packages and prices: `client/src/lib/packageData.js` (cards and starting prices derive from it).
+- Treatments, prices and durations for booking: database (`services` table, seeded by migration 002).
+- Business hours: `server/src/appointmentsService.js` (`BUSINESS_HOURS`).
+- Studio address (Waze): `client/src/lib/studioAddress.js`.
+- Logo: `client/logo.jpeg` is the source; `python client/scripts/build-logo.py` regenerates `client/public/logo.png`.
