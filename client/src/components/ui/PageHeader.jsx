@@ -18,7 +18,7 @@ export default function PageHeader({ eyebrow, title, accent, subtitle, action, c
           {title}
           {accent && (
             <>
-              {" "}
+              {title ? " " : null}
               <span className="violet-text">{accent}</span>
             </>
           )}

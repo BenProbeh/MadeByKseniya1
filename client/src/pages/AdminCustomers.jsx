@@ -133,7 +133,8 @@ export default function AdminCustomers() {
   return (
     <div className="max-w-2xl mx-auto space-y-5 pt-2">
       <PageHeader
-        title={removedView ? "משתמשים שהוסרו" : "לקוחות"}
+        eyebrow="Clients"
+        {...(removedView ? { title: "משתמשים", accent: "שהוסרו" } : { accent: "לקוחות" })}
         subtitle={
           totals
             ? removedView

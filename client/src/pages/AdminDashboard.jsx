@@ -14,13 +14,15 @@ function displayName(a) {
   return `${a.firstName || ""} ${a.lastName || ""}`.trim() || a.clientName || "לקוחה";
 }
 
+/** A count that opens its list. A count that needs a decision is lit: violet border, soft glow, gradient numeral. */
 function Stat({ to, value, label, tone = "default" }) {
+  const lit = tone === "attention" && value > 0;
   return (
     <Link
       to={to}
-      className={`card p-4 flex flex-col gap-1 active:bg-oled-800 transition-colors ${tone === "attention" && value > 0 ? "border-violet-400/50" : ""}`}
+      className={`card p-4 flex flex-col gap-1.5 active:bg-oled-800 transition-colors ${lit ? "border-violet-400/50 shadow-glow-soft" : ""}`}
     >
-      <span className={`font-display text-[2rem] leading-none tnum ${tone === "attention" && value > 0 ? "text-violet-200" : "text-white"}`}>{value}</span>
+      <span className={`marquee text-[2rem] leading-none ${lit ? "violet-text" : ""}`}>{value}</span>
       <span className="t-foot">{label}</span>
     </Link>
   );
@@ -67,8 +69,16 @@ export default function AdminDashboard() {
   return (
     <div className="max-w-3xl mx-auto space-y-7 pt-2">
       <header>
-        <p className="t-sub">{formatCalendarDay(today)}</p>
-        <h1 className="t-large-title mt-0.5">שלום{user?.firstName ? `, ${user.firstName}` : ""}</h1>
+        <span className="section-eyebrow mb-2">Studio</span>
+        <h1 className="t-large-title md:text-[2.25rem] md:leading-[2.75rem]">
+          שלום
+          {user?.firstName && (
+            <>
+              , <span className="violet-text">{user.firstName}</span>
+            </>
+          )}
+        </h1>
+        <p className="t-sub mt-1">{formatCalendarDay(today)}</p>
       </header>
 
       {error && (
@@ -87,10 +97,13 @@ export default function AdminDashboard() {
       </div>
 
       <section className="space-y-2" aria-labelledby="pending-title">
-        <div className="flex items-baseline justify-between px-1">
-          <h2 id="pending-title" className="t-title">
-            בקשות שמחכות לך
-          </h2>
+        <div className="flex items-end justify-between px-1">
+          <div>
+            <span className="section-eyebrow mb-1">Requests</span>
+            <h2 id="pending-title" className="t-title">
+              בקשות שמחכות לך
+            </h2>
+          </div>
           {pending.length > 3 && (
             <Link to="/admin/appointments" className="btn-text">
               הכול
@@ -124,9 +137,12 @@ export default function AdminDashboard() {
       </section>
 
       <section className="space-y-2" aria-labelledby="today-title">
-        <h2 id="today-title" className="t-title px-1">
-          היום בסטודיו
-        </h2>
+        <div className="px-1">
+          <span className="section-eyebrow mb-1">Today</span>
+          <h2 id="today-title" className="t-title">
+            היום בסטודיו
+          </h2>
+        </div>
         {data && todays.length === 0 && (
           <div className="card">
             <EmptyState icon={CalendarClock} title="אין תורים היום" compact />
@@ -154,17 +170,20 @@ export default function AdminDashboard() {
 
       {stats && (
         <section className="space-y-2" aria-labelledby="week-title">
-          <div className="flex items-baseline justify-between px-1">
-            <h2 id="week-title" className="t-title">
-              הצטרפו השבוע
-            </h2>
+          <div className="flex items-end justify-between px-1">
+            <div>
+              <span className="section-eyebrow mb-1">This week</span>
+              <h2 id="week-title" className="t-title">
+                הצטרפו השבוע
+              </h2>
+            </div>
             <Link to="/admin/customers?sort=newest" className="btn-text">
               ללקוחות
             </Link>
           </div>
           <div className="card p-4 space-y-4">
             <div className="flex items-end gap-4">
-              <span className="font-display text-[2.5rem] leading-none tnum">{stats.week.current.count}</span>
+              <span className="marquee violet-text text-[2.75rem] leading-none">{stats.week.current.count}</span>
               <span className="t-sub pb-1">
                 {stats.week.change === 0
                   ? "כמו בשבוע שעבר"

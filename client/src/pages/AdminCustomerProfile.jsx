@@ -195,10 +195,23 @@ export default function AdminCustomerProfile() {
   return (
     <div className="max-w-2xl mx-auto space-y-7 pt-2">
       <header className="flex flex-col items-center text-center gap-3">
-        <UserAvatar user={customer} className="h-24 w-24 text-3xl" />
+        <span className="section-eyebrow">Client</span>
+        <span className="marquee-frame block rounded-full shadow-glow" style={{ padding: "2.5px" }}>
+          <span className="relative block rounded-full bg-[rgb(var(--oled-950))] p-[3px]">
+            <UserAvatar user={customer} className="h-24 w-24 text-3xl" />
+          </span>
+        </span>
         <div className="space-y-1">
           <div className="flex flex-wrap items-center justify-center gap-2">
-            <h1 className="t-large-title">{fullName}</h1>
+            <h1 className="t-large-title">
+              {customer.firstName && customer.lastName ? (
+                <>
+                  {customer.firstName} <span className="violet-text">{customer.lastName}</span>
+                </>
+              ) : (
+                fullName
+              )}
+            </h1>
             <RoleBadge role={customer.role} />
           </div>
           <p className="t-foot">
@@ -254,6 +267,7 @@ export default function AdminCustomerProfile() {
       )}
 
       <section className="space-y-2" aria-labelledby="facts-title">
+        <span className="section-eyebrow px-1">Details</span>
         <h2 id="facts-title" className="t-title px-1">
           פרטים
         </h2>
@@ -269,6 +283,7 @@ export default function AdminCustomerProfile() {
       </section>
 
       <section className="space-y-2" aria-labelledby="score-title">
+        <span className="section-eyebrow px-1">Activity</span>
         <h2 id="score-title" className="t-title px-1">
           פעילות
         </h2>
@@ -278,12 +293,13 @@ export default function AdminCustomerProfile() {
         </div>
       </section>
 
-      <MeasurementsSection measurement={measurement} title="מידות" showActions={false} />
-      <OrdersSection orders={orders} title="רכישות" />
-      <ShipmentsSection shipments={shipments} title="משלוחים" />
+      <MeasurementsSection measurement={measurement} title="מידות" showActions={false} eyebrow="Sizes" />
+      <OrdersSection orders={orders} title="רכישות" eyebrow="Orders" />
+      <ShipmentsSection shipments={shipments} title="משלוחים" eyebrow="Shipping" />
 
       {(canManageRole || canRemove) && !removed && (
         <section className="space-y-2" aria-labelledby="manage-title">
+          <span className="section-eyebrow px-1">Manage</span>
           <h2 id="manage-title" className="t-title px-1">
             ניהול
           </h2>

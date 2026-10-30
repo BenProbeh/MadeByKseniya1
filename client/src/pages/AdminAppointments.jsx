@@ -94,9 +94,9 @@ function AppointmentCard({ appointment: a, busy, onAction, onResendEmail }) {
   const tel = telHref(a.phoneE164);
 
   return (
-    <li className={`card p-4 space-y-3 ${isPending ? "border-violet-400/40" : ""}`}>
+    <li className={`card p-4 space-y-3 ${isPending ? "border-violet-400/50 shadow-glow-soft" : ""}`}>
       <div className="flex items-start gap-3">
-        <div className="text-center shrink-0 w-14 rounded-control bg-white/[0.05] py-1.5">
+        <div className={`text-center shrink-0 w-14 rounded-control py-1.5 border ${isPending ? "border-violet-400/40 bg-violet-400/10" : "border-transparent bg-white/[0.05]"}`}>
           <p className="font-display text-headline tnum leading-tight">{a.time}</p>
           <p className="text-cap text-white/50 tnum">{a.date.slice(8, 10)}.{a.date.slice(5, 7)}</p>
         </div>
@@ -321,7 +321,8 @@ export default function AdminAppointments() {
   return (
     <div className="max-w-2xl mx-auto space-y-5 pt-2">
       <PageHeader
-        title="תורים"
+        eyebrow="Bookings"
+        accent="תורים"
         subtitle={counts.pending > 0 ? `${counts.pending} בקשות מחכות להחלטה` : "אין בקשות שממתינות לאישור"}
       />
 

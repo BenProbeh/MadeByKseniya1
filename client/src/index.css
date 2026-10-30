@@ -441,7 +441,7 @@
   }
   .segmented > button[aria-pressed="true"],
   .segmented > button[aria-selected="true"] {
-    @apply bg-oled-600 text-white shadow-lift;
+    @apply bg-oled-600 text-white shadow-glow-soft;
   }
 
   /* ---------- Forms ---------- */

@@ -25,7 +25,7 @@ function Field({ label, hint, children }) {
     <label className="block space-y-2 text-sm text-white/70">
       <span>{label}</span>
       {children}
-      {hint && <span className="block text-xs text-white/40">{hint}</span>}
+      {hint && <span className="block text-xs text-white/40 font-data">{hint}</span>}
     </label>
   );
 }
@@ -306,7 +306,7 @@ export default function AdminContentEditor() {
   return (
     <div className="max-w-3xl mx-auto pt-2 pb-6 space-y-8">
       <div className="text-center space-y-3">
-        <span className="section-eyebrow justify-center">Admin</span>
+        <span className="section-eyebrow justify-center">Editor</span>
         <h1 className="t-large-title md:text-[2.5rem] text-white">
           {isNew ? (
             <>
@@ -368,7 +368,11 @@ export default function AdminContentEditor() {
             <Field label="תווית קטנה מעל הכותרת (לא חובה)" hint="למשל: Courses">
               <input className={inputClass} value={page.eyebrow} maxLength={40} onChange={(e) => update({ eyebrow: e.target.value })} />
             </Field>
-            <Field label="כתובת הדף" hint={`אותיות באנגלית, מספרים ומקפים. הדף יופיע בכתובת /${page.slug || "my-page"}`}>
+            <Field label="כתובת הדף" hint={
+              <>
+                אותיות באנגלית, מספרים ומקפים. הדף יופיע בכתובת <bdi dir="ltr" className="whitespace-nowrap">/{page.slug || "my-page"}</bdi>
+              </>
+            }>
               <input
                 dir="ltr"
                 className={inputClass}

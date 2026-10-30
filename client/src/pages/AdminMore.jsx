@@ -19,7 +19,7 @@ function Row({ to, icon: Icon, title, detail, badge }) {
         {detail && <span className="block t-foot">{detail}</span>}
       </span>
       {badge > 0 && (
-        <span className="min-w-[1.5rem] h-6 px-2 rounded-full bg-violet-400 text-foot font-bold leading-6 text-center tnum" style={{ color: "#fff" }}>
+        <span className="min-w-[1.5rem] h-6 px-2 rounded-full bg-violet-gradient shadow-glow-soft text-foot font-bold leading-6 text-center tnum" style={{ color: "#000" }}>
           {badge}
         </span>
       )}
@@ -43,7 +43,8 @@ export default function AdminMore() {
   return (
     <div className="max-w-2xl mx-auto space-y-7 pt-2">
       <PageHeader
-        title="עוד"
+        eyebrow="Admin"
+        accent="עוד"
         subtitle={
           <span className="inline-flex items-center gap-2">
             {user?.firstName} {user?.lastName} <RoleBadge role={user?.role} />
@@ -63,9 +64,11 @@ export default function AdminMore() {
 
       {owner && (
         <section className="space-y-2" aria-labelledby="mail-title">
-          <h2 id="mail-title" className="section-title">
-            שליחת מיילים · לבעלים בלבד
+          <span className="section-eyebrow px-1">Mail</span>
+          <h2 id="mail-title" className="t-title px-1">
+            שליחת מיילים
           </h2>
+          <p className="t-foot px-1">לבעלים בלבד</p>
           <div className="card p-5">
             <MailConnectionSection />
           </div>

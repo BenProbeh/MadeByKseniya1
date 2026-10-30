@@ -188,7 +188,7 @@ export function AppointmentsSection({
   );
 }
 
-/** Optional Neon Marquee label above a section title (the profile uses it; staff screens don't). */
+/** Optional Neon Marquee label above a section title (the profile and the staff customer card). */
 function Eyebrow({ text }) {
   return text ? <span className="section-eyebrow px-1">{text}</span> : null;
 }

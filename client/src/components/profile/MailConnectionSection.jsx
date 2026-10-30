@@ -121,14 +121,22 @@ export default function MailConnectionSection() {
 
           {status.mailProvider !== "microsoft" && (
             <p className="text-white/50">
-              כרגע הספק הפעיל הוא {status.mailProvider}. כדי לשלוח מ־Outlook צריך להגדיר ב־Railway את MAIL_PROVIDER=microsoft.
+              כרגע הספק הפעיל הוא{" "}
+              <bdi dir="ltr" className="font-data">
+                {status.mailProvider}
+              </bdi>
+              . כדי לשלוח מ־Outlook צריך להגדיר ב־Railway את{" "}
+              <bdi dir="ltr" className="font-data">
+                MAIL_PROVIDER=microsoft
+              </bdi>
+              .
             </p>
           )}
 
           {missing.length > 0 && (
             <div className="text-amber-200">
               <p>חסרות הגדרות ב־Railway:</p>
-              <ul className="mt-1 space-y-0.5" dir="ltr">
+              <ul className="mt-1 space-y-0.5 font-data" dir="ltr">
                 {missing.map((item) => (
                   <li key={item} className="break-words">
                     {item}

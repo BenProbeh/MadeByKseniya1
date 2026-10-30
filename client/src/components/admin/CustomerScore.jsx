@@ -74,7 +74,7 @@ export function ScoreBreakdown({ score }) {
                 </span>
               </div>
               <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden" aria-hidden="true">
-                <div className="h-full rounded-full bg-violet-400/70" style={{ width: `${pct}%` }} />
+                <div className="h-full rounded-full bg-violet-gradient" style={{ width: `${pct}%` }} />
               </div>
               <p className="text-xs text-white/45">{part.detail}</p>
             </li>

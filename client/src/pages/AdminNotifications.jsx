@@ -33,13 +33,13 @@ function AppointmentRequestItem({ item, busy, onRead }) {
   return (
     <li
       className={`rounded-xl border p-4 sm:p-5 space-y-4 ${
-        isNew ? "border-violet-400/40 bg-violet-400/[0.04]" : "border-white/[0.08]"
+        isNew ? "border-violet-400/40 bg-violet-400/[0.04] shadow-glow-soft" : "border-white/[0.08]"
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1 min-w-0">
-          <p className="font-serif text-white">
-            {isNew && <span className="me-2 inline-block h-2 w-2 rounded-full bg-violet-400 align-middle" aria-hidden="true" />}
+          <p className="font-prose text-white">
+            {isNew && <span className="me-2 inline-block h-2 w-2 rounded-full bg-violet-400 shadow-glow-soft align-middle" aria-hidden="true" />}
             בקשה חדשה לתור ממתינה לאישור
           </p>
           <p className="text-xs text-white/45">{formatDateTime(m.requestedAt)}</p>
@@ -97,13 +97,13 @@ function NotificationItem({ item, busy, onRead }) {
   return (
     <li
       className={`rounded-xl border p-4 sm:p-5 space-y-4 ${
-        isNew ? "border-violet-400/40 bg-violet-400/[0.04]" : "border-white/[0.08]"
+        isNew ? "border-violet-400/40 bg-violet-400/[0.04] shadow-glow-soft" : "border-white/[0.08]"
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1 min-w-0">
-          <p className="font-serif text-white">
-            {isNew && <span className="me-2 inline-block h-2 w-2 rounded-full bg-violet-400 align-middle" aria-hidden="true" />}
+          <p className="font-prose text-white">
+            {isNew && <span className="me-2 inline-block h-2 w-2 rounded-full bg-violet-400 shadow-glow-soft align-middle" aria-hidden="true" />}
             {TYPE_TEXT[item.type] || m.reason}
           </p>
           <p className="text-xs text-white/45">
@@ -188,11 +188,11 @@ export default function AdminNotifications() {
   return (
     <div className="max-w-3xl mx-auto pt-2 pb-6 space-y-8">
       <div className="text-center space-y-3">
-        <span className="section-eyebrow justify-center">Admin</span>
+        <span className="section-eyebrow justify-center">Inbox</span>
         <h1 className="t-large-title md:text-[2.5rem] text-white">
           <span className="violet-text">התראות</span> פנימיות
         </h1>
-        <p className="font-serif text-white/60 text-sm md:text-base">
+        <p className="font-prose text-white/60 text-sm md:text-base">
           {unread > 0 ? `${unread} התראות חדשות` : "אין התראות חדשות"}
         </p>
         <Link to="/admin/customers" className="btn-text text-sm">
@@ -230,7 +230,7 @@ export default function AdminNotifications() {
         {!items && !error && <p className="text-sm text-white/45 text-center">ההתראות נטענות…</p>}
 
         {items && items.length === 0 && (
-          <p className="font-serif text-sm text-white/55 text-center py-4">
+          <p className="font-prose text-sm text-white/55 text-center py-4">
             {filter === "new" ? "אין התראות חדשות." : "אין התראות להצגה."}
           </p>
         )}

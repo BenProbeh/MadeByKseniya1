@@ -95,11 +95,11 @@ export default function AdminContent() {
   return (
     <div className="max-w-4xl mx-auto pt-2 pb-6 space-y-8">
       <div className="text-center space-y-3">
-        <span className="section-eyebrow justify-center">Admin</span>
+        <span className="section-eyebrow justify-center">Content</span>
         <h1 className="t-large-title md:text-[2.5rem] text-white">
           ניהול <span className="violet-text">תוכן</span>
         </h1>
-        <p className="font-serif text-white/60 text-sm md:text-base max-w-xl mx-auto">
+        <p className="font-prose text-white/60 text-sm md:text-base max-w-xl mx-auto">
           יצירה ועריכה של דפים באתר, בעיצוב של האתר ובלי קוד.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
@@ -132,7 +132,7 @@ export default function AdminContent() {
         {!pages && !error && <p className="text-sm text-white/45 text-center">הדפים נטענים…</p>}
 
         {pages && pages.length === 0 && (
-          <p className="font-serif text-sm text-white/55 text-center py-4">עדיין אין דפים. אפשר ליצור את הראשון.</p>
+          <p className="font-prose text-sm text-white/55 text-center py-4">עדיין אין דפים. אפשר ליצור את הראשון.</p>
         )}
 
         {pages && pages.length > 0 && (
