@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import NailPreview from "../components/NailPreview.jsx";
 import ShadePhoto from "../components/ShadePhoto.jsx";
 import OptionPicker from "../components/OptionPicker.jsx";
@@ -90,7 +90,7 @@ function FullConfigurator({ onBookSet }) {
           <div className="glass-panel p-6 flex items-center justify-between">
             <div>
               <p className="text-xs text-white/40 uppercase tracking-[0.2em] mb-1">מחיר משוער</p>
-              <p className="text-3xl font-black violet-text">
+              <p className="price text-3xl">
                 {price}
                 <Ils />
               </p>
@@ -114,6 +114,7 @@ function FullConfigurator({ onBookSet }) {
 
 export default function Configurator() {
   const navigate = useNavigate();
+  const still = useReducedMotion();
 
   function goToBooking(notes) {
     navigate("/booking", { state: { prefillNotes: notes } });
@@ -122,13 +123,15 @@ export default function Configurator() {
   return (
     <div>
       <motion.div
-        initial={{ opacity: 0, y: 16 }}
+        initial={still ? false : { opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
         className="max-w-3xl mx-auto px-6 pt-16 text-center"
       >
         <span className="section-eyebrow">Colours</span>
-        <h1 className="t-large-title md:text-[2.5rem] mt-3">גלריית הגוונים שלי</h1>
+        <h1 className="t-large-title md:text-[2.5rem] mt-3">
+          גלריית הגוונים <span className="violet-text">שלי</span>
+        </h1>
         <p className="text-white/60 mt-4">
           עברי בין הגוונים, מצאי את המראה שמדבר אלייך, ואז עצבי את הסט המדויק שלך למטה.
         </p>

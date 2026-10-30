@@ -86,10 +86,10 @@ export default function Sheet({
         aria-labelledby={title ? titleId : undefined}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
-        className={`relative w-full ${size === "lg" ? "md:max-w-xl" : "md:max-w-md"} max-h-[calc(100dvh-var(--safe-top)-1.5rem)] flex flex-col bg-oled-800 border border-[color:var(--theme-border)] rounded-t-[1.5rem] md:rounded-card shadow-lift outline-none mbk-sheet-in`}
+        className={`relative w-full ${size === "lg" ? "md:max-w-xl" : "md:max-w-md"} max-h-[calc(100dvh-var(--safe-top)-1.5rem)] flex flex-col bg-oled-800 border border-[color:var(--theme-border)] border-t-violet-400/40 md:border-violet-400/30 rounded-t-[1.5rem] md:rounded-card shadow-[0_-12px_40px_rgba(0,0,0,0.55),0_0_28px_rgba(176,38,255,0.22)] outline-none mbk-sheet-in`}
       >
         <div className="md:hidden flex justify-center pt-2.5 pb-1" aria-hidden="true">
-          <span className="h-1.5 w-10 rounded-full bg-white/20" />
+          <span className="h-1.5 w-10 rounded-full bg-violet-400/40" />
         </div>
         {(title || dismissible) && (
           <div className="flex items-start gap-3 px-5 pt-2 md:pt-5">
