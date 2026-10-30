@@ -5,6 +5,8 @@ import ScrollToTop from "./components/ScrollToTop.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
+// Not lazy: the 404 must show even when screen code cannot be fetched.
+import NotFound from "./pages/NotFound.jsx";
 
 // Screens load on demand so the first paint ships only the shell (the camera flow and admin stay out of it).
 const Home = lazy(() => import("./pages/Home.jsx"));
@@ -35,7 +37,9 @@ const AdminContentEditor = lazy(() => import("./pages/AdminContentEditor.jsx"));
 function BootScreen() {
   return (
     <div className="min-h-[100dvh] flex flex-col items-center justify-center gap-6 px-6" role="status" aria-live="polite">
-      <img src="/logo.png" alt="MadeByKseniya" className="h-24 w-auto object-contain" />
+      <div className="auth-stage">
+        <img src="/logo.png" alt="MadeByKseniya" className="h-24 w-auto object-contain" />
+      </div>
       <span className="spinner text-violet-300" aria-hidden="true" />
       <span className="sr-only">טוענת…</span>
     </div>
@@ -95,7 +99,7 @@ export default function App() {
           <Route path="/admin/content/:id" element={staff(<AdminContentEditor />)} />
 
           <Route path="/:slug" element={customer(<ContentPage />)} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
     </AppShell>

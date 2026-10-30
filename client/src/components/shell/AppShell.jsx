@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import TopBar from "./TopBar.jsx";
 import TabBar from "./TabBar.jsx";
+import NetworkBanner from "./NetworkBanner.jsx";
 import Footer from "../Footer.jsx";
 import ChatWidget from "../ChatWidget.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -50,6 +51,7 @@ export default function AppShell({ children }) {
     return (
       <div className="min-h-[100dvh] flex flex-col">
         <div className="ambient-light" aria-hidden="true" />
+        <NetworkBanner />
         <main
           id="main"
           className="flex-1 pt-[calc(var(--safe-top)+1rem)] pb-[calc(var(--safe-bottom)+1.5rem)] ps-[max(var(--gutter),var(--safe-right))] pe-[max(var(--gutter),var(--safe-left))]"
@@ -66,6 +68,7 @@ export default function AppShell({ children }) {
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:start-2 focus:z-[70] btn-ghost btn-sm">
         דילוג לתוכן
       </a>
+      <NetworkBanner />
       <TopBar tabs={tabs} staffArea={staffArea} chatEnabled />
       <main id="main" className="app-content flex-1">
         <div key={pathname} className="route-enter mx-auto w-full max-w-content">

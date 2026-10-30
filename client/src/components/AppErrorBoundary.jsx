@@ -23,13 +23,26 @@ export default class AppErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-[100dvh] flex flex-col items-center justify-center gap-5 px-8 text-center" role="alert">
-          <img src="/logo.png" alt="MadeByKseniya" className="h-20 w-auto object-contain" />
-          <h1 className="t-title">משהו לא נטען כמו שצריך</h1>
-          <p className="t-sub max-w-xs">זה לא קשור אלייך. רענון קצר בדרך כלל מסדר את זה.</p>
-          <button type="button" className="btn-violet w-full max-w-xs" onClick={() => window.location.reload()}>
-            רענון
-          </button>
+        <div className="min-h-[100dvh] flex flex-col items-center justify-center gap-6 px-8 text-center" role="alert">
+          <div className="ambient-light" aria-hidden="true" />
+          <div className="auth-stage">
+            <img src="/logo.png" alt="MadeByKseniya" className="h-20 w-auto object-contain" />
+          </div>
+          <div className="space-y-2">
+            <span className="section-eyebrow justify-center">Reload</span>
+            <h1 className="text-[1.75rem] leading-tight">
+              משהו לא <span className="violet-text">נטען</span> כמו שצריך
+            </h1>
+            <p className="t-sub max-w-xs mx-auto">זה לא קשור אלייך. רענון קצר בדרך כלל מסדר את זה.</p>
+          </div>
+          <div className="w-full max-w-xs space-y-3">
+            <button type="button" className="btn-violet w-full" onClick={() => window.location.reload()}>
+              רענון
+            </button>
+            <a href="/" className="btn-ghost w-full">
+              לדף הבית
+            </a>
+          </div>
         </div>
       );
     }

@@ -749,6 +749,26 @@
     background: radial-gradient(closest-side, rgba(176, 38, 255, 0.28), rgba(176, 38, 255, 0.08) 55%, transparent 75%);
     pointer-events: none;
   }
+  /* Connection notice: lit glass pill at the top; slides in only when motion is welcome. */
+  .net-banner {
+    @apply pointer-events-auto flex items-center gap-3 max-w-md rounded-2xl border border-violet-400/40 bg-[rgb(var(--oled-950)/0.88)] backdrop-blur-xl ps-2.5 pe-4 py-2 text-sub text-white shadow-glow-soft;
+    animation: mbk-net-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .net-banner--back {
+    @apply rounded-full ps-1.5 py-1.5 border-violet-400/60 shadow-glow;
+  }
+  @keyframes mbk-net-in {
+    from {
+      opacity: 0;
+      transform: translateY(-0.75rem);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .net-banner {
+      animation: none;
+    }
+  }
+
   /* The tab bar steps aside while typing (keyboard up) and inside full-screen flows. */
   html[data-keyboard="open"] .app-tabbar,
   html[data-immersive="true"] .app-tabbar {

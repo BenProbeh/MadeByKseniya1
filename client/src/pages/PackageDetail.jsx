@@ -1,4 +1,5 @@
-import { useParams, Link, Navigate } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
+import NotFound from "./NotFound.jsx";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowUpLeft, ChevronLeft, Clock3 } from "lucide-react";
 import { PACKAGE_DETAILS } from "../lib/packageData.js";
@@ -104,7 +105,7 @@ export default function PackageDetail() {
   const pkg = PACKAGE_DETAILS[slug];
   const still = useReducedMotion();
 
-  if (!pkg) return <Navigate to="/services" replace />;
+  if (!pkg) return <NotFound back={{ to: "/services", label: "לכל המסלולים" }} />;
 
   return (
     <div className="max-w-xl mx-auto pt-2 pb-2 space-y-12">

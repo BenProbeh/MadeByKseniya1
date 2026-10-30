@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
+import { RefreshCw } from "lucide-react";
+import EmptyState from "../components/ui/EmptyState.jsx";
+import NotFound from "./NotFound.jsx";
 import ContentPageRenderer from "../components/content/ContentPageRenderer.jsx";
 import { fetchPublishedPage } from "../lib/authApi.js";
 
@@ -11,10 +14,11 @@ function setMetaDescription(content) {
   return previous;
 }
 
-/** Published staff-managed page at /:slug. Unknown or draft pages send the visitor to /services. */
+/** Published staff-managed page at /:slug. Unknown or draft pages show the 404. */
 export default function ContentPage() {
   const { slug } = useParams();
   const [state, setState] = useState({ status: "loading", page: null });
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,7 +36,7 @@ export default function ContentPage() {
     return () => {
       cancelled = true;
     };
-  }, [slug]);
+  }, [slug, attempt]);
 
   useEffect(() => {
     if (state.status !== "ready") return undefined;
@@ -45,16 +49,24 @@ export default function ContentPage() {
     };
   }, [state]);
 
-  if (state.status === "missing") return <Navigate to="/" replace />;
+  if (state.status === "missing") return <NotFound />;
 
   if (state.status === "error") {
     return (
-      <div className="max-w-3xl mx-auto pt-2 pb-6 text-center">
-        <section className="glass-panel p-8 space-y-3">
-          <p className="text-sm text-amber-200" role="alert">
-            לא הצלחתי לטעון את הדף כרגע. אפשר לרענן ולנסות שוב.
-          </p>
-        </section>
+      <div className="max-w-sm mx-auto pt-[4vh] pb-6 text-center space-y-3">
+        <span className="section-eyebrow justify-center">Retry</span>
+        <div className="card" role="alert">
+          <EmptyState
+            icon={RefreshCw}
+            title="הדף לא נטען"
+            text="לא הצלחתי לטעון את הדף כרגע. ייתכן שהחיבור נקטע לרגע."
+            action={
+              <button type="button" className="btn-violet" onClick={() => setAttempt((n) => n + 1)}>
+                לנסות שוב
+              </button>
+            }
+          />
+        </div>
       </div>
     );
   }
