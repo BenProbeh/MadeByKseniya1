@@ -24,7 +24,7 @@ export default function ShadePhoto({ colour }) {
           <button
             type="button"
             onClick={() => setReplayKey((k) => k + 1)}
-            className="absolute bottom-4 left-4 z-10 text-xs font-semibold bg-oled-950/80 backdrop-blur border border-white/10 rounded-full w-9 h-9 flex items-center justify-center text-white/70 hover:text-violet-300 hover:border-violet-400/40 transition-colors"
+            className="absolute bottom-4 left-4 z-10 text-xs font-semibold bg-oled-950/80 backdrop-blur border border-white/10 rounded-full w-11 h-11 flex items-center justify-center text-white/70 hover:text-violet-300 hover:border-violet-400/40 transition-colors"
             aria-label="הפעילי שוב"
             title="הפעילי שוב"
           >

@@ -23,7 +23,7 @@ export default class AppErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-[100dvh] flex flex-col items-center justify-center gap-6 px-8 text-center" role="alert">
+        <div className="min-h-[100dvh] flex flex-col items-center justify-center gap-6 px-8 text-center overflow-x-clip" role="alert">
           <div className="ambient-light" aria-hidden="true" />
           <div className="auth-stage">
             <img src="/logo.png" alt="MadeByKseniya" className="h-20 w-auto object-contain" />

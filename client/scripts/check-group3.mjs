@@ -53,7 +53,8 @@ const consoleErrors = [];
 page.on("console", (m) => m.type() === "error" && !/401/.test(m.text()) && consoleErrors.push(m.text()));
 page.on("pageerror", (e) => consoleErrors.push(String(e)));
 
-const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+// Against the real phone width: mobile Chrome zooms a too-wide page out (innerWidth grows) instead of scrolling.
+const overflow = async (p = page) => (await p.evaluate(() => Math.max(document.documentElement.scrollWidth, window.innerWidth))) - p.viewportSize().width;
 
 const email = `group3.${Date.now().toString(36)}@example.com`;
 await page.request.post("/api/auth/register", { data: { firstName: "קסניה", lastName: "בדיקה", email, password: "audit-pass-123" } });

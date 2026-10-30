@@ -370,8 +370,9 @@
     @apply opacity-45 cursor-not-allowed;
   }
 
+  /* Smaller type, same 44px touch height (Apple HIG minimum). */
   .btn-sm {
-    @apply min-h-[2.5rem] px-4 text-sub;
+    @apply min-h-[2.75rem] px-4 text-sub;
   }
 
   .btn-block {
@@ -437,7 +438,13 @@
     @apply flex p-1 gap-1 rounded-full bg-white/[0.06] border border-white/[0.06];
   }
   .segmented > button {
-    @apply flex-1 min-h-[2.5rem] px-3 rounded-full text-sub text-white/60 transition-colors whitespace-nowrap;
+    @apply flex-1 min-w-0 min-h-[2.75rem] px-3 rounded-full text-sub text-white/60 transition-colors whitespace-nowrap;
+  }
+  /* The narrowest phones (320): three options still fit on one line. */
+  @media (max-width: 359px) {
+    .segmented > button {
+      @apply px-1.5 text-[0.8125rem];
+    }
   }
   .segmented > button[aria-pressed="true"],
   .segmented > button[aria-selected="true"] {

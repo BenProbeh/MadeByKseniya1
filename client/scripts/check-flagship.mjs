@@ -57,7 +57,8 @@ const email = `flagship.${Date.now().toString(36)}@example.com`;
 await page.request.post("/api/auth/register", { data: { firstName: "קסניה", lastName: "בדיקה", email, password: "audit-pass-123" } });
 await page.request.post("/api/auth/verify-email", { data: { email, code: await code(email), rememberMe: true } });
 
-const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+// Against the real phone width: mobile Chrome zooms a too-wide page out (innerWidth grows) instead of scrolling.
+const overflow = async (p = page) => (await p.evaluate(() => Math.max(document.documentElement.scrollWidth, window.innerWidth))) - p.viewportSize().width;
 
 for (const [w, h] of SIZES) {
   await page.setViewportSize({ width: w, height: h });

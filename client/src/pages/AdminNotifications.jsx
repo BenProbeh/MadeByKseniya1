@@ -208,7 +208,7 @@ export default function AdminNotifications() {
               key={f.value || "all"}
               type="button"
               aria-pressed={filter === f.value}
-              className={`pill-option py-2 min-h-[40px] ${filter === f.value ? "pill-option-active" : ""}`}
+              className={`pill-option py-2 min-h-[44px] ${filter === f.value ? "pill-option-active" : ""}`}
               onClick={() => setFilter(f.value)}
             >
               {f.label}

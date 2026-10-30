@@ -201,7 +201,7 @@ export default function AdminCustomers() {
         )}
         <label className="flex items-center justify-end gap-2 t-foot">
           <span>מיון</span>
-          <select value={sort} onChange={(e) => changeFilter(setSort, e.target.value)} className="input w-auto min-h-[2.5rem] py-1.5 text-sub rounded-full">
+          <select value={sort} onChange={(e) => changeFilter(setSort, e.target.value)} className="input w-auto min-h-[2.75rem] py-1.5 text-base rounded-full">
             {SORTS.map((s) => (
               <option key={s.value} value={s.value}>
                 {s.label}

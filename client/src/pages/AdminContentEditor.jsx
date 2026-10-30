@@ -336,7 +336,7 @@ export default function AdminContentEditor() {
         <button
           type="button"
           aria-pressed={!preview}
-          className={`pill-option py-2 min-h-[40px] ${!preview ? "pill-option-active" : ""}`}
+          className={`pill-option py-2 min-h-[44px] ${!preview ? "pill-option-active" : ""}`}
           onClick={() => setPreview(false)}
         >
           עריכה
@@ -344,7 +344,7 @@ export default function AdminContentEditor() {
         <button
           type="button"
           aria-pressed={preview}
-          className={`pill-option py-2 min-h-[40px] ${preview ? "pill-option-active" : ""}`}
+          className={`pill-option py-2 min-h-[44px] ${preview ? "pill-option-active" : ""}`}
           onClick={() => setPreview(true)}
         >
           תצוגה מקדימה

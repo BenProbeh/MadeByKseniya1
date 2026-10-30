@@ -36,7 +36,7 @@ const AdminContentEditor = lazy(() => import("./pages/AdminContentEditor.jsx"));
 
 function BootScreen() {
   return (
-    <div className="min-h-[100dvh] flex flex-col items-center justify-center gap-6 px-6" role="status" aria-live="polite">
+    <div className="min-h-[100dvh] flex flex-col items-center justify-center gap-6 px-6 overflow-x-clip" role="status" aria-live="polite">
       <div className="auth-stage">
         <img src="/logo.png" alt="MadeByKseniya" className="h-24 w-auto object-contain" />
       </div>

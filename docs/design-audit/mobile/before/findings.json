@@ -1,0 +1,266 @@
+[
+  {
+    "label": "login",
+    "overflow": 27,
+    "offscreen": [
+      "320: div.mx-auto.w-full [47..327]",
+      "320: div.h-11.-ms-2 [47..335]",
+      "320: header.flex.flex-col [47..327]",
+      "320: div.mt-6.space-y-2 [47..327]",
+      "320: h1.text-[2rem].leading-tight [47..327]"
+    ],
+    "smallFields": [],
+    "smallTargets": [],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "register",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "forgot",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "404-signed-out",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "home",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "services",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "package",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "gallery",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [
+      "a \"למסלולים\" 95x40",
+      "a \"לעיצוב סט\" 101x40"
+    ],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "build",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [
+      "button \"הפעילי שוב\" 36x36"
+    ],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "sizing",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "booking",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "appointments",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [
+      "a \"תור חדש\" 113x40"
+    ],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "profile",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "404",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "sheet-password",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "admin",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [
+      "a \"לאפליקציה\" 124x40"
+    ],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "admin-appointments",
+    "overflow": 24,
+    "offscreen": [
+      "320: div.mx-auto.max-w-content [-24..320]",
+      "320: div.flex.items-center [-16..108]",
+      "320: a.btn-ghost.btn-sm [-16..108]",
+      "320: div.route-enter.mx-auto [44..324]",
+      "320: div.max-w-2xl.mx-auto [44..324]"
+    ],
+    "smallFields": [],
+    "smallTargets": [
+      "a \"לאפליקציה\" 124x40",
+      "button \"מהיום והלאה\" 104x40",
+      "button \"תורים שעברו\" 104x40",
+      "button \"כל התאריכים\" 104x40",
+      "summary \"פרטים נוספים\" 246x36",
+      "button \"אישור התור\" 138x40",
+      "button \"דחיית הבקשה\" 140x40",
+      "summary \"פרטים נוספים\" 286x36",
+      "button \"מהיום והלאה\" 106x40",
+      "button \"תורים שעברו\" 106x40",
+      "button \"כל התאריכים\" 106x40",
+      "button \"אישור התור\" 146x40",
+      "button \"דחיית הבקשה\" 148x40",
+      "summary \"פרטים נוספים\" 301x36",
+      "button \"מהיום והלאה\" 111x40",
+      "button \"תורים שעברו\" 111x40",
+      "button \"כל התאריכים\" 111x40",
+      "button \"אישור התור\" 153x40",
+      "button \"דחיית הבקשה\" 155x40",
+      "summary \"פרטים נוספים\" 316x36",
+      "button \"מהיום והלאה\" 112x40",
+      "button \"תורים שעברו\" 112x40",
+      "button \"כל התאריכים\" 112x40",
+      "button \"אישור התור\" 155x40",
+      "button \"דחיית הבקשה\" 157x40",
+      "summary \"פרטים נוספים\" 319x36",
+      "button \"מהיום והלאה\" 119x40",
+      "button \"תורים שעברו\" 119x40",
+      "button \"כל התאריכים\" 119x40",
+      "button \"אישור התור\" 165x40",
+      "button \"דחיית הבקשה\" 167x40",
+      "summary \"פרטים נוספים\" 340x36",
+      "button \"מהיום והלאה\" 124x40",
+      "button \"תורים שעברו\" 124x40",
+      "button \"כל התאריכים\" 124x40",
+      "button \"אישור התור\" 173x40",
+      "button \"דחיית הבקשה\" 175x40",
+      "summary \"פרטים נוספים\" 356x36"
+    ],
+    "hiddenEnd": 191
+  },
+  {
+    "label": "admin-customers",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [
+      "select#? 15px"
+    ],
+    "smallTargets": [
+      "a \"לאפליקציה\" 124x40",
+      "select \"דירוג גבוה קודםפעילות אח\" 160x40"
+    ],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "admin-customer",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [
+      "a \"לאפליקציה\" 124x40"
+    ],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "admin-more",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [
+      "a \"לאפליקציה\" 124x40"
+    ],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "admin-notifications",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [
+      "a \"לאפליקציה\" 124x40",
+      "button \"חדשות\" 77x40",
+      "button \"הכול\" 63x40",
+      "button \"נקראו\" 70x40"
+    ],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "admin-content",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [
+      "a \"לאפליקציה\" 124x40"
+    ],
+    "hiddenEnd": 0
+  },
+  {
+    "label": "admin-editor",
+    "overflow": 0,
+    "offscreen": [],
+    "smallFields": [],
+    "smallTargets": [
+      "a \"לאפליקציה\" 124x40",
+      "button \"עריכה\" 71x40",
+      "button \"תצוגה מקדימה\" 125x40"
+    ],
+    "hiddenEnd": 0
+  }
+]

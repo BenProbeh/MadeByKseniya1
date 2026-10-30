@@ -68,7 +68,8 @@ const page = await context.newPage();
 const consoleErrors = [];
 page.on("console", (m) => m.type() === "error" && !/401|status of 400/.test(m.text()) && consoleErrors.push(m.text()));
 page.on("pageerror", (e) => consoleErrors.push(e.message));
-const overflow = (p = page) => p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+// Against the real phone width: mobile Chrome zooms a too-wide page out (innerWidth grows) instead of scrolling.
+const overflow = async (p = page) => (await p.evaluate(() => Math.max(document.documentElement.scrollWidth, window.innerWidth))) - p.viewportSize().width;
 const themeOf = () => page.evaluate(() => document.documentElement.dataset.theme || "default");
 
 async function account(request, firstName, lastName) {

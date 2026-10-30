@@ -146,7 +146,7 @@ function AppointmentCard({ appointment: a, busy, onAction, onResendEmail }) {
       )}
 
       <details className="group">
-        <summary className="flex items-center gap-1 min-h-[2.25rem] t-foot cursor-pointer list-none select-none">
+        <summary className="flex items-center gap-1 min-h-[2.75rem] t-foot cursor-pointer list-none select-none">
           <ChevronDown size={16} className="transition-transform group-open:rotate-180" aria-hidden="true" />
           פרטים נוספים
         </summary>

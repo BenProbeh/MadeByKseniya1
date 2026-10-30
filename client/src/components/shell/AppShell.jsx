@@ -48,8 +48,9 @@ export default function AppShell({ children }) {
   const pending = usePendingCount(staffArea, pathname);
 
   if (chromeless) {
+    // overflow-x-clip: decorative glows (the logo's stage light) end at the screen edge instead of widening the page.
     return (
-      <div className="min-h-[100dvh] flex flex-col">
+      <div className="min-h-[100dvh] flex flex-col overflow-x-clip">
         <div className="ambient-light" aria-hidden="true" />
         <NetworkBanner />
         <main
@@ -63,7 +64,7 @@ export default function AppShell({ children }) {
   }
 
   return (
-    <div className="min-h-[100dvh] flex flex-col">
+    <div className="min-h-[100dvh] flex flex-col overflow-x-clip">
       <div className="ambient-light" aria-hidden="true" />
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:start-2 focus:z-[70] btn-ghost btn-sm">
         דילוג לתוכן
