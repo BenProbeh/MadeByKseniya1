@@ -1,5 +1,5 @@
 import { Lightbulb, ShieldCheck, Sparkles } from "lucide-react";
-import PageHeader from "../ui/PageHeader.jsx";
+import PageHeader, { litLast } from "../ui/PageHeader.jsx";
 import { NAIL_SIZING_COPY as C } from "../../lib/nailSizing/copy.js";
 import { REFERENCE_COIN } from "../../lib/nailSizing/measure.js";
 
@@ -9,7 +9,7 @@ export default function IntroStep({ progress, onStart, onResume, onRestart }) {
   const resumable = progress && progress.done > 0;
   return (
     <div className="max-w-xl mx-auto space-y-7 pt-2">
-      <PageHeader title={C.intro.title} subtitle={C.intro.subtitle} />
+      <PageHeader eyebrow="Sizing" {...litLast(C.intro.title)} subtitle={C.intro.subtitle} />
 
       <section aria-labelledby="need-title" className="space-y-2">
         <h2 id="need-title" className="section-title">
@@ -25,7 +25,7 @@ export default function IntroStep({ progress, onStart, onResume, onRestart }) {
                     <Icon size={22} strokeWidth={1.8} />
                   </span>
                 ) : (
-                  <img src={REFERENCE_COIN.imageSrc} alt="" className="w-12 h-12 shrink-0" />
+                  <img src={REFERENCE_COIN.imageSrc} alt="" className="w-12 h-12 shrink-0 drop-shadow-[0_0_10px_rgba(176,38,255,0.55)]" />
                 )}
                 <div className="min-w-0 pt-0.5">
                   <p className="t-headline">{item.title}</p>

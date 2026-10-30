@@ -3,6 +3,12 @@
  * Lives at the top of the scrolling content (the app bar above stays minimal).
  * Neon Marquee: an optional Sekuya `eyebrow` above, and an `accent` word lit in violet after the title.
  */
+/** Splits a title so its last word can be lit: `{...litLast("המידות שלך")}` → title "המידות", accent "שלך". */
+export function litLast(text) {
+  const i = text.lastIndexOf(" ");
+  return i < 0 ? { title: text } : { title: text.slice(0, i), accent: text.slice(i + 1) };
+}
+
 export default function PageHeader({ eyebrow, title, accent, subtitle, action, className = "" }) {
   return (
     <header className={`flex items-end justify-between gap-4 ${className}`}>

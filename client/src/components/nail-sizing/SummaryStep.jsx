@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
-import { AlertTriangle, CircleCheck } from "lucide-react";
-import PageHeader from "../ui/PageHeader.jsx";
+import { AlertTriangle, Check } from "lucide-react";
+import PageHeader, { litLast } from "../ui/PageHeader.jsx";
 import { HANDS } from "../../lib/nailSizing/constants.js";
 import { NAIL_SIZING_COPY as C } from "../../lib/nailSizing/copy.js";
 
@@ -15,13 +15,18 @@ export default function SummaryStep({ results, remaining, saveState, saveError, 
   return (
     <div className="max-w-xl mx-auto space-y-6 pt-2">
       {saved ? (
-        <div className="card-raised p-6 text-center space-y-3" role="status">
-          <CircleCheck size={40} strokeWidth={1.6} className="mx-auto text-emerald-300" aria-hidden="true" />
-          <h1 className="t-title">{C.summary.savedTitle}</h1>
-          <p className="t-sub">{C.summary.savedText}</p>
+        <div className="marquee-frame rounded-card shadow-glow" role="status">
+          <div className="marquee-frame__inner p-6 text-center space-y-3">
+            <span className="mx-auto grid place-items-center w-14 h-14 rounded-full bg-violet-gradient shadow-glow" style={{ color: "#000" }} aria-hidden="true">
+              <Check size={28} strokeWidth={2.6} />
+            </span>
+            <span className="section-eyebrow">Saved</span>
+            <h1 className="t-title">{C.summary.savedTitle}</h1>
+            <p className="t-sub">{C.summary.savedText}</p>
+          </div>
         </div>
       ) : (
-        <PageHeader title={C.summary.title} subtitle={C.summary.subtitle} />
+        <PageHeader eyebrow="Your sizes" {...litLast(C.summary.title)} subtitle={C.summary.subtitle} />
       )}
 
       {HANDS.map((hand) => (
@@ -37,11 +42,11 @@ export default function SummaryStep({ results, remaining, saveState, saveError, 
                     type="button"
                     onClick={() => onRemeasure(key)}
                     className={`w-full rounded-control border px-1 py-3 text-center transition-colors active:bg-white/[0.06] ${
-                      r ? "border-white/[0.12] bg-oled-900" : "border-dashed border-white/15"
+                      r ? "border-violet-400/25 bg-violet-400/[0.06]" : "border-dashed border-white/15"
                     }`}
                     aria-label={r ? `${finger.labelHe}: מידה ${r.size}, ${r.widthMm} מ״מ. מדידה מחדש` : `${finger.labelHe}: עוד לא נמדדה. למדידה`}
                   >
-                    <span className={`block font-display text-title tnum ${r ? "text-white" : "text-white/30"}`}>{r ? r.size : C.summary.notMeasured}</span>
+                    <span className={`block leading-none mb-1 ${r ? "marquee text-[1.625rem]" : "font-display text-title text-white/30"}`}>{r ? r.size : C.summary.notMeasured}</span>
                     <span className="block text-cap text-white/55 truncate">{finger.labelHe.replace("אצבע ", "")}</span>
                     {r && (
                       <span className="block text-cap text-white/35 tnum" dir="ltr">

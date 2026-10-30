@@ -546,8 +546,9 @@
   .t-title {
     @apply font-display text-title text-white;
   }
+  /* Row titles are running text: digits and separators in Heebo, Latin words still in the dot-matrix. */
   .t-headline {
-    @apply font-display text-headline text-white;
+    @apply font-prose text-headline text-white;
   }
   .t-sub {
     @apply font-prose text-sub text-white/60;

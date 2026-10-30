@@ -222,7 +222,7 @@ export default function CaptureStep({ finger, position, total, isLast, onSave, o
           <span className="w-11" aria-hidden="true" />
         </div>
         <div className="h-0.5 mx-4 rounded-full bg-white/10 overflow-hidden" aria-hidden="true">
-          <div className="h-full bg-violet-400 transition-[width] duration-300" style={{ width: `${((position - 1) / total) * 100}%` }} />
+          <div className="h-full bg-violet-gradient shadow-glow transition-[width] duration-300" style={{ width: `${((position - 1) / total) * 100}%` }} />
         </div>
       </header>
 
@@ -322,7 +322,7 @@ export default function CaptureStep({ finger, position, total, isLast, onSave, o
                 type="button"
                 onClick={shoot}
                 disabled={!cameraLive}
-                className="justify-self-center w-[4.75rem] h-[4.75rem] rounded-full border-4 border-white/90 grid place-items-center transition-transform active:scale-95 disabled:opacity-35"
+                className="justify-self-center w-[4.75rem] h-[4.75rem] rounded-full border-4 border-white/90 grid place-items-center shadow-glow transition-transform active:scale-95 disabled:opacity-35 disabled:shadow-none"
                 aria-label={C.capture.shutter}
               >
                 <span className="block w-[3.75rem] h-[3.75rem] rounded-full bg-white" />
@@ -370,7 +370,7 @@ export default function CaptureStep({ finger, position, total, isLast, onSave, o
             </div>
             {result?.widthMm != null && (
               <p className="text-center">
-                <span className="inline-flex items-center rounded-full bg-violet-400/20 px-4 py-1.5 font-display text-headline tnum">
+                <span className="inline-flex items-center rounded-full border border-violet-400/40 bg-violet-400/15 px-4 py-1.5 font-prose text-headline tnum shadow-glow-soft">
                   {C.mark.result(result.widthMm.toFixed(1), result.size)}
                 </span>
               </p>

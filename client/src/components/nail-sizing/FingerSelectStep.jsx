@@ -1,5 +1,5 @@
 import { Check } from "lucide-react";
-import PageHeader from "../ui/PageHeader.jsx";
+import PageHeader, { litLast } from "../ui/PageHeader.jsx";
 import { ALL_FINGERS, HANDS } from "../../lib/nailSizing/constants.js";
 import { NAIL_SIZING_COPY as C } from "../../lib/nailSizing/copy.js";
 
@@ -11,7 +11,7 @@ export default function FingerSelectStep({ selected, results, onChange, onNext }
 
   return (
     <div className="max-w-xl mx-auto space-y-6 pt-2">
-      <PageHeader title={C.fingers.title} subtitle={C.fingers.subtitle} />
+      <PageHeader eyebrow="Fingers" {...litLast(C.fingers.title)} subtitle={C.fingers.subtitle} />
 
       <div className="flex items-center justify-between">
         <p className="t-sub tnum" aria-live="polite">
@@ -41,19 +41,21 @@ export default function FingerSelectStep({ selected, results, onChange, onNext }
                   aria-pressed={on}
                   aria-label={`${finger.labelHe} ${hand.labelHe}${done ? `, ${C.fingers.measured}` : ""}`}
                   onClick={() => toggle(key)}
-                  className={`relative flex flex-col items-center justify-center gap-1 min-h-[4.5rem] rounded-control border text-center transition-colors ${
-                    on ? "border-violet-400/70 bg-violet-400/15 text-white" : "border-white/[0.12] bg-white/[0.03] text-white/55"
+                  className={`relative flex flex-col items-center justify-center gap-1 min-h-[4.5rem] rounded-control border text-center transition-[background-color,border-color,box-shadow] duration-300 ${
+                    on ? "border-violet-400/70 bg-violet-400/15 text-white shadow-glow-soft" : "border-white/[0.12] bg-white/[0.03] text-white/55"
                   }`}
                 >
                   <span className="font-display text-sub leading-tight px-1">{finger.labelHe.replace("אצבע ", "")}</span>
                   {done ? (
-                    <span className="text-cap text-emerald-300 tnum">מידה {done.size}</span>
+                    <span className="flex items-baseline gap-1 text-cap text-white/60">
+                      מידה <span className="marquee text-base leading-none">{done.size}</span>
+                    </span>
                   ) : (
                     <span
-                      className={`grid place-items-center w-5 h-5 rounded-full border ${on ? "border-violet-300 bg-violet-400" : "border-white/30"}`}
+                      className={`grid place-items-center w-5 h-5 rounded-full border ${on ? "border-transparent bg-violet-gradient shadow-glow-soft" : "border-white/30"}`}
                       aria-hidden="true"
                     >
-                      {on && <Check size={13} strokeWidth={3} style={{ color: "#fff" }} />}
+                      {on && <Check size={13} strokeWidth={3} style={{ color: "#000" }} />}
                     </span>
                   )}
                 </button>
